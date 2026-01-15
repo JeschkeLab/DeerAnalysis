@@ -1,0 +1,8 @@
+dash
+dash-bootstrap-components
+pandas
+numpy
+deerlab
+sqlalchemy
+xarray
+pytest
