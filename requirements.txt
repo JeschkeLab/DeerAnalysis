@@ -6,3 +6,4 @@ deerlab
 sqlalchemy
 xarray
 pytest
+psutil

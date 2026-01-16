@@ -63,6 +63,19 @@ sidebar = html.Div(
             vertical=True,
             pills=True,
         ),
+        html.Div(
+            [
+                dbc.NavLink(DashIconify(icon="mdi:cog", width=24), href="/config", active="exact"),
+                dbc.NavLink(DashIconify(icon="mdi:monitor", width=24), href="/system_monitor", active="exact"),
+            ],
+            style={
+                "position": "absolute",
+                "bottom": "2rem",
+                "left": "2rem",
+                "display": "flex",
+                "gap": "1rem",
+            },
+        ),
     ],
     style={
         "position": "fixed",
