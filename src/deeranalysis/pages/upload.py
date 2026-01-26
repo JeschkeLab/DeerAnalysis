@@ -7,10 +7,13 @@ import io
 import json
 from deeranalysis.utils.database import get_session, Dataset
 from deeranalysis.utils.eprload import bes3t_eprload
+from deeranalysis.utils.pulsespel_parser import parse_PulseSpel
 import numpy as np
 import plotly.graph_objs as go
 import xarray as xr
-
+import dash_ag_grid as dag  
+import dash_mantine_components as dmc
+from sqlalchemy.orm import Session
 
 dash.register_page(__name__)
 
@@ -41,25 +44,50 @@ layout = html.Div([
                 multiple=True
             ),
             dcc.Store(id='dataset-store'),
-            dbc.Input(id="project-name", placeholder="Sample Name", type="text", className="mb-2"),
-            dbc.Input(id="sample-name", placeholder="Project Name", type="text", className="mb-2"),
+            dmc.Autocomplete(id="project-name", placeholder="Sample Name", className="mb-2"),
+            dmc.Autocomplete(id="sample-name", placeholder="Project Name", className="mb-2"),
             dbc.Input(id="dataset-name", placeholder="Dataset Name", type="text", className="mb-2"),
             
             html.Div(id='upload-status'),
-            html.H4("Parmeters"),
-        dbc.Col([
-            dash_table.DataTable(
-                id='data-parameters-table',
-                columns=[
-                    {'name': 'Parameter', 'id': 'parameter'},
-                    {'name': 'Value', 'id': 'value'}
+            dbc.Row([
+                dbc.Col(html.H4("Experiment Type:", className="mt-2")),
+                dbc.Col(dcc.Dropdown(
+                    id='experiment-type-dropdown',
+                    options=[
+                        {'label': '3-pulse', 'value': '3pDEER'},
+                        {'label': '4-pulse', 'value': '4pDEER'},
+                        {'label': '5-pulse', 'value': '5pDEER'},
+                        {'label': 'RIDME', 'value': '5pRIDME'},
+                    ],
+                    value='4pulse',
+                    multi=False,
+                    placeholder="Select experiment type(s)"
+                ))]
+            ),
+            
+            html.H4("Delays", className="mt-3"),
+            dag.AgGrid(
+                id='delays-grid',
+                columnDefs=[
+                    {'field': 'parameter', 'headerName': 'Parameter'},
+                    {'field': 'value', 'headerName': 'Value (ns)', 'editable': True}
                 ],
-                data=[],
-                style_table={'overflowX': 'auto',
-                             'width': '100%'},
-                style_cell={'textAlign': 'left'},
+                rowData=[],
+                className="ag-theme-alpine",
+                style={'height': '200px', 'width': '100%'}
+            ),
+            
+            html.H4("Parameters", className="mt-3"),
+            dag.AgGrid(
+                id='data-parameters-grid',
+                columnDefs=[
+                    {'field': 'parameter', 'headerName': 'Parameter'},
+                    {'field': 'value', 'headerName': 'Value'}
+                ],
+                rowData=[],
+                className="ag-theme-alpine",
+                style={'height': '300px', 'width': '100%'}
             )
-        ], width=8)
         ], width=4),
         dbc.Col([
             html.H4("Data Viewer"),
@@ -73,7 +101,8 @@ layout = html.Div([
 @callback(
     Output('upload-status', 'children'),
     Output('dataset-store', 'data'),
-    Output('data-parameters-table', 'data'),
+    Output('data-parameters-grid', 'rowData'),
+    Output('delays-grid', 'rowData'),
     Output('data-viewer-plot', 'figure'),
     Output('dataset-name', 'value'),
     Input('upload-data', 'contents'),
@@ -86,7 +115,7 @@ def handle_file_upload(contents_list, filenames_list):
     """
 
     if contents_list is None:
-        return dash.no_update, dash.no_update, dash.no_update
+        return dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update
     
     # Ensure we're working with lists
     if not isinstance(contents_list, list):
@@ -132,12 +161,19 @@ def handle_file_upload(contents_list, filenames_list):
             dsc_decoded = base64.b64decode(dsc_content.split(',')[1])
             dta_decoded = base64.b64decode(dta_content.split(',')[1])
             dataarray = bes3t_eprload(DSC=dsc_decoded,DTA=dta_decoded)
-            figure = update_data_viewer(dataarray)
+            
             attribute_data =get_attributes_dict(dataarray)
 
+            # Extract delays from pulsespel
+            dataarray.attrs.update({'file_format': 'BES3T'})
+            dataarray.attrs.update(parse_PulseSpel(dataarray.attrs.get('PlsSPELGlbTxt','')))
 
-
+            delays = get_delays_dict(dataarray)
+            deadtime = delays.get('deadtime', 0)
+            # dataarray.X = dataarray.X + deadtime  # Adjust time axis for deadtime
             
+            # Show plot
+            figure = update_data_viewer(dataarray,deadtime)
         else:
             return html.Div([
                 html.P("Unsupported file type. Please upload .DSC/.DTA (Bruker BES3T), .h5 (HDF5), or .csv files.")
@@ -154,21 +190,25 @@ def handle_file_upload(contents_list, filenames_list):
     store_data['ImagData'] = dataarray.imag.values.tolist()
     store_data['t'] = dataarray.X.values.tolist()
     store_data['attrs'] = dataarray.attrs
+    store_data['delays'] = delays
+    store_data['deadtime'] = deadtime
 
 
+    delays_data = [{'parameter': k, 'value': v} for k, v in delays.items()]
+    
     return html.Div([
         html.P(f"Successfully uploaded {', '.join(filenames_list)} as {file_format} format.")
-    ]), store_data,attribute_data, figure, dataarray.attrs.get('title', '')
+    ]), store_data, attribute_data, delays_data, figure, dataarray.attrs.get('title', '')
 
 
-def update_data_viewer(dataset):
+def update_data_viewer(dataset,deadtime=0):
     """ Updates the data viewer plot with the uploaded data """
     # 
 
     # figure = go.Figure()
 
     # convert t to microseconds 
-    t =dataset.X.values
+    t =dataset.X.values+deadtime
     V = dataset.values
     title_text = dataset.attrs.get('title', 'Uploaded Data')
     figure = {
@@ -186,6 +226,15 @@ def update_data_viewer(dataset):
     
     return figure
 
+def get_delays_dict(dataarray: xr.DataArray):
+    """ Extracts delay parameters from the dataset attributes """
+    # Possible delay keys in the attributes
+    delay_keys = ['tau1', 'tau2', 'tau3', 'tau4', 'tau5', 'tau6']
+    delays = {}
+    for key in delay_keys:
+        if key in dataarray.attrs:
+            delays[key] = dataarray.attrs[key]
+    return delays
 
 def get_attributes_dict(dataarray: xr.DataArray):
     """ Updates the parameters table with extracted metadata """
@@ -206,8 +255,9 @@ def get_attributes_dict(dataarray: xr.DataArray):
         State('sample-name', 'value'),
         State('dataset-name', 'value'),
         State('dataset-store', 'data'),
+        State('experiment-type-dropdown', 'value'),
         prevent_initial_call=True)
-def save_dataset(n_clicks, project_name, sample_name, dataset_name,dataset_store):
+def save_dataset(n_clicks, project_name, sample_name, dataset_name,dataset_store, experiment_type):
     """ Saves the uploaded dataset to the database """
     if n_clicks is None:
         return dash.no_update
@@ -223,9 +273,25 @@ def save_dataset(n_clicks, project_name, sample_name, dataset_name,dataset_store
         t=dataset_store['t'],
         V=dataset_store['RealData'],
         V_im=dataset_store['ImagData'],
+        exp=experiment_type,
         delays={},
         meta=dataset_store['attrs']
     )
     session.add(new_dataset)
     session.commit()
     session.close()
+
+@callback(
+    Output('project-name', 'data'),
+    Output('sample-name', 'data'),
+    Input('project-name', 'n_clicks'),
+    prevent_initial_call=False)
+def update_samples_and_projects(n_clicks):
+    session = get_session()
+    datasets = session.query(Dataset).all()
+    session.close()
+    
+    projects = list(set(ds.project for ds in datasets))
+    samples = list(set(ds.sample for ds in datasets))
+    return projects, samples
+    

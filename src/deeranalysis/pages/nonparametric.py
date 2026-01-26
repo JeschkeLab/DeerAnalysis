@@ -9,8 +9,11 @@ import matplotlib.pyplot as plt
 import plotly.graph_objs as go
 from plotly.subplots import make_subplots
 from deeranalysis.utils.database import get_session, Dataset, Fit
-from deeranalysis.utils import create_subplot_figure
-
+from deeranalysis.utils import create_subplot_figure, dataarray_from_database_entry
+import dash_mantine_components as dmc
+from dash_iconify import DashIconify
+from autodeer import DEERanalysis
+from deeranalysis.components.dataset_search_model import create_dataset_modal
 dash.register_page(__name__)
 
 layout = html.Div([
@@ -20,7 +23,11 @@ layout = html.Div([
     dbc.Row([
         dbc.Col([
             html.Label("Select Dataset"),
-            dcc.Dropdown(id='np-dataset-dropdown', placeholder="Select a dataset"),
+            create_dataset_modal(),
+            dbc.Row([
+            dbc.Col([dcc.Dropdown(id='np-dataset-dropdown', placeholder="Select a dataset")]),
+            dbc.Col([dmc.ActionIcon(DashIconify(icon='material-symbols:search',width=20),id='open-dataset-search-btn',size="lg", variant="default")], width='auto')
+            ]),
             html.Br(),
             
             html.Label("Background Model"),
@@ -33,22 +40,17 @@ layout = html.Div([
                 ],
                 value='bg_hom3d'
             ),
-            html.Label("Pathways:"),
-            dcc.Checklist(
-                ['1', '2', '3', '4'],
-                ['1', '4'],
-                inline=True,
-                id='np-pathways-options',
-                labelStyle={'margin-right': '15px', 'margin-left': '5px'}
-            ),
-            html.Label("Compactness:"),
-            dcc.Checklist(
-                ['Enabled'],
-                [],
-                inline=True,
-                id='np-compactness-option',
-                labelStyle={'margin-right': '15px', 'margin-left': '5px'}
-            ),
+            dbc.Row([
+                dbc.Col([html.Label("Pathways:")]),
+                dbc.Col([dcc.Checklist(
+                    ['1', '2', '3', '4'],
+                    ['1', '4'],
+                    inline=True,
+                    id='np-pathways-options',
+                    labelStyle={'margin-right': '15px', 'margin-left': '5px'})])
+            ]),
+            dbc.Col([html.Label("Adv. Options:")]),
+            dmc.Chip('Compactness', id='np-compactness-option', value=False, checked=False),
             html.Label("Distance Axis:"),
             dcc.RangeSlider(
                 id='np-distance-axis',
@@ -88,6 +90,31 @@ def update_dropdown(pathname):
     session.close()
     return options
 
+@callback(
+    Output("dataset-search-modal", "opened",allow_duplicate=True),
+    Input("open-dataset-search-btn", "n_clicks"),
+    prevent_initial_call=True
+)
+def open_search_modal(n_clicks):
+    if n_clicks:
+        return True
+    return False
+
+@callback(
+    Output("dataset-search-modal", "opened",allow_duplicate=True),
+    Output("np-dataset-dropdown", "value"),
+    Input("select-dataset-btn", "n_clicks"),
+    State("dataset_table", "selectedRows"),
+    prevent_initial_call=True
+)
+def select_dataset_from_modal(n_clicks, selected_rows):
+    if n_clicks and selected_rows:
+        dataset_title = selected_rows[0].get('Title')
+        session = get_session()
+        dataset = session.query(Dataset).filter_by(name=dataset_title).first()
+        session.close()
+        return False, dataset.id
+    return dash.no_update, dash.no_update
 
 @callback(
     Output('np-fit-plot', 'figure',allow_duplicate=True),
@@ -95,20 +122,27 @@ def update_dropdown(pathname):
     State('np-fit-plot', 'figure'),
     prevent_initial_call=True
 )
-def plot_data_only(dataset_id,current_fig):
+def new_dataset_selected(dataset_id,current_fig):
     if not dataset_id:
         return dash.no_update
         
     session = get_session()
-    dataset = session.query(Dataset).filter_by(id=dataset_id).first()
-    t = np.array(dataset.t)
-    V = np.array(dataset.V) + 1j * np.array(dataset.V_im)
+    dataset_entry = session.query(Dataset).filter_by(id=dataset_id).first()
+    dataset = dataarray_from_database_entry(dataset_entry)
+    session.close()
+    # Extract delays
+    delays = dataset_entry.delays if dataset_entry.delays else {}
+
+    deadtime = dataset.attrs.get('deadtime', 0)/1e3
+    # Plot data
+    t = dataset.t.values + float(deadtime)
+    V = dataset.values
     V = V / np.max(np.abs(V))
-    current_fig['data']=[
-            go.Scatter(x=t, y=V.real, mode='lines', name=f'{dataset.name} - Re', customdata=[dataset_id], xaxis='x', yaxis='y'),
-            go.Scatter(x=t, y=V.imag, mode='lines', name=f'{dataset.name} - Im', customdata=[dataset_id], xaxis='x', yaxis='y',line=dict(dash='dash')),
-        ]
-    return current_fig
+    fig = make_subplots(rows=1, cols=2, subplot_titles=("Time Domain", "Distance Domain"))
+    fig.add_trace(go.Scatter(x=t, y=V.real, mode='lines', name='Data (Re)', marker=dict(size=5, color='black')), row=1, col=1)
+    fig.add_trace(go.Scatter(x=t, y=V.imag, mode='lines', name='Data (Im)', marker=dict(size=5, color='gray')), row=1, col=1)
+    fig.update_layout(title=f"Dataset: {dataset.name}", xaxis_title="Time", yaxis_title="Signal")
+    return fig
 
 @callback(
     Output('np-fit-plot', 'figure',allow_duplicate=True),
@@ -117,131 +151,75 @@ def plot_data_only(dataset_id,current_fig):
     Input('np-run-fit-btn', 'n_clicks'),
     Input('np-dataset-dropdown', 'value'),
     State('np-bg-model', 'value'),
+    State('np-compactness-option', 'checked'),
+    State('np-distance-axis', 'value'),
     prevent_initial_call=True,
 )
-def run_fit(n_clicks, dataset_id, bg_model_name):
+def run_fit(n_clicks, dataset_id, bg_model_name,compactness,distance_axis):
     ctx = dash.callback_context
     triggered_id = ctx.triggered[0]['prop_id'].split('.')[0]
     
     if not dataset_id:
-        return go.Figure(), None, True
+        return dash.no_update
         
     session = get_session()
-    dataset = session.query(Dataset).filter_by(id=dataset_id).first()
+    dataset_entry = session.query(Dataset).filter_by(id=dataset_id).first()
+    dataset = dataarray_from_database_entry(dataset_entry)
     
-    t = np.array(dataset.t)
-    V = np.array(dataset.V) + 1j * np.array(dataset.V_im)
-    V = V / np.max(np.abs(V))
+    deadtime = dataset.attrs.get('deadtime', 0)/1e3
+    
     session.close()
     
     if triggered_id == 'np-dataset-dropdown':
         # Just plot the data
+        t = dataset.t.values + float(deadtime)    
+        V = dataset.values
+        V = V / np.max(np.abs(V))
         fig = go.Figure()
         fig.add_trace(go.Scatter(x=t, y=V, mode='lines', name='Data'))
-        fig.update_layout(title=f"Dataset: {dataset.name}", xaxis_title="Time", yaxis_title="Signal")
-        return fig, None, True
+        fig.update_layout(title=f"Dataset: {dataset_entry.name}", xaxis_title="Time", yaxis_title="Signal")
+        return fig.to_dict()
         
     if triggered_id == 'np-run-fit-btn':
         # Perform Fit using DeerLab
         
         # Distance vector
-        r = np.linspace(1.5, 6, 100) # Default range
-        
-        # Dipolar kernel
-        K = dl.dipolarkernel(t, r)
-        
-        if bg_model_name == 'none':
-             # Simple Tikhonov regularization
-            fit = dl.fit(dl.snlls, V, K, reg=True)
-            Vfit = fit.model
-            Pfit = fit.P
-            Pci95 = fit.PUncert.ci(95)
-            Pci50 = fit.PUncert.ci(50)
-            
-            # Prepare results for storage
-            results = {
-                't': t.tolist(),
-                'V': V.tolist(),
-                'r': r.tolist(),
-                'Vfit': Vfit.tolist(),
-                'Pfit': Pfit.tolist(),
-                'Pci95_lower': Pci95[:,0].tolist(),
-                'Pci95_upper': Pci95[:,1].tolist(),
-                'stats': fit.stats
-            }
-            
-        else:
-            # Fit with background
-            # This is a simplified example. In a real app, we'd need more controls for background parameters.
-            # Assuming we fit background and distribution simultaneously or sequentially.
-            # Let's do a simple model fit for now: V = (1-lam)*K*P + lam*B
-            
-            # For simplicity in this demo, let's assume we just want to fit P with a fixed background or simple model
-            # But user asked for "Non-Parametric Fit". Usually implies P is non-parametric.
-            # Let's use dl.snlls with a background model if selected.
-            
-            # Construct model
-            # V(t) = (1-lambda)*K*P(r) + lambda*B(t)
-            # This requires a non-linear least squares for lambda and B parameters, and linear for P.
-            # DeerLab's snlls is perfect for this.
-            
-            # Define background model
-            if bg_model_name == 'bg_hom3d':
-                Bmodel = dl.bg_hom3d
-            elif bg_model_name == 'bg_exp':
-                Bmodel = dl.bg_exp
-            
-            # Define the full model
-            # We need to define a function that takes non-linear parameters and returns the matrix K and the background vector B
-            # But dl.snlls takes Amodel(p) -> A matrix.
-            # V = K*P + B -> This is not directly A*x unless we combine P and B?
-            # Actually, usually we model V = B * ( (1-mod)*K*P + mod ) or similar.
-            # Let's stick to the standard DeerLab workflow for simple cases.
-            
-            # Let's assume the user wants to fit P given a background model.
-            # We can use the 'model' approach in DeerLab which is more general.
-            
-            # Vmodel = dl.dipolarmodel(t, r, Bmodel=Bmodel)
-            # fit = dl.fit(Vmodel, V)
-            
-            # However, dipolarmodel by default uses a non-parametric P? No, it uses parametric P by default unless specified?
-            # dl.dipolarmodel(t, r, Pmodel=None) -> P is non-parametric.
-            
-            Vmodel = dl.dipolarmodel(t, r, Bmodel=Bmodel, Pmodel=None)
-            fit = dl.fit(Vmodel, V)
-            
-            Vfit = fit.model
-            Pfit = fit.P
-            Pci95 = fit.PUncert.ci(95)
-            
-            results = {
-                't': t.tolist(),
-                'V': V.tolist(),
-                'r': r.tolist(),
-                'Vfit': Vfit.tolist(),
-                'Pfit': Pfit.tolist(),
-                'Pci95_lower': Pci95[:,0].tolist(),
-                'Pci95_upper': Pci95[:,1].tolist(),
-                'stats': {k: v for k, v in fit.stats.items() if isinstance(v, (int, float, str))} # Simple serialization
-            }
+        dataset = dataarray_from_database_entry(dataset_entry)
+        dataset = dataset.assign_coords(t=dataset.t.values + float(deadtime))
+        r = np.linspace(distance_axis[0], distance_axis[1], 100) # Default range
+        # compactness = False # Default
+        bg_model_name = dl.bg_hom3d
+        pathways = [1]
+        fit = DEERanalysis(dataset,
+            compactness=compactness,
+            model=None,
+            ROI=False,
+            bg_model=bg_model_name,
+            r=r,
+            pathways=pathways)
+
 
         # Create plots
+        t = fit.t
+        V = fit.Vexp
+        r = fit.r
         fig = make_subplots(rows=1, cols=2, subplot_titles=("Time Domain", "Distance Domain"))
+
+        fig.add_trace(go.Scatter(x=t, y=V.real, mode='markers', name='Data (Re)', marker=dict(size=3, color='black')), row=1, col=1)
+        fig.add_trace(go.Scatter(x=t, y=fit.model.real, mode='lines', name='Fit (Re)', line=dict(color='red')), row=1, col=1)
         
-        # Time domain
-        fig.add_trace(go.Scatter(x=t, y=V, mode='markers', name='Data', marker=dict(size=3, color='black')), row=1, col=1)
-        fig.add_trace(go.Scatter(x=t, y=Vfit, mode='lines', name='Fit', line=dict(color='red')), row=1, col=1)
-        
+        Pfit = fit.P
         # Distance domain
         fig.add_trace(go.Scatter(x=r, y=Pfit, mode='lines', name='P(r)', line=dict(color='blue')), row=1, col=2)
-        fig.add_trace(go.Scatter(x=r, y=results['Pci95_upper'], mode='lines', line=dict(width=0), showlegend=False, hoverinfo='skip'), row=1, col=2)
-        fig.add_trace(go.Scatter(x=r, y=results['Pci95_lower'], mode='lines', line=dict(width=0), fill='tonexty', fillcolor='rgba(0, 0, 255, 0.2)', name='95% CI'), row=1, col=2)
+        # fig.add_trace(go.Scatter(x=r, y=results['Pci95_upper'], mode='lines', line=dict(width=0), showlegend=False, hoverinfo='skip'), row=1, col=2)
+        # fig.add_trace(go.Scatter(x=r, y=results['Pci95_lower'], mode='lines', line=dict(width=0), fill='tonexty', fillcolor='rgba(0, 0, 255, 0.2)', name='95% CI'), row=1, col=2)
         
-        fig.update_layout(height=500)
-        
-        return fig, # results, False
+        fig.update_layout(title=f"Fit Result: {dataset_entry.name}", height=500, showlegend=True)
 
-    return go.Figure(), None, True
+        
+        return fig
+
+    return dash.no_update
 
 @callback(
     Output('np-fit-status', 'children'),
