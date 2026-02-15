@@ -23,12 +23,20 @@ def eprload(*filenames, file_format=None, **kwargs):
     
     if not isinstance(filenames, (list, tuple)):
         filenames = [filenames]
+        
+    if isinstance(filenames[0],dict):
+        # If a dict of filename: filebuffer is provided, extract the buffers and filenames
+        filebuffers = list(filenames[0].values())
+        filenames = list(filenames[0].keys())
+    else:
+        filebuffers = None
     
-    file_endings = [os.path.splitext(fname)[1].upper() for fname in filenames]
+    
 
     # check if 'DSC' or 'DTA' in file endings
     if file_format is None:
-        if 'DSC' in file_endings or 'DTA' in file_endings:
+        file_endings = [os.path.splitext(fname)[1].upper() for fname in filenames]
+        if '.DSC' in file_endings or '.DTA' in file_endings:
             file_format = 'BES3T'
         else:
             raise ValueError("Could not infer file format from extensions. Please specify 'file_format' parameter.")
@@ -44,19 +52,33 @@ def eprload(*filenames, file_format=None, **kwargs):
         ygf_file = None
         zgf_file = None
         
-        for fname in filenames:
-            ext = os.path.splitext(fname)[1].upper()
-            with open(fname, 'rb') as f:
+        if filebuffers is None:
+            for fname in filenames:
+                ext = os.path.splitext(fname)[1].upper()
+                with open(fname, 'rb') as f:
+                    if ext == '.DSC':
+                        dsc_file = f.read()
+                    elif ext == '.DTA':
+                        dta_file = f.read()
+                    elif ext == '.XGF':
+                        xgf_file = f.read()
+                    elif ext == '.YGF':
+                        ygf_file = f.read()
+                    elif ext == '.ZGF':
+                        zgf_file = f.read()
+        else:
+            for fname, fbuffer in zip(filenames, filebuffers):
+                ext = os.path.splitext(fname)[1].upper()
                 if ext == '.DSC':
-                    dsc_file = f.read()
+                    dsc_file = fbuffer.read()
                 elif ext == '.DTA':
-                    dta_file = f.read()
+                    dta_file = fbuffer.read()
                 elif ext == '.XGF':
-                    xgf_file = f.read()
+                    xgf_file = fbuffer.read()
                 elif ext == '.YGF':
-                    ygf_file = f.read()
+                    ygf_file = fbuffer.read()
                 elif ext == '.ZGF':
-                    zgf_file = f.read()
+                    zgf_file = fbuffer.read()
         
         if dsc_file is None or dta_file is None:
             raise ValueError("Both .DSC and .DTA files must be provided for Bruker BES3T format.")
