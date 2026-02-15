@@ -1,7 +1,7 @@
 import threading
 import time
 import webview
-from app import app
+from deeranalysis.app import app
 
 PORT = 8050
 
