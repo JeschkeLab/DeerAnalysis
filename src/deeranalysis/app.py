@@ -58,14 +58,12 @@ sidebar_content = dmc.Stack(
         ),
 
         dmc.Space(style={"flex": 1}),
-        dmc.Group(
+        dmc.SimpleGrid(
             [
-                # dmc.ActionIcon(get_icon("mdi:cog"), variant="subtle", size="lg", component="a", href="/config"),
-                # dmc.ActionIcon(get_icon("mdi:monitor"), variant="subtle", size="lg", component="a", href="/system_monitor"),
                 create_nav_link("", "/config", "mdi:cog"),
                 create_nav_link("", "/system_monitor", "mdi:monitor")
             ],
-            mt="auto"
+            cols=4
         )
     ],
     h="100%",
