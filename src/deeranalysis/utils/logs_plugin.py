@@ -3,10 +3,52 @@ from LOGS.Entities import DatasetRequestParameter,PersonRequestParameter, Projec
 import urllib3
 from io import BytesIO
 from zipfile import ZipFile
+from deeranalysis.utils.database import get_session, Settings
 
-url = r'https://eprlogs.ethz.ch/jeschke/'
-apiKey='Nr6rxTTYXBH2x488X2mi67TfWGp1bVABo3Yo8EBMQAY+HZzmoZecYuJTuMUFDEQQ'
-urllib3.disable_warnings() 
+urllib3.disable_warnings()
+
+# Initialize global variables - will be loaded from database on startup
+url = None
+apiKey = None
+
+
+def set_logs_api_key(URL, api_key):
+    global url, apiKey
+    session = get_session()
+    settings = session.query(Settings).first()
+    if not settings:
+        settings = Settings()
+    settings.logs_url = URL
+    settings.logs_api_key = api_key
+    session.add(settings)
+    session.commit()
+    # Update global variables to avoid database calls on every API request
+    url = URL
+    apiKey = api_key
+
+def set_logs_api_global():
+    """Load LOGS API credentials from database and update global variables."""
+    global url, apiKey
+    try:
+        session = get_session()
+        settings = session.query(Settings).first()
+        if settings and settings.logs_url and settings.logs_api_key:
+            url = settings.logs_url
+            apiKey = settings.logs_api_key
+    except Exception as e:
+        print(f"Error loading LOGS API credentials from database: {e}")
+
+def get_logs_api_db():
+    session = get_session()
+    settings = session.query(Settings).first()
+    if settings and settings.logs_url and settings.logs_api_key:
+        return settings.logs_url, settings.logs_api_key
+    else:
+        return None, None
+
+def initialize_logs_api():
+    """Initialize LOGS API by loading credentials from database on startup."""
+    set_logs_api_global()
 
 def test_logs_api():
     
@@ -28,6 +70,7 @@ def convert_to_list_of_dicts(results):
     return results_list
 
 def get_list_of_persons():
+    global url, apiKey
     logs = LOGS(url, apiKey,verify= False)
     persons = logs.persons()
 
@@ -35,6 +78,7 @@ def get_list_of_persons():
 
 
 def get_list_of_projects(person_ids=None):
+    global url, apiKey
     logs = LOGS(url, apiKey,verify= False)
     if person_ids:
         if not isinstance(person_ids, list):
@@ -50,6 +94,7 @@ def get_list_of_projects(person_ids=None):
     return convert_to_list_of_dicts(projects)
 
 def get_list_of_samples(person_ids=None, project_ids=None):
+    global url, apiKey
     logs = LOGS(url, apiKey,verify= False)
     
     if person_ids:
@@ -69,6 +114,7 @@ def get_list_of_samples(person_ids=None, project_ids=None):
 
 
 def get_list_of_datasets(person_ids=None, project_ids=None, sample_ids=None):
+    global url, apiKey
     logs = LOGS(url, apiKey,verify= False)
     if person_ids:
         if not isinstance(person_ids, list):
@@ -89,11 +135,13 @@ def get_list_of_datasets(person_ids=None, project_ids=None, sample_ids=None):
     return datasets
 
 def get_dataset_by_id(dataset_id):
+    global url, apiKey
     logs = LOGS(url, apiKey,verify= False)
     dataset = logs.dataset(dataset_id)
     return dataset
     
 def get_list_of_experiments():
+    global url, apiKey
     logs = LOGS(url, apiKey,verify= False)
     experiments = logs.experiments()
     return convert_to_list_of_dicts(experiments)

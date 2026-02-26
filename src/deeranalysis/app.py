@@ -4,11 +4,43 @@ from dash import html, dcc, Input, Output, State, ALL, callback
 from deeranalysis.utils.database import init_db
 from dash_iconify import DashIconify
 import dash_mantine_components as dmc
+import sys
+import os
+from pathlib import Path
 
-# Initialize database
-init_db()
+from deeranalysis.components.setup_modal_desktop import create_setup_modal,default_directory
+from deeranalysis.utils.logs_plugin import initialize_logs_api
 
-app = dash.Dash(__name__, use_pages=True, external_stylesheets=[dbc.themes.BOOTSTRAP, dmc.styles.ALL])
+def first_time_setup():
+    """
+    Checks if the database exists.
+    """
+    if not os.path.exists(os.path.join(default_directory(), 'deeranalysis.db')):
+        return True
+    return False
+
+# Get the correct base path for PyInstaller
+if getattr(sys, 'frozen', False):
+    # Running in PyInstaller bundle
+    basedir = Path(sys._MEIPASS)
+    desktop_mode = True
+else:
+    # Running in normal Python environment, i.e as a server deployment
+    basedir = Path(__file__).parent
+    # Initialize database
+    if not first_time_setup():
+        init_db(default_directory())
+        initialize_logs_api()
+
+    desktop_mode = False
+
+
+
+app = dash.Dash(__name__,
+                 use_pages=True, 
+                #  pages_folder=str(basedir / 'pages'),
+                #  assets_folder=str(basedir / 'assets'),
+                 external_stylesheets=[dbc.themes.BOOTSTRAP, dmc.styles.ALL])
 server = app.server
 
 def get_icon(icon):
@@ -35,9 +67,10 @@ sidebar_content = dmc.Stack(
         
         dmc.Text("DeerLab Fitting", size="sm", c="dimmed", fw=500),
 
-        create_nav_link("autoDEER Fit", "/autoDEER", "mdi:auto-fix"),
+        # create_nav_link("autoDEER Fit", "/autoDEER", "mdi:auto-fix"),
         create_nav_link("Non-Parametric Fit", "/nonparametric", "mdi:chart-bell-curve-cumulative"),
         create_nav_link("Parametric Fit", "/parametric", "mdi:function-variant"),
+        create_nav_link("Global Fit", "/global_fit", "mdi:globe"),
         
         dmc.Divider(my="sm"),
         
@@ -51,12 +84,18 @@ sidebar_content = dmc.Stack(
         create_nav_link("Citation", "/citation", "mdi:format-quote-close"),
         dmc.NavLink(
             label="Github",
-            href="https://github.com/JeschkeLab",
+            href="https://github.com/JeschkeLab/DeerAnalysis",
             leftSection=get_icon("mdi:github"),
             target="_blank",
             rightSection=get_icon("mdi:open-in-new"),
         ),
-
+        dmc.NavLink(
+            label="DeerLab",
+            href="https://github.com/JeschkeLab/DeerLab",
+            leftSection=get_icon("mdi:github"),
+            target="_blank",
+            rightSection=get_icon("mdi:open-in-new"),
+        ),
         dmc.Space(style={"flex": 1}),
         dmc.SimpleGrid(
             [
@@ -74,13 +113,16 @@ sidebar_content = dmc.Stack(
 app.layout = dmc.MantineProvider(
     [
         dcc.Location(id="url"),
+        dcc.Store(id="first-time-setup", data=first_time_setup()), # TODO: Change so only for desktop mode
+        dcc.Store(id="desktop-mode", data=desktop_mode),
         dmc.AppShell(
             [
                 dmc.AppShellHeader(
                     dmc.Group(
                         [
                             dmc.Burger(id="burger", hiddenFrom="sm", size="sm"),
-                            dmc.Title("DeerAnalysis", order=3),
+                            dmc.Image(src="/assets/header.svg", h=50, w="auto", fit="contain"),
+                            # dmc.Title("DeerAnalysis", order=3),
                         ],
                         h="100%",
                         px="md",
@@ -94,7 +136,7 @@ app.layout = dmc.MantineProvider(
                 dmc.AppShellMain(children=dash.page_container),
                 dmc.AppShellFooter(
                     dmc.Text(
-                        "© 2026 DeerAnalysis. Developed by Hugo Karas, Stefan Stoll and Gunnar Jeschke. All rights reserved.",
+                        "© 2026 ETH Zürich. Developed by Hugo Karas, Stefan Stoll and Gunnar Jeschke. All rights reserved.",
                         size="xs",
                         c="dimmed"
                     ),
@@ -113,8 +155,17 @@ app.layout = dmc.MantineProvider(
             padding="md",
             id="app-shell",
         ),
+        create_setup_modal()
     ]
 )
+
+@callback(
+    Output("setup-modal", "opened"),
+    Input("first-time-setup", "data"),
+    prevent_initial_call=False
+)
+def open_setup_modal(is_first_time):
+    return is_first_time
 
 @callback(
     Output("app-shell", "navbar"),

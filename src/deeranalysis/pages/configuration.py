@@ -4,6 +4,8 @@ import dash_bootstrap_components as dbc
 import dash_mantine_components as dmc
 from dash_iconify import DashIconify
 
+from deeranalysis.utils.logs_plugin import get_logs_api_db, set_logs_api_key
+
 dash.register_page(__name__, path='/config')
 
 
@@ -52,8 +54,8 @@ layout = dmc.Container([
                             ),
                             dmc.TextInput(
                                 id="config-default-path",
-                                label="Default Data Path",
-                                description="Default directory for loading data files",
+                                label="Data Directory",
+                                description="The directory for loading data files",
                                 placeholder="/path/to/data",
                                 mb="sm"
                             ),
@@ -71,6 +73,26 @@ layout = dmc.Container([
                                 value="plotly_white",
                                 mb="sm"
                             ),
+                            dmc.Button(
+                                id='db-reset-btn',
+                                color='red',
+                                variant='outline',
+                                leftSection=DashIconify(icon="mdi:database-remove", width=20),
+                                children="Reset Database",
+                                mt="md"
+                            ),
+                            dmc.Modal(
+                                id="db-reset-modal",
+                                title="Confirm Database Reset",
+                                centered=True,
+                                children=[
+                                    html.P("Are you sure you want to reset the database? This will delete all stored datasets, fits, and results. This action cannot be undone."),
+                                    dmc.Group([
+                                        dmc.Button("Cancel", id="db-reset-cancel-btn", color="gray", variant="outline"),
+                                        dmc.Button("Confirm Reset", id="db-reset-confirm-btn", color="red")
+                                    ], justify="flex-end", mt="md")
+                                ]
+                            )
                         ])
                     ])
                 ]
@@ -314,13 +336,22 @@ layout = dmc.Container([
     State("config-max-datasets", "value"),
     State("config-default-path", "value"),
     State("config-plot-theme", "value"),
+    State("config-logs-api-url", "value"),
+    State("config-logs-api-key", "value"),
     prevent_initial_call=True
 )
-def save_configuration(n_clicks, dark_mode, auto_save, max_datasets, default_path, plot_theme):
+def save_configuration(n_clicks, dark_mode, auto_save, max_datasets, default_path, plot_theme, logs_url, logs_api_key):
     if n_clicks:
-        # Here you would save the configuration to a file or database
-        # For now, just show a success notification
-        return "show", "Success", "Configuration saved successfully", "green"
+        try:
+            # Save LOGS API credentials if provided
+            if logs_url and logs_api_key:
+                set_logs_api_key(logs_url, logs_api_key)
+            
+            # Here you would save other configuration settings
+            # For now, just show a success notification
+            return "show", "Success", "Configuration saved successfully", "green"
+        except Exception as e:
+            return "show", "Error", f"Failed to save configuration: {str(e)}", "red"
     return "hide", "", "", "blue"
 
 
@@ -335,6 +366,23 @@ def reset_configuration(n_clicks):
         return True if n_clicks else False
     return False
 
+
+# Trigger callback on page load and after save to keep values updated
+@callback(
+    Output("config-logs-api-url", "value"),
+    Output("config-logs-api-key", "value"),
+    Input("config-logs-api-url", "id"),
+    Input("config-notification", "action"),  # Refresh after save
+    prevent_initial_call=False
+)
+def load_logs_values_on_page_load(_, notification_action):
+    """Load LOGS API credentials from database"""
+    url, apiKey = get_logs_api_db()
+    return url or "", apiKey or ""
+
+###############################################################################
+# Callbacks for handling database reset confirmation
+###############################################################################
 
 @callback(
     Output("config-reset-modal", "opened", allow_duplicate=True),
@@ -353,6 +401,38 @@ def close_reset_modal(n_clicks_cancel, n_clicks_confirm):
         # For now, just show a success notification
         return False  # Close the modal after confirming reset
     elif button_id == "config-reset-cancel-btn" and n_clicks_cancel:
+        return False  # Close the modal if cancel is clicked
+    
+    return dash.no_update  # Do not change modal state for other cases
+
+
+@callback(
+    Output("db-reset-modal", "opened", allow_duplicate=True),
+    Input("db-reset-btn", "n_clicks"),
+    prevent_initial_call=True
+)
+def reset_db(n_clicks):
+    if n_clicks:
+        return True
+    return False
+
+@callback(
+    Output("db-reset-modal", "opened", allow_duplicate=True),
+    Input("db-reset-cancel-btn", "n_clicks"),
+    Input("db-reset-confirm-btn", "n_clicks"),
+    prevent_initial_call=True
+)  
+def close_db_reset_modal(n_clicks_cancel, n_clicks_confirm):
+    ctx = dash.callback_context
+    if not ctx.triggered:
+        return False
+    button_id = ctx.triggered[0]['prop_id'].split('.')[0]
+    
+    if button_id == "db-reset-confirm-btn" and n_clicks_confirm:
+        from deeranalysis.utils.database import reset_db
+        reset_db()
+        return False  # Close the modal after confirming reset
+    elif button_id == "db-reset-cancel-btn" and n_clicks_cancel:
         return False  # Close the modal if cancel is clicked
     
     return dash.no_update  # Do not change modal state for other cases

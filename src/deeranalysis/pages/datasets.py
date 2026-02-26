@@ -1,19 +1,15 @@
 import dash
-from dash import html, dcc, callback, Input, Output, State, dash_table
+from dash import html, dcc, callback, Input, Output, State
 import dash_bootstrap_components as dbc
-import pandas as pd
-import base64
-import io
-import json
+import dash_mantine_components as dmc
 from deeranalysis.utils.database import get_session, Dataset
 import numpy as np
-import dash_ag_grid as dag  
+import dash_ag_grid as dag
 import plotly.graph_objs as go
 from deeranalysis.utils import create_subplot_figure
-from sqlalchemy.orm import Session
-
-
+import json
 dash.register_page(__name__, path='/')
+
 columnDefs = [
     {'field': 'Title',
      'filter': 'agTextColumnFilter',
@@ -50,19 +46,47 @@ columnDefs = [
         },
     },
 ]
+fits_columnDefs = [
+    {'field': 'Fit Name', 'filter': 'agTextColumnFilter'},
+    {'field': 'Method', 'filter': 'agTextColumnFilter'},
+    {'field': 'RMSD'},
+    {'field': 'Date'},
+]
+
 layout = html.Div([
-    html.H1("Datasets"),
-    html.Hr(),
-    
+    dmc.Title("Datasets", order=1, mb="md"),
+    dmc.Divider(mb="lg"),
+
+    dcc.Store(id="metadata-modal-store", data=""),
+
+    # Modal for long metadata values — must be inside layout
+    dmc.Modal(
+        id="metadata-value-modal",
+        title="Full Value",
+        children=[
+            # dmc.ScrollArea(
+            #     h="45%",
+                # children=
+                dmc.Textarea(
+                    id="metadata-value-modal-text",
+                    value="",
+                    readOnly=True,
+                    autosize=True,
+                    style={"width": "100%", "fontFamily": "monospace"},
+                ),
+            # )
+        ],
+        size="70%",
+        opened=False,
+    ),
+
     dbc.Row([
         dbc.Col([
             dbc.Row([
                 dbc.Col([html.H4("Existing Datasets")], width="auto"),
                 dbc.Col([dbc.Button("Refresh", id="refresh-datasets-btn", color="primary", size="sm", n_clicks=0)], width="auto"),
             ], className="align-items-center g-2 mb-2"),
-            
-            # Wrapper for the first grid: flex-grow-1 ensures it fills available space
-            # minHeight-0 is crucial for allowing it to shrink when the bottom grid appears
+
             html.Div(
                 dag.AgGrid(
                     id="datasets_table",
@@ -80,32 +104,54 @@ layout = html.Div([
             dbc.Row([
                 dbc.Col([
                     dbc.Button(
-                        "List fits for selected dataset",
+                        "Show details for selected dataset",
                         id="collapse-button",
                         color="primary",
                         size="sm",
                         n_clicks=0,
                     ),
                 ], width="auto"),
-                dbc.Col([
-                    dbc.Button(
-                        "Show metadata and delays",
-                        id="metadata-button",
-                        color="secondary",
-                        size="sm",
-                        n_clicks=0,
-                    ),
-                ], width="auto"),
             ], className="my-2 g-2"),
-            
+
             dbc.Collapse(
-                html.Div(id="collapse-content-container"),
                 id="collapse-content",
                 is_open=False,
+                children=dmc.Tabs(
+                    id="details-tabs",
+                    value="fits",
+                    children=[
+                        dmc.TabsList([
+                            dmc.TabsTab("Fits", value="fits"),
+                            dmc.TabsTab("Metadata & Delays", value="metadata"),
+                        ]),
+                        dmc.TabsPanel(
+                            value="fits",
+                            children=html.Div(
+                                dag.AgGrid(
+                                    id="datasets_details_table",
+                                    columnDefs=fits_columnDefs,
+                                    defaultColDef={"sortable": True, "resizable": True},
+                                    rowData=[],
+                                    className="ag-theme-alpine",
+                                    columnSize="sizeToFit",
+                                    style={"height": "28vh", "width": "100%"},
+                                ),
+                            ),
+                        ),
+                        dmc.TabsPanel(
+                            value="metadata",
+                            children=html.Div(
+                                id="metadata-content",
+                                style={"maxHeight": "28vh", "overflow": "auto", "padding": "10px"},
+                            ),
+                        ),
+                    ],
+                ),
+                style={"height": "35vh"},
             ),
-        # Adjusted height calculation to account for header (typically ~120px) and footer (e.g. ~60px)
+
         ], width=8, style={"display": "flex", "flexDirection": "column", "height": "calc(100vh - 220px)", "overflow": "hidden"}),
-        
+
         dbc.Col([
             dcc.Graph(
                 id="datasets-graph",
@@ -115,8 +161,6 @@ layout = html.Div([
         ], width=4),
     ], style={"flex": "1", "overflow": "hidden"}),
 ], style={"height": "calc(100vh - 100px)", "display": "flex", "flexDirection": "column", "overflow": "hidden"})
-
-
 
 @callback(
     Output("datasets_table", "rowData"),
@@ -144,123 +188,149 @@ def update_datasets_table(n_clicks):
     return data
 
 @callback(
-    [Output("collapse-content", "is_open"),
-     Output("collapse-content-container", "children")],
-    [Input("collapse-button", "n_clicks"),
-     Input("metadata-button", "n_clicks")],
-    [State("collapse-content", "is_open"),
-     State("datasets_table", "selectedRows")],
+    Output("collapse-content", "is_open"),
+    Input("collapse-button", "n_clicks"),
+    State("collapse-content", "is_open"),
+    prevent_initial_call=True,
 )
-def toggle_collapse_sections(fits_clicks, metadata_clicks, is_open, selected_rows):
+def toggle_collapse(n_clicks, is_open):
+    return not is_open
+
+
+@callback(
+    Output("datasets_details_table", "rowData"),
+    Output("metadata-content", "children"),
+    Output("metadata-modal-store", "data"),
+    Input("datasets_table", "selectedRows"),
+    prevent_initial_call=True,
+)
+def populate_details(selected_rows):
+    if not selected_rows:
+        return [], html.P("No dataset selected.", className="text-muted"), {}
+
+    dataset_title = selected_rows[0].get('Title')
+    session = get_session()
+    dataset = session.query(Dataset).filter_by(name=dataset_title).first()
+
+    if not dataset:
+        session.close()
+        return [], html.P("Dataset not found.", className="text-muted"), {}
+
+    # --- Fits tab ---
+    fits_data = []
+    if dataset.fits:
+        for fit in dataset.fits:
+            fits_data.append({
+                'Fit Name': getattr(fit, 'name', ''),
+                'Method': getattr(fit, 'method', ''),
+                'RMSD': getattr(fit, 'rmsd', ''),
+                'Date': str(getattr(fit, 'date', '')),
+            })
+
+    # --- Metadata tab ---
+    MAX_LEN = 80 # Max length before truncation in the table
+    long_values_store = {}  # key -> full string, for the modal store
+
+    def make_value_cell(key, value):
+        val_str = str(value)
+        if len(val_str) > MAX_LEN:
+            long_values_store[key] = val_str
+            return html.Td([
+                html.Span(
+                    val_str[:MAX_LEN] + "…",
+                    style={"marginRight": "8px", "fontFamily": "monospace"},
+                ),
+                dmc.Button(
+                    "Show",
+                    id={"type": "metadata-show-btn", "key": key},
+                    size="compact-xs",
+                    variant="subtle",
+                    n_clicks=0,
+                ),
+            ])
+        return html.Td(val_str, style={"fontFamily": "monospace"})
+
+    def build_table_rows(items_dict):
+        rows = []
+        for key, value in items_dict.items():
+            rows.append(html.Tr([
+                html.Td(html.Strong(str(key)), style={"whiteSpace": "nowrap", "paddingRight": "16px"}),
+                make_value_cell(key, value),
+            ]))
+        return rows
+
+    metadata_sections = []
+
+    if dataset.meta:
+        try:
+            rows = build_table_rows(dataset.meta)
+            metadata_sections.append(dmc.Title("Metadata", order=5, mb="xs"))
+            metadata_sections.append(
+                dmc.Table(
+                    children=[html.Tbody(rows)],
+                    striped=True,
+                    highlightOnHover=True,
+                    withTableBorder=True,
+                    withColumnBorders=True,
+                    mb="md",
+                )
+            )
+        except Exception:
+            metadata_sections.append(html.P("Unable to parse metadata."))
+    else:
+        metadata_sections.append(html.P("No metadata available.", className="text-muted"))
+
+    if dataset.delays:
+        try:
+            rows = build_table_rows(dataset.delays)
+            metadata_sections.append(dmc.Divider(my="sm"))
+            metadata_sections.append(dmc.Title("Delays", order=5, mb="xs"))
+            metadata_sections.append(
+                dmc.Table(
+                    children=[html.Tbody(rows)],
+                    striped=True,
+                    highlightOnHover=True,
+                    withTableBorder=True,
+                    withColumnBorders=True,
+                )
+            )
+        except Exception:
+            metadata_sections.append(html.P("Unable to parse delays."))
+    else:
+        metadata_sections.append(html.P("No delays available.", className="text-muted"))
+
+    session.close()
+    return (
+        fits_data,
+        html.Div(metadata_sections, style={"padding": "8px"}),
+        long_values_store,
+    )
+
+
+@callback(
+    Output("metadata-value-modal", "opened"),
+    Output("metadata-value-modal-text", "value"),
+    Input({"type": "metadata-show-btn", "key": dash.ALL}, "n_clicks"),
+    State("metadata-modal-store", "data"),
+    prevent_initial_call=True,
+)
+def open_metadata_modal(n_clicks_list, store_data):
     ctx = dash.callback_context
-    
-    if not ctx.triggered:
-        return False, html.Div()
-    
-    button_id = ctx.triggered[0]['prop_id'].split('.')[0]
-    
-    # If clicking the same button that's already open, close it
-    if button_id == "collapse-button":
-        if is_open and ctx.triggered[0].get('value', 0) > 0:
-            # Check if we need to toggle
-            content = html.Div(
-                dag.AgGrid(
-                    id="datasets_details_table",
-                    columnDefs=columnDefs,
-                    defaultColDef={"sortable": True, "resizable": True},
-                    rowData=[],
-                    className="ag-theme-alpine",
-                    columnSize="sizeToFit",
-                    style={"height": "100%", "width": "100%"},
-                ),
-                style={"height": "35vh"}
-            )
-            return not is_open if dash.callback_context.triggered[0]['value'] > 0 else is_open, content
-        else:
-            content = html.Div(
-                dag.AgGrid(
-                    id="datasets_details_table",
-                    columnDefs=columnDefs,
-                    defaultColDef={"sortable": True, "resizable": True},
-                    rowData=[],
-                    className="ag-theme-alpine",
-                    columnSize="sizeToFit",
-                    style={"height": "100%", "width": "100%"},
-                ),
-                style={"height": "35vh"}
-            )
-            return True, content
-    
-    elif button_id == "metadata-button":
-        # Get metadata content
-        if not selected_rows:
-            metadata_content = html.P("No dataset selected", className="text-muted")
-            delays_content = html.P("No dataset selected", className="text-muted")
-        else:
-            selected_row = selected_rows[0]
-            dataset_title = selected_row.get('Title')
-            
-            session = get_session()
-            dataset = session.query(Dataset).filter_by(name=dataset_title).first()
-            
-            if not dataset:
-                session.close()
-                metadata_content = html.P("Dataset not found", className="text-muted")
-                delays_content = html.P("Dataset not found", className="text-muted")
-            else:
-                # Parse metadata
-                metadata_items = []
-                if dataset.meta:
-                    try:
-                        for key, value in dataset.meta.items():
-                            metadata_items.append(
-                                dbc.Row([
-                                    dbc.Col(html.Strong(f"{key}:"), width=4),
-                                    dbc.Col(str(value), width=8),
-                                ], className="mb-1")
-                            )
-                    except:
-                        metadata_items = [html.P("Unable to parse metadata")]
-                else:
-                    metadata_items = [html.P("No metadata available", className="text-muted")]
-                
-                metadata_content = html.Div(metadata_items)
-                
-                # Parse delays
-                if dataset.delays:
-                    delays_content = []
-                    try:
-                        for key, value in dataset.delays.items():
-                            delays_content.append(
-                                dbc.Row([
-                                    dbc.Col(html.Strong(f"{key}:"), width=4),
-                                    dbc.Col(str(value), width=8),
-                                ], className="mb-1")
-                            )
-                    except:
-                        delays_content = html.P("Unable to parse delays")
-                else:
-                    delays_content = html.P("No delays available", className="text-muted")
-                
-                session.close()
-        
-        content = html.Div([
-            html.H5("Metadata", className="mt-2"),
-            html.Div(metadata_content, className="mb-3"),
-            html.H5("Delays"),
-            html.Div(delays_content),
-        ], style={"maxHeight": "30vh", "overflow": "auto", "padding": "10px", "border": "1px solid #dee2e6", "borderRadius": "5px"})
-        
-        return True, content
-    
-    return is_open, html.Div()
+    if not ctx.triggered or not any(n for n in (n_clicks_list or []) if n):
+        return dash.no_update, dash.no_update
+
+    triggered_id = ctx.triggered[0]["prop_id"].split(".")[0]
+    key = json.loads(triggered_id)["key"]
+    full_value = (store_data or {}).get(key, "Value not found.")
+    return True, full_value
+
 
 @callback(
     Output("datasets-graph", "figure"),
     Input("datasets_table", "cellRendererData"),
     State("datasets-graph", "figure")
 )
-def add_dataset_to_comparison(cellRendererData,current_fig):
+def add_dataset_to_comparison(cellRendererData, current_fig):
     # Toggle dataset in comparison view when clicked from table
     if cellRendererData is None:
         return dash.no_update
@@ -304,4 +374,6 @@ def add_dataset_to_comparison(cellRendererData,current_fig):
     current_fig['data'] = new_traces
     return current_fig
 
-
+def update_fit_table():
+    # This function can be called after adding/removing fits to update the fit table in the collapse section
+    pass

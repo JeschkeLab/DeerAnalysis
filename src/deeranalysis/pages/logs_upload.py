@@ -23,8 +23,12 @@ logsTable_column_defs = [
 
 # Layout
 layout = dmc.Container([
-    dmc.Title("LOGS Data Upload", order=2, mb="md"),
-    
+    dmc.Title("LOGS Data Upload", order=1, mb="md"),
+    dmc.Modal(id='connection-error', title="Connection Error!",withCloseButton=False,children=[
+        dmc.Text("Unable to connect to the LOGs server. Please check your connection and credentials."),
+        dmc.Code(id='connection-error-msg')
+    ]),
+
     # Filter Section with Multi-Select Boxes
     dmc.Paper([
         dmc.Stack([
@@ -212,3 +216,17 @@ def handle_action(data,rowData,current_figure):
         dash.set_props("logs-import"+"project-name", {"value": [p.name for p in dataset.projects][0] if dataset.projects else ""})
         dash.set_props("logs-import"+"sample-name", {"value": custom_values.get("Sample", "")})
         return dash.no_update,dash.no_update,True
+
+@callback(
+        Output('connection-error','opened'),
+        Output('connection-error-msg','children'),
+        Input('url', 'pathname')
+)
+def check_logs_connection(url):
+    # Check the connection to logs and opens a connection warning modal upon page load
+    try:
+        logs.test_logs_api()
+    except Exception as e:
+        return True, e.__str__()
+    else:
+        return False, ""

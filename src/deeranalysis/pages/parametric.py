@@ -1,199 +1,242 @@
 import dash
-from dash import html, dcc, callback, Input, Output, State
+from dash import html, dcc, callback, Input, Output, State,clientside_callback, MATCH, ctx
+from dash_iconify import DashIconify
+
 import dash_bootstrap_components as dbc
-import pandas as pd
 import json
 import numpy as np
 import deerlab as dl
 import plotly.graph_objs as go
 from plotly.subplots import make_subplots
 from deeranalysis.utils.database import get_session, Dataset, Fit
-from deeranalysis.utils import create_subplot_figure
+from deeranalysis.utils import create_subplot_figure,dataarray_from_database_entry
+from deeranalysis.components.dataset_search_model import create_dataset_modal
+from deeranalysis.utils.deerlab_options import regparam_options,background_models,parametric_models, plotly_goodness_of_fit, plotly_deerlab,fit_to_dict,dists_stats_to_list
+from autodeer import DEERanalysis
 
+import dash_mantine_components as dmc
+
+default_fit_results_code = """Fit Resuls will be displayed here after running the fit. \nThis can include parameters like mean distance, width, and any other relevant metrics."""
 
 dash.register_page(__name__)
+page_id='parametric'
 
 layout = html.Div([
-    html.H1("Parametric Fit"),
-    html.Hr(),
+    dmc.Title("Parametric Fit", order=1, mb="md"),
+    dmc.Divider(mb="lg"),
     
     dbc.Row([
         dbc.Col([
-            html.Label("Select Dataset"),
-            dcc.Dropdown(id='p-dataset-dropdown', placeholder="Select a dataset"),
-            html.Br(),
-            
-            html.Label("Distance Model"),
-            dcc.Dropdown(
+            create_dataset_modal(page_id=page_id),
+            html.Div([
+                dmc.Select(id={'type': 'dataset-dropdown', 'page': page_id}, label="Select a dataset", style={'flex': '1 1 0'}),
+                dmc.ActionIcon(DashIconify(icon='material-symbols:search', width=20),
+                               id={'type': 'open-dataset-search-btn', 'page': page_id}, size="lg", variant="default", style={'marginTop': '25px'})
+            ], style={'display': 'flex', 'flexDirection': 'row', 'alignItems': 'flex-end', 'gap': '8px'}),
+            dmc.Space(h=10),     
+            dmc.Select(
+                label='Distance Model',
                 id='p-dist-model',
-                options=[
-                    {'label': '1 Gaussian', 'value': 'dd_gauss'},
-                    {'label': '2 Gaussians', 'value': 'dd_gauss2'},
-                    {'label': 'Rice', 'value': 'dd_rice'}
-                ],
+                data=parametric_models,
                 value='dd_gauss'
             ),
-            html.Br(),
             
-            html.Label("Background Model"),
-            dcc.Dropdown(
+            dmc.Space(h=10),     
+            dmc.Select(
+                label='Background Model',
                 id='p-bg-model',
-                options=[
-                    {'label': 'None', 'value': 'none'},
-                    {'label': 'Homogeneous 3D', 'value': 'bg_hom3d'},
-                    {'label': 'Exponential', 'value': 'bg_exp'}
-                ],
+                data=background_models,
                 value='bg_hom3d'
             ),
-            html.Br(),
+            dmc.Space(h=10),     
+            dmc.CheckboxGroup(
+                id='p-pathways-options',
+                label="Pathways to include:",
+                children=dmc.Group([
+                    dmc.Checkbox(value='1', label='1'),
+                    dmc.Checkbox(value='2', label='2'),
+                    dmc.Checkbox(value='3', label='3'),
+                    dmc.Checkbox(value='4', label='4'),
+                    dmc.Checkbox(value='5', label='5'),
+                ]),
+                value=['1'], # Default selected pathways
+            ),
+            dmc.Space(h=10),
+            html.Label("Distance Axis:"),
+            dcc.RangeSlider(
+                id='p-distance-axis',
+                min=1.5,
+                max=12,
+                step=0.25,
+                value=[1.75, 6],
+                marks={i: f'{i}' for i in range(1, 13)},
+                allowCross=False,
+                allow_direct_input=True,
+                className="dmc"
+                
+                # tooltip={"placement": "bottom", "always_visible": True}
+            ),
+            dmc.Space(h=10),
             
-            dbc.Button("Run Fit", id="p-run-fit-btn", color="primary", className="mb-3"),
-            dbc.Button("Save Fit", id="p-save-fit-btn", color="success", className="mb-3 ms-2", disabled=True),
+            dmc.Button("Run Fit", id="p-run-fit-btn", color="blue", className="mb-3"),
+            dmc.Button("Save Fit", id="p-save-fit-btn", color="green", className="mb-3 ms-2", disabled=True),
             
             html.Div(id='p-fit-status')
         ], width=3),
         
         dbc.Col([
-            dcc.Graph(id='p-fit-plot',
-                      figure=create_subplot_figure('horizontal'))
+            dmc.Paper([
+                dcc.Graph(id='p-fit-plot',
+                        figure=plotly_deerlab(None))
+                        ]),
+            dmc.Paper([
+                dmc.Tabs([dmc.TabsList([
+                    dmc.TabsTab("Fit Results", value="FitResults"),
+                    dmc.TabsTab("Goodness of Fit", value="gof"),
+                    dmc.TabsTab("Dist. Stats", value="dist-stats")
+                    ]),
+                    dmc.TabsPanel(value="FitResults", children=[
+                        dmc.CodeHighlight(id='fit-results-code',code=default_fit_results_code, language="python")]),
+                    dmc.TabsPanel(value="gof", children=[dcc.Graph(id='p-gof-plot', figure=plotly_goodness_of_fit())]),
+                    dmc.TabsPanel(value="dist-stats", children=[
+                        dmc.Table(
+                        id='dist-stats-table',
+                        data={
+                            "head": ["Statistic", "Value", "Confidence Interval (95%)"],
+                        },
+                        striped=True,
+                        highlightOnHover=True,
+                    )]),
+                    ]),
+                ], variant="outline"),
         ], width=9)
     ]),
     
     dcc.Store(id='p-fit-results-store')
 ])
+clientside_callback(
+        """
+        function updateLoadingState(n_clicks) {
+            return true
+        }
+        """,
+        Output("p-run-fit-btn", "loading", allow_duplicate=True),
+        Input("p-run-fit-btn", "n_clicks"),
+        prevent_initial_call=True,
+    )
+
+
 
 @callback(
-    Output('p-dataset-dropdown', 'options'),
+    Output({'type': 'dataset-dropdown', 'page': page_id}, 'data'),
     Input('url', 'pathname')
 )
 def update_dropdown(pathname):
     session = get_session()
     datasets = session.query(Dataset).all()
-    options = [{'label': ds.name, 'value': ds.id} for ds in datasets]
+    options = [{'label': ds.name, 'value': str(ds.id)} for ds in datasets]
     session.close()
     return options
 
+
 @callback(
-    Output('p-fit-plot', 'figure'),
     Output('p-fit-results-store', 'data'),
+    Output('p-fit-plot', 'figure'),
+    Output('p-run-fit-btn', 'loading', allow_duplicate=True),
+    Output('fit-results-code', 'code', allow_duplicate=True),
+    Output('p-gof-plot', 'figure', allow_duplicate=True),
+    Output('dist-stats-table', 'data', allow_duplicate=True),
     Output('p-save-fit-btn', 'disabled'),
+
     Input('p-run-fit-btn', 'n_clicks'),
-    Input('p-dataset-dropdown', 'value'),
+    Input({'type': 'dataset-dropdown', 'page': page_id}, 'value'),
     State('p-dist-model', 'value'),
     State('p-bg-model', 'value'),
+    State('p-distance-axis', 'value'),
+    State('p-pathways-options', 'value'),
     prevent_initial_call=True
 )
-def run_fit(n_clicks, dataset_id, dist_model_name, bg_model_name):
+def run_fit(n_clicks, dataset_id, dist_model_name, bg_model_option,distance_axis,pathways_options):
     ctx = dash.callback_context
     triggered_id = ctx.triggered[0]['prop_id'].split('.')[0]
     
+    try:
+        triggered_id = json.loads(triggered_id)
+    except (json.JSONDecodeError, TypeError):
+        pass
+
     if not dataset_id:
-        return go.Figure(), None, True
+        return dash.no_update
         
     session = get_session()
-    dataset = session.query(Dataset).filter_by(id=dataset_id).first()
+    dataset_entry = session.query(Dataset).filter_by(id=dataset_id).first()
+    dataset = dataarray_from_database_entry(dataset_entry)
     
-    t = np.array(json.loads(dataset.data_t))
-    V = np.array(json.loads(dataset.data_V))
+    deadtime = dataset.attrs.get('deadtime', 0)/1e3
+    dataset = dataset.assign_coords(t=dataset.t.values + float(deadtime))
     session.close()
+
     
-    if triggered_id == 'p-dataset-dropdown':
-        fig = go.Figure()
-        fig.add_trace(go.Scatter(x=t, y=V, mode='lines', name='Data'))
-        fig.update_layout(title=f"Dataset: {dataset.name}", xaxis_title="Time", yaxis_title="Signal")
-        return fig, None, True
+    if triggered_id == {"page":page_id,"type":"dataset-dropdown"}:
+        # Just plot the data
+        t = dataset.t.values + float(deadtime)    
+        V = dataset.values
+        V = V / np.max(np.abs(V))
+
+        fig = plotly_deerlab(fitresult=dataset)
+        fig.update_layout(title=f"Dataset: {dataset_entry.name}", height=500, showlegend=True)
+        dist_stats_output = {"head": ["Statistic", "Value", "Confidence Interval (95%)"]}
+        return None, fig, False, default_fit_results_code, plotly_goodness_of_fit(),dist_stats_output, True
         
     if triggered_id == 'p-run-fit-btn':
-        r = np.linspace(1.5, 6, 100)
+        r = np.linspace(distance_axis[0], distance_axis[1], 100) # Default range
         
+        Bmodel = getattr(dl, bg_model_option, dl.bg_hom3d)
         # Select models
-        if dist_model_name == 'dd_gauss':
-            Pmodel = dl.dd_gauss
-        elif dist_model_name == 'dd_gauss2':
-            Pmodel = dl.dd_gauss2
-        elif dist_model_name == 'dd_rice':
-            Pmodel = dl.dd_rice
+        Pmodel = getattr(dl,dist_model_name,dl.dd_gauss)
             
-        if bg_model_name == 'none':
-            Bmodel = None
-        elif bg_model_name == 'bg_hom3d':
-            Bmodel = dl.bg_hom3d
-        elif bg_model_name == 'bg_exp':
-            Bmodel = dl.bg_exp
+        pathways = [int(p) for p in pathways_options]
+        fit = DEERanalysis(dataset,
+            compactness=False,
+            model=Pmodel,
+            ROI=False,
+            bg_model=Bmodel,
+            r=r,
+            pathways=pathways,)
             
-        # Construct model
-        Vmodel = dl.dipolarmodel(t, r, Pmodel=Pmodel, Bmodel=Bmodel)
-        
-        # Fit
-        fit = dl.fit(Vmodel, V)
-        
-        Vfit = fit.model
-        Pfit = fit.P
-        Pci95 = fit.Puncert.ci(95)
-        
-        # Extract parameters
-        # fit.param is a dictionary of parameter names and values? No, fit object has attributes for parameters.
-        # Or fit.modelparam?
-        # DeerLab fit object has a __getattr__ that delegates to the result.
-        # We can get parameters from fit.modelparam or similar?
-        # Actually fit object *is* the result object (FitResult).
-        # It has attributes for each parameter.
-        # We can iterate over model parameters.
-        
-        param_dict = {p: getattr(fit, p) for p in Vmodel._parameter_list()}
-        # Convert numpy types to python types for JSON
-        param_dict = {k: float(v) if isinstance(v, (np.float64, np.float32)) else v for k, v in param_dict.items()}
+        V = fit.Vexp
+        r = fit.r
 
-        results = {
-            't': t.tolist(),
-            'V': V.tolist(),
-            'r': r.tolist(),
-            'Vfit': Vfit.tolist(),
-            'Pfit': Pfit.tolist(),
-            'Pci95_lower': Pci95[:,0].tolist(),
-            'Pci95_upper': Pci95[:,1].tolist(),
-            'parameters': param_dict,
-            'stats': {k: v for k, v in fit.stats.items() if isinstance(v, (int, float, str))}
-        }
-        
-        # Create plots
-        fig = make_subplots(rows=1, cols=2, subplot_titles=("Time Domain", "Distance Domain"))
-        
-        fig.add_trace(go.Scatter(x=t, y=V, mode='markers', name='Data', marker=dict(size=3, color='black')), row=1, col=1)
-        fig.add_trace(go.Scatter(x=t, y=Vfit, mode='lines', name='Fit', line=dict(color='red')), row=1, col=1)
-        
-        fig.add_trace(go.Scatter(x=r, y=Pfit, mode='lines', name='P(r)', line=dict(color='blue')), row=1, col=2)
-        fig.add_trace(go.Scatter(x=r, y=results['Pci95_upper'], mode='lines', line=dict(width=0), showlegend=False, hoverinfo='skip'), row=1, col=2)
-        fig.add_trace(go.Scatter(x=r, y=results['Pci95_lower'], mode='lines', line=dict(width=0), fill='tonexty', fillcolor='rgba(0, 0, 255, 0.2)', name='95% CI'), row=1, col=2)
-        
-        fig.update_layout(height=500)
-        
-        return fig, results, False
+        fig = plotly_deerlab(fitresult=fit)
+        fig.update_layout(title=f"Fit Result: {dataset_entry.name}", height=500, showlegend=True)
 
-    return go.Figure(), None, True
+        gof_fig = plotly_goodness_of_fit(fit)
+
+        dist_stats = dl.diststats(r,fit.P,fit.PUncert)
+        dist_stats_output = {"head": ["Statistic", "Value", "Confidence Interval (95%)"],
+                             "body": dists_stats_to_list(*dist_stats)}
+        fit_dict = fit_to_dict(fit)
+        return fit_dict, fig, False, fit.__str__(), gof_fig,dist_stats_output, False
+
 
 @callback(
     Output('p-fit-status', 'children'),
     Input('p-save-fit-btn', 'n_clicks'),
+    State({'type': 'dataset-dropdown', 'page': page_id}, 'value'), 
     State('p-fit-results-store', 'data'),
-    State('p-dataset-dropdown', 'value'),
-    State('p-dist-model', 'value'),
-    State('p-bg-model', 'value'),
     prevent_initial_call=True
 )
-def save_fit(n_clicks, results, dataset_id, dist_model, bg_model):
-    if not results or not dataset_id:
+def save_fit(n_clicks, dataset_id,dataset_store):
+    if not dataset_store or not dataset_id:
+        print(f"No fit results to save or no dataset selected.")
         return dash.no_update
         
     session = get_session()
     
     new_fit = Fit(
         dataset_id=dataset_id,
-        name=f"Parametric Fit - {dist_model} + {bg_model}",
-        fit_type='parametric',
-        model_description={'dist_model': dist_model, 'bg_model': bg_model},
-        parameters=json.dumps(results['parameters']),
-        fit_results=json.dumps(results)
+        name=f"NP Fit",
+        **dataset_store
     )
     
     session.add(new_fit)

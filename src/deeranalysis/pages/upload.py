@@ -19,8 +19,9 @@ dash.register_page(__name__)
 
 
 layout = html.Div([
-    html.H1("Upload Dataset"),
-    html.Hr(),
+    dmc.Title("Upload Dataset from File", order=1, mb="md"),
+    dmc.Divider(mb="lg"),
+
     dbc.Row([
         dbc.Col([
             html.H4("Upload New Dataset"),
@@ -46,7 +47,7 @@ layout = html.Div([
             dcc.Store(id='dataset-store'),
             dmc.Autocomplete(id="project-name", placeholder="Sample Name", className="mb-2"),
             dmc.Autocomplete(id="sample-name", placeholder="Project Name", className="mb-2"),
-            dbc.Input(id="dataset-name", placeholder="Dataset Name", type="text", className="mb-2"),
+            dmc.TextInput(id="dataset-name", placeholder="Dataset Name", className="mb-2"),
             
             html.Div(id='upload-status'),
             dbc.Row([
