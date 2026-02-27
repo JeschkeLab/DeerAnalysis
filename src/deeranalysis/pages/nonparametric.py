@@ -10,7 +10,7 @@ from autodeer import DEERanalysis
 from deeranalysis.utils.database import get_session, Dataset, Fit
 from deeranalysis.utils import  dataarray_from_database_entry
 from deeranalysis.components.dataset_search_model import create_dataset_modal
-from deeranalysis.utils.deerlab_options import regparam_options,background_models, plotly_goodness_of_fit, plotly_deerlab
+from deeranalysis.utils.deerlab_options import regparam_options,background_models, plotly_goodness_of_fit, plotly_deerlab,dists_stats_to_list, fit_to_dict,name_dataset_from_dict
 dash.register_page(__name__)
 
 default_fit_results_code = """Fit Resuls will be displayed here after running the fit. \nThis can include parameters like mean distance, width, and any other relevant metrics."""
@@ -277,7 +277,7 @@ def save_fit(n_clicks, dataset_id,dataset_store):
     
     new_fit = Fit(
         dataset_id=dataset_id,
-        name=f"NP Fit",
+        name=name_dataset_from_dict(dataset_store),
         **dataset_store
     )
     
@@ -288,42 +288,4 @@ def save_fit(n_clicks, dataset_id,dataset_store):
     return dbc.Alert("Fit saved successfully!", color="success", duration=4000)
 
 
-def fit_to_dict(fit):
-    """Takes a fit objects and converts it to a dictionary for storage in the database."""
-    output = {}
-    if isinstance(fit, dl.FitResult):
-        output['engine'] = 'DeerLab'
-    output['fit_type'] = 'non-parametric'
-    output['dist_model'] = None
-    output['bg_model'] = fit.Bmodel.name if fit.Bmodel else None
-    output['t'] = fit.t.tolist() if fit.t is not None else None
-    output['model'] = fit.model.tolist() if fit.model is not None else None
-    output['P_model'] = fit.P.tolist() if fit.P is not None else None
-    output['pathways'] = fit.pathways if hasattr(fit, 'pathways') else None
-    output['r'] = fit.r.tolist() if fit.r is not None else None
-    output['PUncert'] = None
-    return output
-    
-    
-def dists_stats_to_list(dist_stats, dist_uncert,ci=95):
-    """Converts the distance distribution statistics to a list of dictionaries for display in the table."""
-    stats = list(dist_stats.keys())
 
-    Output = []
-    for stat in stats:
-        row = []
-        key = stat
-        row.append(stat)
-        if isinstance(dist_stats[stat], (int, float)):
-
-            row.append(f"{dist_stats[stat]:.3f}")
-        elif isinstance(dist_stats[stat], (list, np.ndarray)):
-            row.append(", ".join([f"{x:.3f}" for x in dist_stats[stat]]))
-            
-        if dist_uncert is not None and key in dist_uncert and dist_uncert[key] is not None:
-            lb,ub = dist_uncert[key].ci(ci)
-            row.append(f"[{lb:.3f}, {ub:.3f}]")
-        else:
-            row.append("N/A")
-        Output.append(row)
-    return Output

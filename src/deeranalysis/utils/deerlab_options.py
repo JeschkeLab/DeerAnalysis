@@ -204,6 +204,10 @@ def plotly_deerlab(fitresult=None, orientation='h'):
     if isinstance(fitresult, dl.FitResult):
         data_t = fitresult.t
         data_V = fitresult.Vexp
+        if hasattr(fitresult,'model_t'):
+            model_t = fitresult.model_t
+        else:
+            model_t = data_t
         data_model = fitresult.model
         P = fitresult.P
         PUncert = fitresult.PUncert.ci(95)
@@ -224,7 +228,7 @@ def plotly_deerlab(fitresult=None, orientation='h'):
             x=data_t, y=data_V, mode='markers', name='Data',
             line={'color':colour_scheme_light[i]}), row=1, col=1)
     if data_model is not None:
-        fig.add_trace(go.Scatter(x=data_t, y=data_model, mode='lines', name='Model', line={'color':colour_scheme_dark[i]}), row=1, col=1)
+        fig.add_trace(go.Scatter(x=model_t, y=data_model, mode='lines', name='Model', line={'color':colour_scheme_dark[i]}), row=1, col=1)
     if P is not None:
         fig.add_trace(go.Scatter(x=r, y=P, mode='lines', name='P(r)', line={'color':colour_scheme_dark[i]}), row=1, col=2)
     if PUncert is not None:
@@ -238,14 +242,27 @@ def fit_to_dict(fit):
     """Takes a fit objects and converts it to a dictionary for storage in the database."""
     output = {}
     if isinstance(fit, dl.FitResult):
-        output['engine'] = 'DeerLab'
-    output['fit_type'] = 'non-parametric'
-    output['dist_model'] = None
-    output['bg_model'] = fit.Bmodel.name if fit.Bmodel else None
+        if hasattr(fit, 'Bmodel'):
+            output['engine'] = 'DeerLab'
+            output['bg_model'] = fit.Bmodel.name if fit.Bmodel else None
+            if hasattr(fit, 'Pmodel') and fit.Pmodel is not None:
+                output['fit_type'] = 'parametric'
+                output['dist_model'] = fit.Pmodel.name
+            else:
+                output['fit_type'] = 'non-parametric'
+                output['dist_model'] = None
+            output['pathways'] = fit.Vmodel.pathways
+        else:
+            output['bg_model'] = 'Neural Network'
+            output['fit_type'] = 'Neural Network'
+            output['engine'] = 'DeerNet'
+            output['dist_model'] = None
+            output['pathways'] = [1]
+
     output['t'] = fit.t.tolist() if fit.t is not None else None
     output['model'] = fit.model.tolist() if fit.model is not None else None
     output['P_model'] = fit.P.tolist() if fit.P is not None else None
-    output['pathways'] = fit.pathways if hasattr(fit, 'pathways') else None
+    
     output['r'] = fit.r.tolist() if fit.r is not None else None
     output['PUncert'] = None
     return output
@@ -273,3 +290,20 @@ def dists_stats_to_list(dist_stats, dist_uncert,ci=95):
             row.append("N/A")
         Output.append(row)
     return Output
+
+def name_dataset_from_dict(dataset_dict):
+    """Creates a name for the fit based on the dataset and fit parameters."""
+    
+    if dataset_dict['fit_type'] == 'Neural Network':
+        el1 = f"DeerNet"
+    elif dataset_dict['fit_type'] == 'parametric':
+        el1 = f"{dataset_dict['dist_model']}"
+    else:
+        el1 = f"Non-Parametric"
+
+    if dataset_dict['pathways'] is not None:
+        el2 = str([f"{p}" for p in dataset_dict['pathways']])
+    else:
+        el2 = ""
+
+    return f"{el1}-{el2}"

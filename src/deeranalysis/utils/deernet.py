@@ -9,6 +9,8 @@ import scipy.constants as const
 import h5py as h5
 import onnxruntime as rt
 
+from deerlab import UQResult,FitResult,goodness_of_fit, noiselevel
+
 @dataclass
 class DEERnetResult:
     """ This is a dataclass developed for the holding of deernet data.\n
@@ -68,13 +70,17 @@ def deernet_prep(input_axis:np.ndarray, input_traces:np.ndarray) -> Tuple[np.nda
         print(f'WARNING: time axis shifted')
         input_traces = input_traces[max_pos:]
         input_axis = input_axis[max_pos:]
-        input_axis = input_axis - input_axis[0]
+        shift = input_axis[0]
+        input_axis = input_axis - shift
+    else:
+        shift = 0
 
     input_axis = input_axis * 1e-6
     input_axis = np.double(input_axis)
     input_traces = np.double(input_traces)
+    input_traces = input_traces / np.max(np.abs(input_traces))
     
-    return [input_axis,input_traces]
+    return [input_axis,input_traces,shift* 1e-6]
 
 
 
@@ -150,8 +156,9 @@ def deernet(dataset, providor=None) -> DEERnetResult:
     else:
         time_axis = dataset.coords[list(dataset.coords)[0]].values
     data_axis = dataset.values
-
-    time_axis, data_axis = deernet_prep(time_axis, data_axis)
+    
+    time_axis, data_axis, t_shift = deernet_prep(time_axis, data_axis)
+    noiselvl = noiselevel(data_axis)
     # resample the input data to match input dimension
     n_points = 512
     new_axis = np.linspace(min(time_axis),max(time_axis),n_points) 
@@ -199,7 +206,7 @@ def deernet(dataset, providor=None) -> DEERnetResult:
         m = rt.InferenceSession(net_file,providers=providers)
         # print(f'Using provider: {m.get_providers()}')
         input_trace = new_trace.astype(np.float32)
-        input_trace = input_trace.reshape([1,512])
+        input_trace = input_trace.reshape([1,n_points])
         deer_trace = m.run(['Renorm'],{"input":input_trace})
         deer_trace = np.transpose(np.squeeze(deer_trace))
         deer_trace = deer_trace * len(deer_trace)
@@ -272,6 +279,11 @@ def deernet(dataset, providor=None) -> DEERnetResult:
     dataset.retros_av = np.mean(retros,2)
     dataset.retros_lb = np.mean(retros,2) - 2 * np.std(retros,2)
     dataset.retros_ub = np.mean(retros,2) + 2 * np.std(retros,2)
+    
+    dataset.model_t = new_axis *1e6 # convert back to microseconds for output
+    dataset.t = time_axis * 1e6 # convert back to microseconds for output
+    dataset.Vexp = data_axis
+
 
     dataset.mdpths = mdpths
     dataset.mdpths_av = np.mean(mdpths,2)
@@ -292,4 +304,46 @@ def deernet(dataset, providor=None) -> DEERnetResult:
 
     dataset = quality_control(dataset)
 
-    return dataset
+    # resample the retos and background to match the input time axis for output
+    retros = pchip_interpolate(new_axis, retros.squeeze(), time_axis)
+    backgs = pchip_interpolate(new_axis, backgs.squeeze(), time_axis)
+
+
+    modelUncert = UQResult(
+        uqtype = 'bootstrap',
+        data = retros.T
+    )
+
+    PUncert = UQResult(
+        uqtype = 'bootstrap',
+        data = distds.squeeze()[dist_keep_mask,...].T
+    )
+
+    bgUncert = UQResult(
+        uqtype = 'bootstrap',
+        data = backgs.T
+    )
+
+    r = new_dist[dist_keep_mask] / 10 # convert to nm
+
+    residuals = data_axis - modelUncert.mean
+
+    fitresult = FitResult(
+        dataset = dataset,
+        t = (time_axis+shift) * 1e6, # convert back to microseconds for output
+        Vexp = data_axis,
+        # model_t = new_axis *1e6, # convert back to microseconds for output
+        modelUncert = modelUncert,
+        model = modelUncert.mean,
+        bg = bgUncert.mean,
+        bgUncert = bgUncert,
+        r = r,
+        P = PUncert.mean,
+        PUncert = PUncert,
+        noiselvl = noiselvl,
+        residuals = residuals,
+        
+        )
+    return fitresult
+
+    

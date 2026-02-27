@@ -1,5 +1,5 @@
 import dash
-from dash import html, dcc, callback, Input, Output, State
+from dash import html, dcc, callback, Input, Output, State,clientside_callback
 import dash_bootstrap_components as dbc
 import dash_mantine_components as dmc
 from dash_iconify import DashIconify
@@ -197,6 +197,11 @@ layout = dmc.Container([
                     ),
                     dmc.AccordionPanel([
                         dmc.Stack([
+                            dmc.Button(
+                                "Download/Re-Download Models",
+                                id = 'dn-model-download',
+                                 variant="outline"
+                            ),
                             dmc.Select(
                                 id="config-dn-default-model-size",
                                 label="Default Model Size",
@@ -323,6 +328,16 @@ layout = dmc.Container([
     
 ], size="lg", py="md")
 
+clientside_callback(
+        """
+        function updateLoadingState(n_clicks) {
+            return true
+        }
+        """,
+        Output("dn-model-download", "loading", allow_duplicate=True),
+        Input("dn-model-download", "n_clicks"),
+        prevent_initial_call=True,
+    )
 
 # Callbacks for saving and resetting configuration
 @callback(
@@ -379,6 +394,24 @@ def load_logs_values_on_page_load(_, notification_action):
     """Load LOGS API credentials from database"""
     url, apiKey = get_logs_api_db()
     return url or "", apiKey or ""
+
+###############################################################################
+# Callbacks for downloading DeerNet model
+###############################################################################
+@callback(
+        Output("dn-model-download", "leftSection"),
+        Output("dn-model-download", "variant"),
+        Output("dn-model-download", "loading"),
+        Input("dn-model-download","n_clicks"),
+        prevent_initial_call=True
+)
+def download_deernet_models(n_clicks):
+    from deeranalysis.components.setup_modal_desktop import download_deernet_models
+    if n_clicks:
+        download_deernet_models()
+        return DashIconify(icon="tabler:check", color="green"), "filled", False
+    return dash.no_update
+
 
 ###############################################################################
 # Callbacks for handling database reset confirmation

@@ -11,7 +11,7 @@ from plotly.subplots import make_subplots
 from deeranalysis.utils.database import get_session, Dataset, Fit
 from deeranalysis.utils import create_subplot_figure,dataarray_from_database_entry
 from deeranalysis.components.dataset_search_model import create_dataset_modal
-from deeranalysis.utils.deerlab_options import regparam_options,background_models,parametric_models, plotly_goodness_of_fit, plotly_deerlab,fit_to_dict,dists_stats_to_list
+from deeranalysis.utils.deerlab_options import regparam_options,background_models,parametric_models, plotly_goodness_of_fit, plotly_deerlab,fit_to_dict,dists_stats_to_list,name_dataset_from_dict  
 from autodeer import DEERanalysis
 
 import dash_mantine_components as dmc
@@ -235,7 +235,7 @@ def save_fit(n_clicks, dataset_id,dataset_store):
     
     new_fit = Fit(
         dataset_id=dataset_id,
-        name=f"NP Fit",
+        name=name_dataset_from_dict(dataset_store),
         **dataset_store
     )
     
