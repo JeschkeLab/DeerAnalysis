@@ -9,7 +9,21 @@ import os
 from pathlib import Path
 
 from deeranalysis.components.setup_modal_desktop import create_setup_modal,default_directory
+from deeranalysis.components.dmc_theme import da_dmctheme
 from deeranalysis.utils.logs_plugin import initialize_logs_api
+
+import plotly.io as pio
+
+pio.templates["compact"] = dict(
+    layout=dict(
+        font=dict(size=11),
+        margin=dict(l=50, r=20, t=50, b=40),
+        xaxis=dict(tickfont=dict(size=10)),
+        yaxis=dict(tickfont=dict(size=10)),
+        legend=dict(font=dict(size=10)),
+    )
+)
+pio.templates.default = "plotly+compact"
 
 def first_time_setup():
     """
@@ -156,7 +170,9 @@ app.layout = dmc.MantineProvider(
             id="app-shell",
         ),
         create_setup_modal()
-    ]
+    ],
+    theme=da_dmctheme,
+
 )
 
 @callback(
