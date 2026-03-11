@@ -5,6 +5,7 @@ import dash_mantine_components as dmc
 from dash_iconify import DashIconify
 import dash_ag_grid as dag
 import deeranalysis.utils.logs_plugin as logs
+from deeranalysis.utils import eprload
 from deeranalysis.components.viewer_modals import create_viewer_modal
 from deeranalysis.components.logs_import_modal import create_logs_import_modal
 
@@ -211,7 +212,7 @@ def handle_action(data,rowData,current_figure):
     elif action == "right":
 
         file_buffers = logs.download_to_memory(dataset)
-        dataarray = logs.eprload(file_buffers)
+        dataarray = eprload(file_buffers)
         dash.set_props("logs-import"+"dataset-name", {"value": dataset.name})
         dash.set_props("logs-import"+"project-name", {"value": [p.name for p in dataset.projects][0] if dataset.projects else ""})
         dash.set_props("logs-import"+"sample-name", {"value": custom_values.get("Sample", "")})

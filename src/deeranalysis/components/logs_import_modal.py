@@ -71,9 +71,9 @@ def create_logs_import_modal(id="logs-import-modal", title="Import Logs"):
         size="80%",
         opened=False,  # Control visibility with a callback
         children = dmc.Grid(
-            [dmc.GridCol(dataset_key_paper('logs-import'), span=4),
+            [dmc.GridCol(dataset_key_paper('logs-import'), span=6),
             dmc.GridCol(
-                [dcc.Graph(id="logs-import-preview-graph", figure={"data": [], "layout": {"title": "Dataset Preview"}})], span=8)
+                [dcc.Graph(id="logs-import-preview-graph", figure={"data": [], "layout": {"title": "Dataset Preview"}})], span=6)
             ]
         ),
         overlayProps={"color": "black", "opacity": 0.5, "blur": 0.5},
