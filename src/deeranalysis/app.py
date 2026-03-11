@@ -84,7 +84,8 @@ sidebar_content = dmc.Stack(
         # create_nav_link("autoDEER Fit", "/autoDEER", "mdi:auto-fix"),
         create_nav_link("Non-Parametric Fit", "/nonparametric", "mdi:chart-bell-curve-cumulative"),
         create_nav_link("Parametric Fit", "/parametric", "mdi:function-variant"),
-        create_nav_link("Global Fit", "/global_fit", "mdi:globe"),
+        create_nav_link("Global Fit", "/global", "mdi:globe"),
+        create_nav_link("Population Fit", "/population", "mdi:people-group"),
         
         dmc.Divider(my="sm"),
         
@@ -126,6 +127,7 @@ sidebar_content = dmc.Stack(
 
 app.layout = dmc.MantineProvider(
     [
+        dmc.NotificationContainer(id="notification-container"),
         dcc.Location(id="url"),
         dcc.Store(id="first-time-setup", data=first_time_setup()), # TODO: Change so only for desktop mode
         dcc.Store(id="desktop-mode", data=desktop_mode),
