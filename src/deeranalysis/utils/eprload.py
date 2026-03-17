@@ -554,9 +554,10 @@ def dataarray_from_database_entry(db_entry):
         'name': db_entry.name,
         'project': db_entry.project,
         'sample': db_entry.sample,
-        'exp': db_entry.exp,}
-    attrs.update(db_entry.delays)
+        'seq_name': db_entry.exp,}
     attrs.update(db_entry.meta)
+    attrs.update(db_entry.delays)
+    
 
     return xr.DataArray(V, coords={'t': ('t', t, {'units':'µs'})}, dims=['t'], attrs=attrs)
 

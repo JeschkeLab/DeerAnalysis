@@ -10,7 +10,7 @@ from pathlib import Path
 
 from deeranalysis.components.setup_modal_desktop import create_setup_modal,default_directory
 from deeranalysis.components.dmc_theme import da_dmctheme
-from deeranalysis.utils.logs_plugin import initialize_logs_api
+from deeranalysis.utils.logs_plugin import initialize_logs_api,check_logs_api_key
 
 import plotly.io as pio
 
@@ -69,11 +69,13 @@ def create_nav_link(label, href, icon):
         h=32,
     )
 
+
+
 sidebar_content = dmc.Stack(
     [
         dmc.Text("Datasets", size="sm", c="dimmed", fw=500),
         create_nav_link("File Upload", "/upload", "mdi:upload"),
-        create_nav_link("Logs Upload", "/logs_upload", "mdi:file-document-outline"),
+        *( [create_nav_link("Logs Upload", "/logs_upload", "mdi:file-document-outline")] if check_logs_api_key() else [] ),
         create_nav_link("Datasets", "/", "mdi:database"),
         create_nav_link("Comparison", "/comparison", "mdi:compare"),
         

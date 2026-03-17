@@ -24,4 +24,15 @@ da_dmctheme={
             "NavLink": {"defaultProps": {"size": "sm"}},
             "Text": {"defaultProps": {"size": "sm"}},
         },
+        "headings": {
+            "fontWeight": "700",
+            "sizes": {
+                "h1": {"fontSize": "2.5rem", "lineHeight": "1.2"},
+                "h2": {"fontSize": "2rem", "lineHeight": "1.2"},
+                "h3": {"fontSize": "1.5rem", "lineHeight": "1.2"},
+                "h4": {"fontSize": "1.2rem", "lineHeight": "1.2"},
+                "h5": {"fontSize": "1rem", "lineHeight": "1.2"},
+                "h6": {"fontSize": "0.8rem", "lineHeight": "1.2"},
+            },
+        },
 }

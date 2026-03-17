@@ -1,4 +1,5 @@
 import json
+import copy
 import dash
 from dash import html, dcc, callback, Input, Output, State,clientside_callback
 import dash_bootstrap_components as dbc
@@ -12,6 +13,9 @@ from deeranalysis.utils import  dataarray_from_database_entry
 from deeranalysis.components.dataset_search_model import create_dataset_modal
 from deeranalysis.utils.deerlab_options import regparam_options,background_models, plotly_goodness_of_fit, plotly_deerlab,dists_stats_to_list, fit_to_dict,name_dataset_from_dict
 from deeranalysis.components.fit_page_components import fit_save_download_buttons,distance_slider,adv_fit_options_parametric
+import deeranalysis.components.fit_page_components as fpc
+
+from deeranalysis.utils.deerlab_population import deerlab_population_fitting, determine_pop_P
 
 dash.register_page(__name__)
 
@@ -42,7 +46,7 @@ layout = html.Div([
             dmc.Space(h=10),     
             dmc.Select(
                 label='Background Model',
-                id='pop-bg-model',
+                id={'type': 'bg_model', 'page': page_id},
                 data=background_models,
                 value='bg_hom3d',
                 clearable=False,
@@ -50,7 +54,7 @@ layout = html.Div([
             ),
             dmc.Space(h=10),     
             dmc.CheckboxGroup(
-                id='pop-pathways-options',
+                id={'type': 'pathways-options', 'page': page_id},
                 label="Pathways to include:",
                 description="These pathways will be applied to all datasets, if they are fesiable for the coresponding experiment.",
                 children=dmc.Group([
@@ -66,7 +70,7 @@ layout = html.Div([
             dmc.Space(h=10),
             dmc.NumberInput(
                 label="Number of Populations",
-                id='pop-num-populations',
+                id={'type': 'n_pops', 'page': page_id},
                 value=2,
                 min=1,
                 max=5,
@@ -74,7 +78,7 @@ layout = html.Div([
             ),
             dmc.Select(
                 label='Parametric Distance Model',
-                id='pop-dd-model',
+                id={"type": "dd_model", "page": page_id},
                 data=parametric_models,
                 value='dd_gauss',
                 clearable=False,
@@ -100,65 +104,66 @@ layout = html.Div([
             dmc.Space(h=10),
             
             fit_save_download_buttons(page_id),
-            html.Div(id='pop-fit-status')
+            html.Div(id={'type':'fit-status','page': page_id})
         ], width=3),
         
         dbc.Col([
             html.Div([
-            dmc.Paper([
-                    dcc.Graph(id={"type": "fit-plot", "page": page_id},
-                            figure=plotly_deerlab(None),
-                            style={'height': '100%'},
-                            config={'responsive': True})
-                            ],
-                            style={'flex': '1', 'display': 'flex', 'flexDirection': 'column', 'minHeight': 300}),
-            dmc.Paper([
-                    dmc.Tabs([dmc.TabsList([
-                        dmc.TabsTab("Population Overview", value="pop-overview"),
-                        dmc.TabsTab("Fit Results", value="FitResults"),
-                        dmc.TabsTab("Goodness of Fit", value="gof"),
-                        dmc.TabsTab("Dist. Stats", value="dist-stats")
-                        ]),
-                        dmc.TabsPanel(value="pop-overview", children=[],
-                                      style={'flex': '1', 'display': 'flex', 'flexDirection': 'column', 'minHeight': 0, 'overflow': 'hidden'}),
-                        dmc.TabsPanel(value="FitResults", children=[
-                            dmc.CodeHighlight(id={"type":"fit-results-code", "page":page_id},code=default_fit_results_code, language="python")],style={'flex': '1', 'minHeight': 0, 'overflow': 'auto'}),
-                        dmc.TabsPanel(value="gof", children=[dcc.Graph(id={"type":"gof-plot", "page":page_id}, figure=plotly_goodness_of_fit(),style={'height': '100%'},config={'responsive': True})],style={'flex': '1', 'display': 'flex', 'flexDirection': 'column', 'minHeight': 0}),
-                        dmc.TabsPanel(value="dist-stats", children=[
-                            dmc.Table(
-                            id={"type":"dist-stats-table", "page":page_id},
-                            data={
-                                "head": ["Statistic", "Value", "Confidence Interval (95%)"],
-                            },
-                            striped=True,
-                            highlightOnHover=True,
-                        )],style={'flex': '1', 'minHeight': 0, 'overflow': 'auto'}),
-                        ],style={'flex': '1', 'display': 'flex', 'flexDirection': 'column', 'minHeight': 0},
-                        value="pop-overview"),
-                    ], variant="outline",
-                    style={'flex': '1', 'display': 'flex', 'flexDirection': 'column', 'minHeight': 0, 'overflow': 'hidden'})
+                fpc.plotly_deerlab_pagation(page_id=page_id),
+                fpc.fit_results_tabs(
+                    fpc.fit_results_tab(page_id),
+                    fpc.goodness_of_fit_tab(page_id),
+                    fpc.dist_stats_tab(page_id),
+                ),
                 ], style={'display': 'flex', 'flexDirection': 'column', 'height': 'calc(100vh - 160px)', 'gap': '12px'})
-                    
-        ], width=9)
+        ], width=9) # dbc.col
+
         
     ]),
-    dcc.Store(id='pop-fit-results-store')
+    dcc.Store(id={'type': 'fit-results-store', 'page': page_id}),
+    dcc.Store(id={'type': 'fit_options', 'page': page_id}),
     # Hidden store for fit results
     
 ])
 
+# ----- Clientside Callbacks for Loading States and Plot Pagination -----
 clientside_callback(
         """
         function updateLoadingState(n_clicks) {
             return true
         }
         """,
-        Output("pop-run-fit-btn", "loading", allow_duplicate=True),
-        Input("pop-run-fit-btn", "n_clicks"),
+        Output({"type":"run-fit-btn","page":page_id}, "loading", allow_duplicate=True),
+        Input({"type":"run-fit-btn","page":page_id}, "n_clicks"),
         prevent_initial_call=True,
     )
 
+clientside_callback(
+    """
+    function(page, figuresJson) {
+        if (!figuresJson || !page) return dash_clientside.no_update;
+        return JSON.parse(figuresJson[page - 1]);
+    }
+    """,
+    Output({"type": "fit-plot", "page": page_id}, "figure", allow_duplicate=True),
+    Input({"type": "fit-plot-pagination", "page": page_id}, "value"),
+    Input({"type": "fit-plot-figures-store", "page": page_id}, "data"),
+    prevent_initial_call=True,
+)
+clientside_callback(
+    """
+    function(figuresJson) {
+        if (!figuresJson) return [1, 1];
+        return [figuresJson.length, 1];
+    }
+    """,
+    Output({"type": "fit-plot-pagination", "page": page_id}, "total"),
+    Output({"type": "fit-plot-pagination", "page": page_id}, "value"),
+    Input({"type": "fit-plot-figures-store", "page": page_id}, "data"),
+    prevent_initial_call=True,
+)
 
+# ----- Callbacks for Updating Fit Options and Running Fit -----
 
 @callback(
     Output({'type': 'dataset-dropdown', 'page': page_id}, "error", allow_duplicate=True),
@@ -187,3 +192,184 @@ def update_dropdown(pathname):
     session.close()
     return options
 
+
+@callback(
+    Output({'type': 'fit_options', 'page': page_id}, 'data'),
+    Input({'type': 'n_pops', 'page': page_id}, 'value'),
+    Input({"type": "dd_model", "page": page_id}, 'value'),
+    Input({'type': 'bg_model', 'page': page_id}, 'value'),
+    Input({"type": "distance-axis", "page": page_id}, 'value'),
+    Input({'type': 'pathways-options', 'page': page_id}, 'value'),
+)
+def update_fit_options(n_pops,dd_model,bg_model,distance_axis,pathways_options):
+    options = {
+        'n_pops': n_pops,
+        'dd_model': dd_model,
+        'bg_model': bg_model,
+        'distance_axis': distance_axis,
+        'pathways_options': pathways_options
+    }
+    return options
+
+
+
+
+# ----- Main Fitting Callback -----
+
+
+@callback(
+    Output({'type': 'fit-results-store', 'page': page_id}, 'data'),
+    Output({"type": "fit-plot-figures-store", "page": page_id}, 'data'),
+    Output({"type":"run-fit-btn","page":page_id}, 'loading', allow_duplicate=True),
+    Output({"type": "fit-results-code", "page": page_id}, 'code', allow_duplicate=True),
+    Output({"type": "gof-plot", "page": page_id}, 'figure', allow_duplicate=True),
+    Output({"type": "dist-stats-table", "page": page_id}, 'data', allow_duplicate=True),
+    Output({"type":"save-fit-btn","page":page_id}, 'disabled'),
+    Output({"type":"download-fit-btn","page":page_id}, 'disabled'),
+
+    Input({"type":"run-fit-btn","page":page_id}, 'n_clicks'),
+    Input({'type': 'dataset-dropdown', 'page': page_id}, 'value'),
+    State({'type': 'fit_options', 'page': page_id}, 'data'),
+    prevent_initial_call=True
+)
+def run_fit(n_clicks, dataset_id, fit_options):
+
+    ctx = dash.callback_context
+    triggered_id = ctx.triggered[0]['prop_id'].split('.')[0]
+    
+    try:
+        triggered_id = json.loads(triggered_id)
+    except (json.JSONDecodeError, TypeError):
+        pass
+
+    if not dataset_id:
+        return dash.no_update,dash.no_update, False, dash.no_update, dash.no_update, dash.no_update, True,True
+    
+    session = get_session()
+    datasets = []
+    dataset_names = []
+    for dataset_id in dataset_id:
+        dataset_entry = session.query(Dataset).filter_by(id=dataset_id).first()
+        if dataset_entry is None:
+            print(f"Dataset with id {dataset_id} not found in the database.")
+        dataset = dataarray_from_database_entry(dataset_entry)
+        dataset_names.append(dataset_entry.name)    
+        dataset = dataset.assign_coords(t=dataset.t.values)
+        datasets.append(dataset)
+    session.close()
+
+    if triggered_id == {"page":page_id,"type":"dataset-dropdown"}:
+        figures_store = []
+        for ds,name in zip(datasets,dataset_names):
+            fig = plotly_deerlab(fitresult=ds)
+            fig.update_layout(title=f"Dataset: {name}", showlegend=True)
+            figures_store.append(fig.to_json())
+        return dash.no_update,figures_store, False, dash.no_update, dash.no_update, dash.no_update, True,True
+    
+    elif triggered_id == {"page":page_id,"type":"run-fit-btn"}:
+
+        distance_axis = fit_options.get('distance_axis', [0, 5])
+        bg_model_option = fit_options.get('bg_model', 'bg_hom3d')
+        pathways_options = fit_options.get('pathways_options', ['1'])
+        dd_model_option = fit_options.get('dd_model', 'dd_gauss')
+        n_pops = fit_options.get('n_pops', 2)
+
+        bg_model = getattr(dl, bg_model_option, dl.bg_hom3d)
+        pathways = [int(p) for p in pathways_options]
+        r = np.linspace(distance_axis[0], distance_axis[1], 100) # Default range
+        dd_model = getattr(dl, dd_model_option, dl.dd_gauss)
+        try:
+            n_datasets = len(datasets)
+            fit = deerlab_population_fitting(datasets,
+                                    model=dd_model, n_pops=n_pops, 
+                                    bg_model=bg_model, r=r, pathways=pathways)
+        except Exception as e:
+            print(f"Error during fitting: {e}")
+            return dash.no_update, dash.no_update, False, f"Error during fitting: {e}", dash.no_update, dash.no_update, True, True,True
+        
+        # Create plots
+
+        figures_store = []
+        Ps = determine_pop_P(r,fit,dd_model,n_datasets=n_datasets,n_pops=n_pops)
+        fit.P = Ps
+        for i in range(n_datasets):
+            plot_dict = {}
+            plot_dict['t'] = fit.t[i]
+            plot_dict['V'] = fit.Vexp[i]
+            plot_dict['model'] = fit.model[i]
+            plot_dict['P'] = Ps[i]['sum']
+            plot_dict['r'] = fit.r
+
+            fig = plotly_deerlab(fitresult=plot_dict)
+            fig.update_layout(title=f"Fit Result: {dataset_names[i]}", showlegend=True)
+            figures_store.append(fig.to_json())
+
+        gof = dash.no_update
+        dist_stats = dash.no_update
+        fit_store = None
+        return fit_store, figures_store, False, fit.__str__(), gof, dist_stats, False, False
+
+
+
+def fit_to_dict(fit):
+    """"
+    Converts fit results to a dictionary for storage in the database. 
+    This version is specific for population fitting where multiple fits are produced
+    """
+    fits = []
+    # for
+    i=0
+    output = {}
+    output['engine'] = 'DeerLab'
+    output['fit_type'] = 'Population'
+
+    output['t'] = fit.t[i].tolist() if fit.t is not None else None
+    output['model'] = fit.model[i].tolist() if fit.model is not None else None
+    output['P_model'] = fit.P[i]['sum'].tolist() if fit.P is not None else None
+    output['r'] = fit.r.tolist() if fit.r is not None else None
+    output['model_description'] = fit.__str__() if fit is not None else None
+    fits.append(output)
+    
+    return fits
+# ----- Save and Download Callbacks -----
+
+@callback(
+    Output({'type':'fit-status','page': page_id}, 'children'),
+    Input({'type':'save-fit-btn','page': page_id}, 'n_clicks'),
+    State({'type': 'dataset-dropdown', 'page': page_id},'value'),
+    State({'type':'fit-results-store','page': page_id}, 'data'),
+    prevent_initial_call=True
+)
+def save_fit(n_clicks, dataset_ids,dataset_store):
+    """Saves the current fit results to the database, once for each dataset"""
+    if not dataset_store or not dataset_ids:
+        print(f"No fit results to save or no dataset selected.")
+        return dash.no_update
+        
+    session = get_session()
+    for ds_id in dataset_ids:
+        new_fit = Fit(
+            dataset_id=ds_id,
+            name=name_dataset_from_dict(dataset_store),
+            **dataset_store
+        )
+    
+    session.add(new_fit)
+    session.commit()
+    session.close()
+    
+    return dbc.Alert("Fit saved successfully!", color="success", duration=4000)
+
+@callback(
+    Output({"type": "fit-dl-modal",'page': page_id}, "opened"),
+    Output({"type": "fit-dl-store",'page': page_id}, "data"),
+    Input({'type':'download-fit-btn','page': page_id}, 'n_clicks'),
+    State({'type':'fit-results-store','page': page_id}, 'data'),
+
+    prevent_initial_call=True
+)
+def download_fit(n_clicks, fit_store):
+    if n_clicks is None or not fit_store:
+        return False, dash.no_update
+    
+    return True, fit_store

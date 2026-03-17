@@ -340,7 +340,7 @@ def fit_buttons(cellRendererData,rowData):
     if action != 'left':  # only "open" navigates; "download" can be handled separately
         return dash.no_update, True, ds_id
 
-    return f'/fits/{ds_id}', dash.no_update, dash.no_update
+    return f'/fit/{ds_id}', dash.no_update, dash.no_update
 def update_fit_table():
     # This function can be called after adding/removing fits to update the fit table in the collapse section
     pass

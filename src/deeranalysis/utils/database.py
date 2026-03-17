@@ -1,11 +1,22 @@
-from sqlalchemy import create_engine, Column, Integer, String, DateTime, ForeignKey, JSON, LargeBinary, inspect, text
+from sqlalchemy import create_engine, Column, Integer, String, DateTime, ForeignKey, JSON, LargeBinary, inspect, text, Table
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship
 from datetime import datetime, timezone
 import os
 
+
+
 Base = declarative_base()
 
+fit_global_datasets = Table('fit_global_datasets', Base.metadata,
+    Column('fit_id', Integer, ForeignKey('fits.id'), primary_key=True),
+    Column('dataset_id', Integer, ForeignKey('datasets.id'), primary_key=True)
+)
+
+fit_siblings = Table('fit_siblings', Base.metadata,
+    Column('fit_id', Integer, ForeignKey('fits.id'), primary_key=True),
+    Column('sibling_fit_id', Integer, ForeignKey('fits.id'), primary_key=True)
+)
 class Dataset(Base):
     __tablename__ = 'datasets'
     
@@ -59,6 +70,19 @@ class Fit(Base):
     created_at = Column(DateTime, default=datetime.now(timezone.utc))
     
     dataset = relationship("Dataset", back_populates="fits")
+    global_datasets = relationship(
+        "Dataset",
+        secondary=fit_global_datasets,
+        )
+
+    sibling_fits = relationship(
+        "Fit",
+        secondary=fit_siblings,
+        primaryjoin=id == fit_siblings.c.fit_id,
+        secondaryjoin=id == fit_siblings.c.sibling_fit_id,
+        )
+
+
 
 class Settings(Base):
     __tablename__ = 'settings'
@@ -86,10 +110,13 @@ def check_db_exists(folder=None):
 def update_schema():
     """Automatically add missing columns to existing tables"""
     inspector = inspect(engine)
+    existing_table_names = inspector.get_table_names()
     
+    Base.metadata.create_all(engine)  # safe — only creates missing tables
+
     with engine.connect() as conn:
         for table_name, table in Base.metadata.tables.items():
-            if table_name not in inspector.get_table_names():
+            if table_name not in existing_table_names:
                 continue
                 
             existing_columns = {col['name'] for col in inspector.get_columns(table_name)}
@@ -115,6 +142,7 @@ def init_db(path=None):
     engine = create_engine(f'sqlite:///{db_file}')
     Session = sessionmaker(bind=engine)
     Base.metadata.create_all(engine)
+    update_schema()
 
 def reset_db():
     global engine
@@ -124,3 +152,30 @@ def reset_db():
 def get_session():
     global Session
     return Session()
+
+def check_delays(dataset):
+    """Checks that for a given dataset, the entries in the delay column cover 
+    the requirements. E.g. for 4p DEER we need tau1, tau2 and deadtime and for 
+    5pDEER we need tau1, tau2, tau3 and deadtime."""
+
+    if dataset.exp == '4pDEER':
+        required_delays = ['tau1', 'tau2', 'deadtime']
+    elif dataset.exp == '5pDEER':
+        required_delays = ['tau1', 'tau2', 'tau3', 'deadtime']
+    elif dataset.exp == '3pDEER':
+        required_delays = ['tau1', 'deadtime']
+    elif dataset.exp == 'RIDME':
+        required_delays = ['tau1', 'tau2', 'deadtime']
+    else:
+        return True, []  # No specific requirements for unknown experiment types
+    
+    # Add any missing delays with default values (e.g. 0)
+    missing_delays = []
+    new_delays = dataset.delays.copy() if dataset.delays else {}
+    for delay in required_delays:
+        if delay not in dataset.delays:
+            new_delays[delay] = 0
+            missing_delays.append(delay)
+    dataset.delays = new_delays
+    print(f"Checked delays for dataset {dataset.id}: missing {missing_delays}")
+

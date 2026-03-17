@@ -1,5 +1,6 @@
 from dash import html
 import dash_mantine_components as dmc
+import dash_ag_grid as dag
 
 MAX_LEN = 80  # Max length before truncation in the table
 
@@ -106,11 +107,26 @@ def build_metadata_section(dataset,delays=True):
 
 
 def build_delays_table(dataset):
-    rows = build_table_rows(dataset.delays)
+    rows = build_table_rows(dataset.delays,[])
     return dmc.Table(
         children=[html.Tbody(rows)],
         striped=True,
         highlightOnHover=True,
         withTableBorder=True,
         withColumnBorders=True,
+    )
+
+delays_columnDefs = lambda editable: [
+    {"field": "parameter", "headerName": "Parameter", "editable": False},
+    {"field": "value", "headerName": "Value (ns)", "editable": editable},
+]
+
+def build_delays_AGgrid(dataset,page_id,editable=False):
+    rowData = [{"parameter": k, "value": v} for k, v in dataset.delays.items()]
+    return dag.AgGrid(
+        id={"type": "delays-grid", "page": page_id},
+        columnDefs=delays_columnDefs(editable),
+        rowData=rowData,
+        className="ag-theme-alpine",
+        dashGridOptions={"domLayout": "autoHeight"},
     )

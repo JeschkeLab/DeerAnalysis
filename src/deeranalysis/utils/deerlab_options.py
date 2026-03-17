@@ -221,6 +221,17 @@ def plotly_deerlab(fitresult=None, orientation='h'):
         P = None
         PUncert = None
         r = None
+    elif isinstance(fitresult, dict):
+        data_t = fitresult['t']
+        data_V = fitresult['V']
+        data_model = fitresult['model'] if 'model' in fitresult else None
+        if hasattr(fitresult,'model_t'):
+            model_t = fitresult['model_t']
+        else:
+            model_t = data_t
+        P = fitresult['P'] if 'P' in fitresult else None
+        PUncert = fitresult['PUncert'] if 'PUncert' in fitresult else None
+        r = fitresult['r'] if 'r' in fitresult else None
     else:
         raise ValueError("fitresult must be either a DeerLab FitResult object or an xarray DataArray, not {}".format(type(fitresult)))
     i=0
@@ -265,6 +276,7 @@ def fit_to_dict(fit):
     
     output['r'] = fit.r.tolist() if fit.r is not None else None
     output['PUncert'] = None
+    output['model_description'] = fit.__str__() if fit is not None else None
     return output
     
     

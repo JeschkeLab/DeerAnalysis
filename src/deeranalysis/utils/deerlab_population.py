@@ -73,33 +73,49 @@ def create_Vmodel(dataset,t,r,Pmodel,pathways):
         Vmodel = dl.dipolarmodel(t, r, Pmodel)
 
     elif exp_name == '4pDEER':
-        tau1 = dataset.attrs['tau1']
-        tau2 = dataset.attrs['tau2']
+        tau1 = dataset.attrs['tau1']/1e3
+        tau2 = dataset.attrs['tau2']/1e3
         experiment_info= dl.ex_4pdeer(tau1, tau2,pathways=pathways[pathways<4])
         Vmodel = dl.dipolarmodel(t, r, Pmodel, experiment=experiment_info)
     
     elif exp_name == '3pDEER':
-        tau1 = dataset.attrs['tau1']
+        tau1 = dataset.attrs['tau1']/1e3
         experiment_info= dl.ex_3pdeer(tau1,pathways=pathways[pathways<2])
         Vmodel = dl.dipolarmodel(t, r, Pmodel, experiment=experiment_info)
     
     elif exp_name ==  '5pDEER':
-        tau1 = dataset.attrs['tau1']
-        tau2 = dataset.attrs['tau2']
-        tau3 = dataset.attrs['tau3']
+        tau1 = dataset.attrs['tau1']/1e3
+        tau2 = dataset.attrs['tau2']/1e3
+        tau3 = dataset.attrs['tau3']/1e3
         experiment_info= dl.ex_5pdeer(tau1, tau2, tau3,pathways=pathways[pathways<8])
         Vmodel = dl.dipolarmodel(t, r, Pmodel, experiment=experiment_info)
     
     elif exp_name == 'RIDME':
-        tau1 = dataset.attrs['tau1']
-        tau2 = dataset.attrs['tau2']
+        tau1 = dataset.attrs['tau1']/1e3
+        tau2 = dataset.attrs['tau2']/1e3
         experiment_info= dl.ex_ridme(tau1,tau2,pathways=pathways[pathways<4])
         Vmodel = dl.dipolarmodel(t, r, Pmodel, experiment=experiment_info)
 
     return Vmodel
 
+def determine_pop_P(r,fit_results,P_model,n_datasets,n_pops):
+    Prs = []
+    for i in range(n_datasets):
+        means = [fit_results[f'mean{chr(ord("A") + j)}'] for j in range(n_pops)]
+        stds  = [fit_results[f'std{chr(ord("A") + j)}'] for j in range(n_pops)]
+        fracs = [fit_results[f'frac{chr(ord("A") + j)}_{i+1}'] for j in range(n_pops - 1)] + [1 - sum(fit_results[f'frac{chr(ord("A") + j)}_{i+1}'] for j in range(n_pops - 1))]
+        Ps = [f * P_model(r, m, s) for m, s, f in zip(means, stds, fracs)]
+        Ps = {f'{chr(ord("A") + j)}': P for j, P in enumerate(Ps)}
+        Ps_total = np.sum(list(Ps.values()), axis=0)
+        Ps['sum'] = Ps_total
+        for key in Ps:
+            Ps[key] = Ps[key]/np.trapezoid(Ps_total)
+        Prs.append(Ps)
+    return Prs
+
+
 def deerlab_population_fitting(datasets, model=dl.dd_gauss, n_pops = 2,bg_model=dl.bg_hom3d, verbosity=0,
-                               r=None,**kwargs):
+                               r=None,pathways=None, **kwargs):
     """
     
     
@@ -141,7 +157,8 @@ def deerlab_population_fitting(datasets, model=dl.dd_gauss, n_pops = 2,bg_model=
             model = dl.dd_rice(n_pops)
         else:
             raise ValueError(f"Unsupported model string: {model}. Supported models are 'dd_gauss' and 'dd_rice'.")
-    else:
+        
+    elif not isinstance(model, dl.Model):
         raise ValueError("Model should be a string or a dl.Model object.")
     
     if n_pops < 1:
@@ -154,9 +171,12 @@ def deerlab_population_fitting(datasets, model=dl.dd_gauss, n_pops = 2,bg_model=
             bg_model = getattr(dl, bg_model)
         else:
             raise ValueError(f"Unsupported background model string: {bg_model}. Please choose a valid background model from DeerLab.")
-    else:
+    elif not isinstance(model, dl.Model):
         raise ValueError("Background model should be a string or a dl.Model object.")
     
+
+    if pathways is None:
+        pathways = [1,2,3,4,5]
     
     Vs = []
     ts = []
@@ -176,7 +196,7 @@ def deerlab_population_fitting(datasets, model=dl.dd_gauss, n_pops = 2,bg_model=
         r = np.linspace(1.5, 10, 100)
     
     for n,ds in enumerate(datasets):
-        Vmodels[n] = create_Vmodel(ds,ds.coords['t'].values , r, Pmodel,pathways=[1, 2])
+        Vmodels[n] = create_Vmodel(ds,ds.coords['t'].values , r, Pmodel,pathways=pathways)
 
     global_model = dl.merge(*Vmodels)
 
@@ -193,6 +213,11 @@ def deerlab_population_fitting(datasets, model=dl.dd_gauss, n_pops = 2,bg_model=
     fit.Pmodel = Pmodel
     fit.bg_model = bg_model
     fit.datasets = datasets
+    fit.Vexp = Vs
+    fit.t = ts
+
+    return fit
+
 
 
     

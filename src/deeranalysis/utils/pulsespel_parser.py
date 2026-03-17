@@ -91,7 +91,7 @@ def parse_PulseSpel(def_text):
         With 'tau1','tau2' etc...
     """
     if def_text is None or def_text.strip() == '':
-        warnings.warn("No PulseSpel definition text found.")
+        warn("No PulseSpel definition text found.")
         return {}
     var_dict = PulseSpelDef_to_dict(def_text)
     tau1_dict = search_variable(var_dict, 'tau1', 'delay',one_item=True)

@@ -38,9 +38,19 @@ def set_logs_api_global():
     except Exception as e:
         print(f"Error loading LOGS API credentials from database: {e}")
 
+def check_logs_api_key():
+    session = get_session()
+    settings = session.query(Settings).first()  
+    session.close()
+    if settings and settings.logs_url and settings.logs_api_key:
+        return True
+    return False
+
+
 def get_logs_api_db():
     session = get_session()
     settings = session.query(Settings).first()
+    session.close()
     if settings and settings.logs_url and settings.logs_api_key:
         return settings.logs_url, settings.logs_api_key
     else:

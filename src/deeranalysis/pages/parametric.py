@@ -12,6 +12,8 @@ from deeranalysis.utils.database import get_session, Dataset, Fit
 from deeranalysis.utils import create_subplot_figure,dataarray_from_database_entry
 from deeranalysis.components.dataset_search_model import create_dataset_modal
 from deeranalysis.utils.deerlab_options import regparam_options,background_models,parametric_models, plotly_goodness_of_fit, plotly_deerlab,fit_to_dict,dists_stats_to_list,name_dataset_from_dict  
+from deeranalysis.components.fit_page_components import fit_save_download_buttons,distance_slider,adv_fit_options_parametric, fit_plot,DEFAULT_FIT_RESULTS_CODE,fit_results_tab, goodness_of_fit_tab, dist_stats_tab
+import deeranalysis.components.fit_page_components as fpc
 from autodeer import DEERanalysis
 
 import dash_mantine_components as dmc
@@ -78,38 +80,21 @@ layout = html.Div([
             ),
             dmc.Space(h=10),
             
-            dmc.Button("Run Fit", id="p-run-fit-btn", color="blue", className="mb-3"),
-            dmc.Button("Save Fit", id="p-save-fit-btn", color="green", className="mb-3 ms-2", disabled=True),
-            
+            fit_save_download_buttons(page_id),
             html.Div(id='p-fit-status')
         ], width=3),
         
         dbc.Col([
-            dmc.Paper([
-                dcc.Graph(id='p-fit-plot',
-                        figure=plotly_deerlab(None))
-                        ]),
-            dmc.Paper([
-                dmc.Tabs([dmc.TabsList([
-                    dmc.TabsTab("Fit Results", value="FitResults"),
-                    dmc.TabsTab("Goodness of Fit", value="gof"),
-                    dmc.TabsTab("Dist. Stats", value="dist-stats")
-                    ]),
-                    dmc.TabsPanel(value="FitResults", children=[
-                        dmc.CodeHighlight(id='fit-results-code',code=default_fit_results_code, language="python")]),
-                    dmc.TabsPanel(value="gof", children=[dcc.Graph(id='p-gof-plot', figure=plotly_goodness_of_fit())]),
-                    dmc.TabsPanel(value="dist-stats", children=[
-                        dmc.Table(
-                        id='dist-stats-table',
-                        data={
-                            "head": ["Statistic", "Value", "Confidence Interval (95%)"],
-                        },
-                        striped=True,
-                        highlightOnHover=True,
-                    )]),
-                    ]),
-                ], variant="outline"),
-        ], width=9)
+            html.Div([
+                fit_plot(page_id),
+                fpc.fit_results_tabs(
+                    fpc.fit_results_tab(page_id),
+                    fpc.goodness_of_fit_tab(page_id),
+                    fpc.dist_stats_tab(page_id),
+                ),
+                ], style={'display': 'flex', 'flexDirection': 'column', 'height': 'calc(100vh - 160px)', 'gap': '12px'})
+        ], width=9) # dbc.col
+        
     ]),
     
     dcc.Store(id='p-fit-results-store')
@@ -120,8 +105,8 @@ clientside_callback(
             return true
         }
         """,
-        Output("p-run-fit-btn", "loading", allow_duplicate=True),
-        Input("p-run-fit-btn", "n_clicks"),
+        Output({"type":"run-fit-btn","page":page_id}, "loading", allow_duplicate=True),
+        Input({"type":"run-fit-btn","page":page_id}, "n_clicks"),
         prevent_initial_call=True,
     )
 
@@ -141,14 +126,14 @@ def update_dropdown(pathname):
 
 @callback(
     Output('p-fit-results-store', 'data'),
-    Output('p-fit-plot', 'figure'),
-    Output('p-run-fit-btn', 'loading', allow_duplicate=True),
-    Output('fit-results-code', 'code', allow_duplicate=True),
-    Output('p-gof-plot', 'figure', allow_duplicate=True),
-    Output('dist-stats-table', 'data', allow_duplicate=True),
-    Output('p-save-fit-btn', 'disabled'),
+    Output({"type": "fit-plot", "page": page_id}, 'figure'),
+    Output({"type":"run-fit-btn","page":page_id}, 'loading', allow_duplicate=True),
+    Output({"type": "fit-results-code", "page": page_id}, 'code', allow_duplicate=True),
+    Output({"type": "gof-plot", "page": page_id}, 'figure', allow_duplicate=True),
+    Output({"type": "dist-stats-table", "page": page_id}, 'data', allow_duplicate=True),
+    Output({"type":"save-fit-btn","page":page_id}, 'disabled'),
 
-    Input('p-run-fit-btn', 'n_clicks'),
+    Input({"type":"run-fit-btn","page":page_id}, 'n_clicks'),
     Input({'type': 'dataset-dropdown', 'page': page_id}, 'value'),
     State('p-dist-model', 'value'),
     State('p-bg-model', 'value'),
@@ -166,7 +151,7 @@ def run_fit(n_clicks, dataset_id, dist_model_name, bg_model_option,distance_axis
         pass
 
     if not dataset_id:
-        return dash.no_update
+        return dash.no_update,dash.no_update, False, dash.no_update, dash.no_update, dash.no_update, True
         
     session = get_session()
     dataset_entry = session.query(Dataset).filter_by(id=dataset_id).first()
@@ -188,7 +173,7 @@ def run_fit(n_clicks, dataset_id, dist_model_name, bg_model_option,distance_axis
         dist_stats_output = {"head": ["Statistic", "Value", "Confidence Interval (95%)"]}
         return None, fig, False, default_fit_results_code, plotly_goodness_of_fit(),dist_stats_output, True
         
-    if triggered_id == 'p-run-fit-btn':
+    if triggered_id == {"type":"run-fit-btn","page":page_id}:
         r = np.linspace(distance_axis[0], distance_axis[1], 100) # Default range
         
         Bmodel = getattr(dl, bg_model_option, dl.bg_hom3d)
@@ -221,7 +206,7 @@ def run_fit(n_clicks, dataset_id, dist_model_name, bg_model_option,distance_axis
 
 @callback(
     Output('p-fit-status', 'children'),
-    Input('p-save-fit-btn', 'n_clicks'),
+    Input({"type":"save-fit-btn","page":page_id}, 'n_clicks'),
     State({'type': 'dataset-dropdown', 'page': page_id}, 'value'), 
     State('p-fit-results-store', 'data'),
     prevent_initial_call=True
