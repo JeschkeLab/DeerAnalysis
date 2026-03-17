@@ -14,7 +14,7 @@ import plotly.graph_objs as go
 import numpy as np
 import json
 
-from deeranalysis.utils.database import get_session, Dataset,check_delays, Fit
+from deeranalysis.utils.database import get_session, Dataset,check_delays, Fit,fit_global_datasets
 from deeranalysis.utils import create_subplot_figure,plotly_deerlab
 from deeranalysis.components.metadata_table import build_metadata_section,build_delays_table, metadata_long_values_model,build_delays_AGgrid,delays_columnDefs
 from deeranalysis.components.download_modal import create_fit_download_modal
@@ -114,6 +114,7 @@ def layout(fit_id=None):
             ], width=6),
             dbc.Col([
             _fit_plot(fit,dataset),
+            _global_datasets(fit)
             ], width=6)
         ])
     ], style={"padding": "20px"})
@@ -333,6 +334,77 @@ def _fit_dist_stats(fit):
         ),
     ], p="md", mb="md", withBorder=True, radius="md")
 
+
+def _global_datasets(fit):
+    """
+    Creates a collpsible paper that lists all related datasets that were used in the fit. 
+    The datasets are shown as cards with basic infomation and a link to the dataset page.
+    """
+
+    def _dataset_card(dataset_id, primary=True):
+        """
+        Shows a dataset card with basic infomation (ID,name and sample) and a link to the dataset page. Also shows a sparkline of the time-domain data if available, and 
+        "primary" tag if the dataset is the primary dataset used in the fit.
+        """
+        session = get_session()
+        dataset = session.query(Dataset).filter_by(id=dataset_id).first()
+        session.close()
+        if dataset is None:
+            return dmc.Card([
+                dmc.Text(f"Dataset ID: {dataset_id} (not found in database)"),
+            ], shadow="sm", p="md", mb="sm")
+        else:
+            t = np.array(dataset.t, dtype=float)
+            V = np.array(dataset.V, dtype=float)
+            return dmc.Card([
+                dmc.Group([
+                    dmc.Stack([
+                        dmc.Anchor(f"Dataset ID: {dataset_id}", href=f"/dataset/{dataset.id}", underline=False),
+                        dmc.Text(f"Name: {dataset.name}"),
+                        dmc.Text(f"Sample: {dataset.sample}"),
+                        dmc.Badge("Primary", color="green") if primary else None,
+                    ], gap="xs"),
+                    dmc.Sparkline(
+                        data=V.tolist(),
+                        w=120,
+                        h=50,
+                        curveType="natural",
+                        color="blue",
+                    ),
+                ], justify="space-between", align="center"),
+            ], shadow="sm", p="md", mb="sm")
+
+    session = get_session()
+    global_ds_ids = session.execute(
+            fit_global_datasets.select().where(fit_global_datasets.c.fit_id == fit.id)
+        ).fetchall()
+    session.close()
+
+    output = dmc.Paper([
+        dmc.Group([
+            dmc.Title("Datasets", order=4, mb="sm"),
+            dmc.Button(
+                DashIconify(icon="tabler:chevron-down"),
+                id="fd-datasets-toggle",
+                variant="subtle",
+                color="gray",
+                size="sm",
+                p=0,
+            ),
+        ], justify="space-between", mb="sm"),
+        dmc.Collapse(
+            html.Div([
+                _dataset_card(fit.dataset_id, primary=True),
+                *[_dataset_card(row.dataset_id, primary=False) for row in global_ds_ids if row.dataset_id != fit.dataset_id]
+                
+            ]),
+            id="fd-datasets-collapse",
+            opened=True,
+        ),
+    ], p="md", mb="md", withBorder=True, radius="md")
+
+    return output
+
 @callback(
     Output("fd-fit-name", "readOnly"),
     Output("fd-fit-name", "variant"),
@@ -422,6 +494,15 @@ def toggle_dist_collapse(n_clicks, opened):
     prevent_initial_call=True,
 )
 def toggle_plot_collapse(n_clicks, opened):
+    return not opened
+
+@callback(
+    Output("fd-datasets-collapse", "opened"),
+    Input("fd-datasets-toggle", "n_clicks"),
+    State("fd-datasets-collapse", "opened"),
+    prevent_initial_call=True,
+)
+def toggle_datasets_collapse(n_clicks, opened):
     return not opened
 
 def _fit_plot(fit,dataset):

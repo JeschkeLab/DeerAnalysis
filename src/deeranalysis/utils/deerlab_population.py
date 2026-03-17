@@ -215,6 +215,7 @@ def deerlab_population_fitting(datasets, model=dl.dd_gauss, n_pops = 2,bg_model=
     fit.datasets = datasets
     fit.Vexp = Vs
     fit.t = ts
+    fit.pathways = pathways
 
     return fit
 

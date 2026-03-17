@@ -9,13 +9,13 @@ import os
 Base = declarative_base()
 
 fit_global_datasets = Table('fit_global_datasets', Base.metadata,
-    Column('fit_id', Integer, ForeignKey('fits.id'), primary_key=True),
-    Column('dataset_id', Integer, ForeignKey('datasets.id'), primary_key=True)
+    Column('fit_id', Integer, ForeignKey('fits.id', ondelete='CASCADE'), primary_key=True),
+    Column('dataset_id', Integer, ForeignKey('datasets.id', ondelete='CASCADE'), primary_key=True)
 )
 
 fit_siblings = Table('fit_siblings', Base.metadata,
-    Column('fit_id', Integer, ForeignKey('fits.id'), primary_key=True),
-    Column('sibling_fit_id', Integer, ForeignKey('fits.id'), primary_key=True)
+    Column('fit_id', Integer, ForeignKey('fits.id', ondelete='CASCADE'), primary_key=True),
+    Column('sibling_fit_id', Integer, ForeignKey('fits.id', ondelete='CASCADE'), primary_key=True)
 )
 class Dataset(Base):
     __tablename__ = 'datasets'
@@ -70,17 +70,6 @@ class Fit(Base):
     created_at = Column(DateTime, default=datetime.now(timezone.utc))
     
     dataset = relationship("Dataset", back_populates="fits")
-    global_datasets = relationship(
-        "Dataset",
-        secondary=fit_global_datasets,
-        )
-
-    sibling_fits = relationship(
-        "Fit",
-        secondary=fit_siblings,
-        primaryjoin=id == fit_siblings.c.fit_id,
-        secondaryjoin=id == fit_siblings.c.sibling_fit_id,
-        )
 
 
 

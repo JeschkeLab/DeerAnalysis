@@ -310,6 +310,8 @@ def name_dataset_from_dict(dataset_dict):
         el1 = f"DeerNet"
     elif dataset_dict['fit_type'] == 'parametric':
         el1 = f"{dataset_dict['dist_model']}"
+    elif dataset_dict['fit_type'] == 'Population':
+        el1 = f"Population Fit"
     else:
         el1 = f"Non-Parametric"
 

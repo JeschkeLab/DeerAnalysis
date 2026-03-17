@@ -8,7 +8,7 @@ import deerlab as dl
 import dash_mantine_components as dmc
 from dash_iconify import DashIconify
 from autodeer import DEERanalysis
-from deeranalysis.utils.database import get_session, Dataset, Fit
+from deeranalysis.utils.database import get_session, Dataset, Fit, fit_global_datasets, fit_siblings
 from deeranalysis.utils import  dataarray_from_database_entry
 from deeranalysis.components.dataset_search_model import create_dataset_modal
 from deeranalysis.utils.deerlab_options import regparam_options,background_models, plotly_goodness_of_fit, plotly_deerlab,dists_stats_to_list, fit_to_dict,name_dataset_from_dict
@@ -283,6 +283,8 @@ def run_fit(n_clicks, dataset_id, fit_options):
             fit = deerlab_population_fitting(datasets,
                                     model=dd_model, n_pops=n_pops, 
                                     bg_model=bg_model, r=r, pathways=pathways)
+            fit.n_datasets = n_datasets
+            fit.n_pops = n_pops
         except Exception as e:
             print(f"Error during fitting: {e}")
             return dash.no_update, dash.no_update, False, f"Error during fitting: {e}", dash.no_update, dash.no_update, True, True,True
@@ -306,29 +308,31 @@ def run_fit(n_clicks, dataset_id, fit_options):
 
         gof = dash.no_update
         dist_stats = dash.no_update
-        fit_store = None
+        fit_store = fit_to_dict(fit,n_datasets)
         return fit_store, figures_store, False, fit.__str__(), gof, dist_stats, False, False
 
 
 
-def fit_to_dict(fit):
+def fit_to_dict(fit,n_datasets):
     """"
     Converts fit results to a dictionary for storage in the database. 
     This version is specific for population fitting where multiple fits are produced
     """
     fits = []
     # for
-    i=0
-    output = {}
-    output['engine'] = 'DeerLab'
-    output['fit_type'] = 'Population'
+    for i in range(n_datasets):
+        output = {}
+        output['engine'] = 'DeerLab'
+        output['fit_type'] = 'Population'
 
-    output['t'] = fit.t[i].tolist() if fit.t is not None else None
-    output['model'] = fit.model[i].tolist() if fit.model is not None else None
-    output['P_model'] = fit.P[i]['sum'].tolist() if fit.P is not None else None
-    output['r'] = fit.r.tolist() if fit.r is not None else None
-    output['model_description'] = fit.__str__() if fit is not None else None
-    fits.append(output)
+        output['t'] = fit.t[i].tolist() if fit.t is not None else None
+        output['model'] = fit.model[i].tolist() if fit.model is not None else None
+        output['P_model'] = fit.P[i]['sum'].tolist() if fit.P is not None else None
+        output['r'] = fit.r.tolist() if fit.r is not None else None
+        output['model_description'] = fit.__str__() if fit is not None else None
+        output['pathways'] = fit.pathways if fit.pathways is not None else None
+        output['PUncert'] = None
+        fits.append(output)
     
     return fits
 # ----- Save and Download Callbacks -----
@@ -341,20 +345,45 @@ def fit_to_dict(fit):
     prevent_initial_call=True
 )
 def save_fit(n_clicks, dataset_ids,dataset_store):
-    """Saves the current fit results to the database, once for each dataset"""
+    """Saves the current fit results to the database, once for each dataset. The global datasest and sibling fit relantionships are also filled in.
+    
+    # Get sibling fit IDs
+        sibling_ids = session.execute(
+            fit_siblings.select().where(fit_siblings.c.fit_id == fit.id)
+        ).fetchall()
+
+    # Get global dataset IDs
+        global_ds_ids = session.execute(
+            fit_global_datasets.select().where(fit_global_datasets.c.fit_id == fit.id)
+        ).fetchall()
+"""
     if not dataset_store or not dataset_ids:
         print(f"No fit results to save or no dataset selected.")
         return dash.no_update
-        
+
+    new_fits = []   
     session = get_session()
-    for ds_id in dataset_ids:
+
+    for i, ds_id in enumerate(dataset_ids):
+        
         new_fit = Fit(
             dataset_id=ds_id,
-            name=name_dataset_from_dict(dataset_store),
-            **dataset_store
+            name=name_dataset_from_dict(dataset_store[i]),
+            **dataset_store[i],
         )
-    
-    session.add(new_fit)
+        session.add(new_fit)
+        new_fits.append(new_fit)
+    session.flush()
+    for fit in new_fits:
+        session.execute(fit_global_datasets.insert().values([
+            {'fit_id': fit.id, 'dataset_id': ds_id}
+            for ds_id in dataset_ids if ds_id != fit.dataset_id
+        ]))
+        session.execute(fit_siblings.insert().values([
+            {'fit_id': fit.id, 'sibling_fit_id': f.id}
+            for f in new_fits if f.id != fit.id
+        ]))
+
     session.commit()
     session.close()
     
