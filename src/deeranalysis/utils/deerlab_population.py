@@ -87,7 +87,7 @@ def create_Vmodel(dataset,t,r,Pmodel,pathways):
         tau1 = dataset.attrs['tau1']/1e3
         tau2 = dataset.attrs['tau2']/1e3
         tau3 = dataset.attrs['tau3']/1e3
-        experiment_info= dl.ex_5pdeer(tau1, tau2, tau3,pathways=pathways[pathways<8])
+        experiment_info= dl.ex_fwd5pdeer(tau1, tau2, tau3,pathways=pathways[pathways<8])
         Vmodel = dl.dipolarmodel(t, r, Pmodel, experiment=experiment_info)
     
     elif exp_name == 'RIDME':
@@ -171,7 +171,7 @@ def deerlab_population_fitting(datasets, model=dl.dd_gauss, n_pops = 2,bg_model=
             bg_model = getattr(dl, bg_model)
         else:
             raise ValueError(f"Unsupported background model string: {bg_model}. Please choose a valid background model from DeerLab.")
-    elif not isinstance(model, dl.Model):
+    elif not isinstance(bg_model, dl.Model):
         raise ValueError("Background model should be a string or a dl.Model object.")
     
 

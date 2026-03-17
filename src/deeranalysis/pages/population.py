@@ -25,9 +25,16 @@ startup_message = dmc.Alert("Multi-population fitting is designed for globally f
 
 page_id='population'
 
+# Overwrite the default parametric models permittable
+
 parametric_models = [
     {'label': '1 Gaussian', 'value': 'dd_gauss'},
     # {'label': '1 3D Rice', 'value': 'dd_rice'},
+]
+
+# Overwrite the default background models permittable
+background_models = [
+    {'label': 'Homogeneous 3D', 'value': 'bg_hom3d'},
 ]
 layout = html.Div([
     dmc.Title("Multi-Population Global Fitting", order=1, mb="md"),
@@ -163,7 +170,7 @@ clientside_callback(
     prevent_initial_call=True,
 )
 
-# ----- Callbacks for Updating Fit Options and Running Fit -----
+# ----- Callbacks for input option updates and checking -----
 
 @callback(
     Output({'type': 'dataset-dropdown', 'page': page_id}, "error", allow_duplicate=True),
@@ -191,6 +198,7 @@ def update_dropdown(pathname):
     options = [{'label': ds.name, 'value': str(ds.id)} for ds in datasets]
     session.close()
     return options
+# ----- Callbacks for Updating Fit Options and Running Fit -----
 
 
 @callback(
@@ -334,7 +342,8 @@ def fit_to_dict(fit,n_datasets):
         output['PUncert'] = None
         fits.append(output)
     
-    return fits
+    return 
+
 # ----- Save and Download Callbacks -----
 
 @callback(
