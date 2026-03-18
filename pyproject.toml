@@ -27,7 +27,8 @@ dependencies = [
     "onnxruntime (>=1.23.2,<2.0.0)",
     "logs-py (<4.0.22)",
     "numba (>=0.63.1,<0.64.0)",
-    "pyepr-esr (>=1.0,<2.0)"
+    "pyepr-esr (>=1.0,<2.0)",
+    "pywebview (>=6.1)
 ]
 
 
