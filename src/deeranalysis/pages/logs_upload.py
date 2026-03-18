@@ -7,7 +7,7 @@ import dash_ag_grid as dag
 import deeranalysis.utils.logs_plugin as logs
 from deeranalysis.utils import eprload
 from deeranalysis.components.viewer_modals import create_viewer_modal
-from deeranalysis.components.logs_import_modal import create_logs_import_modal
+from deeranalysis.components.logs_import_modal import create_logs_import_modal, build_store_data, page_id as logs_import_page_id
 
 dash.register_page(__name__, path='/logs_upload')
 
@@ -24,7 +24,16 @@ logsTable_column_defs = [
 
 # Layout
 layout = dmc.Container([
-    dmc.Title("LOGS Data Upload", order=1, mb="md"),
+    dcc.Store(id='logs-connected', data=False),
+    dmc.Group([
+        dmc.Title("LOGS Data Upload", order=1),
+        dmc.ActionIcon(
+            DashIconify(icon="mdi:refresh", width=20),
+            id="logs-refresh-btn",
+            variant="subtle",
+            size="lg",
+        ),
+    ], mb="md"),
     dmc.Modal(id='connection-error', title="Connection Error!",withCloseButton=False,children=[
         dmc.Text("Unable to connect to the LOGs server. Please check your connection and credentials."),
         dmc.Code(id='connection-error-msg')
@@ -127,21 +136,23 @@ layout = dmc.Container([
 
 @callback(
     Output("persons-multiselect", "data"),
-    Input("persons-multiselect", "id")  # Dummy input to trigger callback on page load
+    Input("logs-connected", "data"),
 )
-def update_persons(id):
-    # Fetch persons from LOGS and return as options for MultiSelect
-    # Example: return [{"value": p.id, "label": p.name} for p in logs.get_persons()]
+def update_persons(connected):
+    if not connected:
+        return []
     people = logs.get_list_of_persons()
     return people
 
 @callback(
     Output("project-multiselect", "data"),
     Input("persons-multiselect", "value"),
+    State("logs-connected", "data"),
     prevent_initial_call=True
 )
-def update_projects(persons):
-    # Fetch projects from LOGS and return as options for MultiSelect
+def update_projects(persons, connected):
+    if not connected:
+        return []
     projects = logs.get_list_of_projects(person_ids=persons)
     return projects
 
@@ -149,10 +160,12 @@ def update_projects(persons):
     Output("samples-multiselect", "data"),
     Input("persons-multiselect", "value"),
     Input("project-multiselect", "value"),
+    State("logs-connected", "data"),
     prevent_initial_call=True
 )
-def update_samples(persons, projects):
-    # Fetch samples from LOGS and return as options for MultiSelect
+def update_samples(persons, projects, connected):
+    if not connected:
+        return []
     samples = logs.get_list_of_samples(project_ids=projects, person_ids=persons)
     return samples
 
@@ -160,11 +173,11 @@ def update_samples(persons, projects):
     Output("datasets-grid", "rowData"),
     Input("project-multiselect", "value"),
     Input("samples-multiselect", "value"),
+    State("logs-connected", "data"),
     prevent_initial_call=True
 )
-def update_datasets_grid(projects,samples):
-    # Fetch datasets based on selected projects and samples, then update AG Grid
-    if len(samples) == 0:
+def update_datasets_grid(projects, samples, connected):
+    if not connected or not samples or len(samples) == 0:
         return dash.no_update
     datasets = logs.get_list_of_datasets(project_ids=projects, sample_ids=samples)
     # Convert datasets to rowData format for AG Grid
@@ -213,21 +226,40 @@ def handle_action(data,rowData,current_figure):
 
         file_buffers = logs.download_to_memory(dataset)
         dataarray = eprload(file_buffers)
-        dash.set_props("logs-import"+"dataset-name", {"value": dataset.name})
-        dash.set_props("logs-import"+"project-name", {"value": [p.name for p in dataset.projects][0] if dataset.projects else ""})
-        dash.set_props("logs-import"+"sample-name", {"value": custom_values.get("Sample", "")})
-        return dash.no_update,dash.no_update,True
+
+        # Build store data and metadata from the dataarray
+        store_data, metadata_children, long_values_store, delays_data, tmin = build_store_data(dataarray)
+
+        dash.set_props("logs-import-dataset-name", {"value": dataset.name})
+        dash.set_props("logs-import-project-name", {"value": [p.name for p in dataset.projects][0] if dataset.projects else ""})
+        dash.set_props("logs-import-sample-name", {"value": custom_values.get("Sample", "")})
+        dash.set_props("logs-import-dataset-store", {"data": store_data})
+        dash.set_props("logs-import-delays-grid", {"rowData": delays_data})
+        dash.set_props({"type": "tmin-shift", "page": logs_import_page_id}, {"value": tmin})
+        dash.set_props({"type": "metadata-content", "page": logs_import_page_id}, {"children": metadata_children})
+        dash.set_props({"type": "metadata-modal-store", "page": logs_import_page_id}, {"data": long_values_store})
+        return dash.no_update, dash.no_update, True
 
 @callback(
         Output('connection-error','opened'),
         Output('connection-error-msg','children'),
-        Input('url', 'pathname')
+        Output('persons-multiselect', 'disabled'),
+        Output('project-multiselect', 'disabled'),
+        Output('samples-multiselect', 'disabled'),
+        Output('experiment-multiselect', 'disabled'),
+        Output('date-range-picker', 'disabled'),
+        Output('datasets-grid', 'style'),
+        Output('logs-connected', 'data'),
+        Input('url', 'pathname'),
+        Input('logs-refresh-btn', 'n_clicks'),
 )
-def check_logs_connection(url):
-    # Check the connection to logs and opens a connection warning modal upon page load
+def check_logs_connection(url, n_clicks):
+    # Check the connection to logs and opens a connection warning modal upon page load or refresh
+    grid_style = {"height": "600px"}
     try:
         logs.test_logs_api()
     except Exception as e:
-        return True, e.__str__()
+        disabled_grid_style = {**grid_style, "pointerEvents": "none", "opacity": 0.5}
+        return True, e.__str__(), True, True, True, True, True, disabled_grid_style, False
     else:
-        return False, ""
+        return False, "", False, False, False, False, False, grid_style, True
