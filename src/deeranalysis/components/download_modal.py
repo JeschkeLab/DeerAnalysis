@@ -4,11 +4,11 @@ import dash_mantine_components as dmc
 from dash_iconify import DashIconify
 import io
 import traceback
-from deeranalysis.utils.io import datasetSQL_to_file
-from deeranalysis.utils.database import get_session, Dataset
+from deeranalysis.utils.io import datasetSQL_to_file,fitSQL_to_file
+from deeranalysis.utils.database import get_session, Dataset,Fit
 
 
-FORMAT_OPTIONS = [
+DATASET_DOWNLOAD_FORMAT_OPTIONS = [
     {"value": "bruker", "label": "Bruker (.DTA/.DSC)"},
     {"value": "hdf5",   "label": "HDF5 (.h5)"},
     {"value": "matlab", "label": "Matlab (.mat)"},
@@ -22,8 +22,8 @@ EXTENSIONS = {
     "csv":    ".csv",
 }
 
-DOWNLOAD_FORMAT_OPTIONS = [
-    {"value": "hdf5",   "label": "HDF5 (.h5)"},
+FIT_DOWNLOAD_FORMAT_OPTIONS = [
+    # {"value": "hdf5",   "label": "HDF5 (.h5)"},
     {"value": "matlab", "label": "Matlab (.mat)"},
     {"value": "csv",    "label": "CSV (.csv)"},
 ]
@@ -67,7 +67,7 @@ def create_dataset_download_modal(page_id="dataset-download-modal"):
                         id={"type": "dataset-dl-format", "page": page_id},
                         label="File format",
                         description="Choose the format for the exported file.",
-                        data=FORMAT_OPTIONS,
+                        data=DATASET_DOWNLOAD_FORMAT_OPTIONS,
                         value="hdf5",
                         allowDeselect=False,
                         w="100%",
@@ -128,11 +128,12 @@ def create_fit_download_modal(page_id="fit-download-modal"):
             opened=False,
             children=[
                 dmc.Stack([
+                    html.Div(id={"type": "fit-dl-alert", "page": page_id}),
                     dmc.Select(
                         id={"type": "fit-dl-format", "page": page_id},
                         label="File format",
                         description="Choose the format for the exported fit result.",
-                        data=DOWNLOAD_FORMAT_OPTIONS,
+                        data=FIT_DOWNLOAD_FORMAT_OPTIONS,
                         value="hdf5",
                         allowDeselect=False,
                         w="100%",
@@ -252,7 +253,7 @@ def _download_dataset(n_clicks, dataset_id, fmt, filename):
     elif fmt == "matlab":
         buf = io.BytesIO()
         try:
-            datasetSQL_to_file(buf, dataset, "mat")
+            datasetSQL_to_file(buf, dataset, "matlab")
         except Exception as e:
             alert = dmc.Alert(
                 f"MATLAB export failed: {str(e)}",
@@ -282,15 +283,17 @@ def _download_dataset(n_clicks, dataset_id, fmt, filename):
 
 
 @callback(
-    Output({"type": "fit-dl-download", "index": MATCH}, "data"),
-    Output({"type": "fit-dl-modal",    "index": MATCH}, "opened", allow_duplicate=True),
-    Input({"type": "fit-dl-btn",       "index": MATCH}, "n_clicks"),
-    State({"type": "fit-dl-store",     "index": MATCH}, "data"),
-    State({"type": "fit-dl-format",    "index": MATCH}, "value"),
-    State({"type": "fit-dl-filename",  "index": MATCH}, "value"),
+    Output({"type": "fit-dl-download", "page": MATCH}, "data"),
+    Output({"type": "fit-dl-modal",    "page": MATCH}, "opened", allow_duplicate=True),
+    Output({"type": "fit-dl-alert", "page": MATCH}, "children"),
+    Input({"type": "fit-dl-btn",       "page": MATCH}, "n_clicks"),
+    State({"type": "fit-dl-store",     "page": MATCH}, "data"),
+    State({"type": "fit-dl-format",    "page": MATCH}, "value"),
+    State({"type": "fit-dl-filename",  "page": MATCH}, "value"),
     prevent_initial_call=True,
 )
 def _download_fit(n_clicks, fit_id, fmt, filename):
+    print(f"Triggered fit download callback with fit_id={fit_id}, fmt={fmt}, filename={filename}")
     if not n_clicks or fit_id is None:
         return dash.no_update, dash.no_update
 
@@ -298,15 +301,51 @@ def _download_fit(n_clicks, fit_id, fmt, filename):
     ext = EXTENSIONS.get(fmt, "")
     full_name = filename + ext
 
-    # TODO: implement per-format export logic using fit_id
-    # Example skeleton:
-    #   from deeranalysis.utils.database import get_session, Fit
-    #   session = get_session()
-    #   fit = session.query(Fit).filter_by(id=fit_id).first()
-    #   session.close()
-    #   if fmt == "csv":
-    #       content = fit_to_csv(fit)
-    #       return dcc.send_string(content, full_name), False
-    #   ...
+    session = get_session()
+    fit_entry = session.query(Fit).filter_by(id=fit_id).first()
+    dataset_entry = session.query(Dataset).filter_by(id=fit_entry.dataset_id).first()
+    session.close()
+
+    if fmt == "hdf5":
+        full_name = filename + ext
+        buf = io.BytesIO()
+        try:
+            fitSQL_to_file(buf, fit_entry,dataset_entry, fmt, uncert=True)
+        except Exception as e:
+            alert = dmc.Alert(
+                f"HDF5 export failed: {str(e)}",
+                color="red",
+                variant="filled",
+            )
+            return dash.no_update, True, alert
+        return dcc.send_bytes(buf.getvalue(), full_name), True, dash.no_update
+    elif fmt == "matlab":
+        full_name = filename + ext
+        buf = io.BytesIO()
+        try:
+            fitSQL_to_file(buf, fit_entry,dataset_entry, fmt, uncert=True)
+        except Exception as e:
+            alert = dmc.Alert(
+                f"MATLAB export failed: {str(e)}",
+                color="red",
+                variant="filled",
+            )
+            return dash.no_update, True, alert
+        return dcc.send_bytes(buf.getvalue(), full_name), True, dash.no_update
+    elif fmt == "csv":
+        buf = io.BytesIO()
+        full_name = filename + ".zip" # We will create a zip file containing the CSVs
+        try:
+            fitSQL_to_file(buf, fit_entry,dataset_entry, fmt, uncert=True)
+        except Exception as e:
+            print(e)
+            traceback.print_tb(e.__traceback__)
+            alert = dmc.Alert(
+                f"CSV export failed: {str(e)}",
+                color="red",
+                variant="filled",
+            )
+            return dash.no_update, True, alert
+        return dcc.send_bytes(buf.getvalue(), full_name), True, dash.no_update
 
     return dash.no_update, False

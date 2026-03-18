@@ -15,6 +15,7 @@ import json
 from deeranalysis.utils.database import get_session, Dataset,check_delays
 from deeranalysis.utils import create_subplot_figure
 from deeranalysis.components.metadata_table import build_metadata_section,build_delays_table, metadata_long_values_model,build_delays_AGgrid,delays_columnDefs
+from deeranalysis.components.download_modal import create_fit_download_modal
 
 dash.register_page(__name__, path_template="/dataset/<dataset_id>")
 page_id = "dataset-detail"
@@ -27,6 +28,22 @@ fits_columnDefs = [
     {"field": "Engine", "filter": "agTextColumnFilter", "flex": 1},
     {"field": "RMSD",   "flex": 1},
     {"field": "Date",   "flex": 2},
+    {
+        "field": "Open",
+        "headerName": "",
+        "cellRenderer": "DMC_DualIconButton",
+        "cellRendererParams": {
+            "leftIcon": "mdi:open-in-new",
+            "rightIcon": "mdi:download-outline",
+            "color": "blue",
+            "size": "sm",
+            "radius": "sm",
+        },
+        "width": 80,
+        "suppressSizeToFit": True,
+        "sortable": False,
+        "filter": False,
+    },
 ]
 
 # ---------------------------------------------------------------------------
@@ -63,6 +80,8 @@ def layout(dataset_id=None):
     return html.Div([
         dcc.Store(id="dd-dataset-id", data=int(dataset_id)),
         metadata_long_values_model(page_id),
+        create_fit_download_modal(page_id=page_id),
+        dcc.Location(id="dd-redirect", refresh=True),
         dcc.Store(id={"type":"metadata-modal-store","page":page_id}, data=long_values_store),  # Store for long metadata values for modals
         dmc.Modal(
             id="dd-delete-modal",
@@ -258,8 +277,8 @@ def _build_fits_rows(dataset):
             "Name":   getattr(fit, "name",       ""),
             "Type":   getattr(fit, "fit_type",   ""),
             "Engine": getattr(fit, "engine",     ""),
-            "RMSD":   rmsd,
             "Date":   str(getattr(fit, "created_at", "")),
+            "id":     fit.id,
         })
     return rows
 
@@ -477,3 +496,24 @@ def update_graph(tmin_shift,dataset_id, ):
     fig = _build_signal_figure(dataset,tmin_shift)
     return fig
 
+@callback(
+    Output("dd-redirect", "pathname"),
+    Output({"type": "fit-dl-modal", 'page': page_id}, "opened"),
+    Output({"type": "fit-dl-store", 'page': page_id}, "data"),
+    Input("dd-fits-table", "cellRendererData"),
+    State("dd-fits-table", "rowData"),
+    prevent_initial_call=True,
+)
+def fit_buttons(cellRendererData, rowData):
+    """Navigate to the fit page or open the download modal."""
+    if cellRendererData is None or cellRendererData.get('colId') != 'Open':
+        return dash.no_update
+    action = (cellRendererData.get('value') or {}).get('action')
+    rowIndex = cellRendererData.get('rowIndex', None)
+    selected_row = rowData[rowIndex] if rowIndex is not None and rowIndex < len(rowData) else None
+    fit_id = selected_row.get('id') if selected_row else None
+    if fit_id is None:
+        return dash.no_update
+    if action != 'left':  # right button -> download
+        return dash.no_update, True, fit_id
+    return f'/fit/{fit_id}', dash.no_update, dash.no_update

@@ -32,7 +32,7 @@ def datasetSQL_to_file(file, dataset_entry, format_type):
         header = 't,V_real,V_imag'
         savetxt(file, data, delimiter=',', header=header, comments='')
     
-    elif format_type == 'mat':
+    elif format_type == 'matlab':
 
         from scipy.io import savemat
         t = np.array(dataset_entry.t)
@@ -76,6 +76,7 @@ def fitSQL_to_file(file, fit_entry,dataset_entry, format_type, uncert=True):
         # Either resample the fit to the dataset's t axis or 
         Vt = np.array(fit_entry.t)
         Vmodel = np.interp(t, Vt, Vmodel)
+        raise NotImplementedError("Resampling of DeerNet fits is not implemented yet. Please ensure that the fit and dataset have the same time axis before exporting.")
         
     if format_type == 'csv':
         # Create a zip file with two CSVs: one for the time domain data and one for the distance distribution
@@ -109,7 +110,7 @@ def fitSQL_to_file(file, fit_entry,dataset_entry, format_type, uncert=True):
                 zip_file.writestr('fit_dd.csv', dist_buffer.getvalue())
 
 
-    elif format_type == 'mat':
+    elif format_type == 'matlab':
         from scipy.io import savemat
         output_dict = {}
         output_dict['t'] = t.T
