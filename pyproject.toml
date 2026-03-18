@@ -7,7 +7,7 @@ authors = [
 ]
 readme = "README.md"
 packages = [{include = "deeranalysis", from = "src"}]
-requires-python = "^3.12"
+requires-python = "^3.12,<3.14"
 
 dependencies = [
     "deerlab (>=1.1.5,<2.0.0)",
@@ -15,7 +15,7 @@ dependencies = [
     "scipy (>=1.16.3,<2.0.0)",
     "xarray (>=2025.12.0,<2026.0.0)",
     "pytest (>=9.0.2,<10.0.0)",
-    "dash (>=3.3.0,<4.0.0)",
+    "dash (>=4.0.0,<5.0.0)",
     "dash-bootstrap-components (>=2.0.4,<3.0.0)",
     "pandas (>=2.3.3,<3.0.0)",
     "pytest-cov (>=7.0.0,<8.0.0)",
@@ -28,7 +28,8 @@ dependencies = [
     "logs-py (<4.0.22)",
     "numba (>=0.63.1,<0.64.0)",
     "pyepr-esr (>=1.0,<2.0)",
-    "pywebview (>=6.1)
+    "pywebview (>=6.1)",
+    "sqlalchemy (>2.0)",
 ]
 
 
