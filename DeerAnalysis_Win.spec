@@ -12,7 +12,7 @@ datas += collect_data_files('deerlab')  # Collect deerlab data files
 
 
 # Collect all submodules from deeranalysis package
-hiddenimports = ['dash_iconify', 'deerlab', 'autodeer','pyepr-esr', 'dash_ag_grid']
+hiddenimports = ['dash_iconify', 'deerlab','pyepr-esr', 'dash_ag_grid']
 hiddenimports += collect_submodules('deeranalysis')
 hiddenimports += collect_submodules('deerlab')  # Properly collect all deerlab submodules
 
