@@ -169,7 +169,7 @@ def run_fit(n_clicks, dataset_id, dist_model_name, bg_model_option,distance_axis
         V = V / np.max(np.abs(V))
 
         fig = plotly_deerlab(fitresult=dataset)
-        fig.update_layout(title=f"Dataset: {dataset_entry.name}", height=500, showlegend=True)
+        fig.update_layout(title=f"Dataset: {dataset_entry.name}", showlegend=True)
         dist_stats_output = {"head": ["Statistic", "Value", "Confidence Interval (95%)"]}
         return None, fig, False, default_fit_results_code, plotly_goodness_of_fit(),dist_stats_output, True
         
@@ -193,7 +193,7 @@ def run_fit(n_clicks, dataset_id, dist_model_name, bg_model_option,distance_axis
         r = fit.r
 
         fig = plotly_deerlab(fitresult=fit)
-        fig.update_layout(title=f"Fit Result: {dataset_entry.name}", height=500, showlegend=True)
+        fig.update_layout(title=f"Fit Result: {dataset_entry.name}", showlegend=True)
 
         gof_fig = plotly_goodness_of_fit(fit)
 

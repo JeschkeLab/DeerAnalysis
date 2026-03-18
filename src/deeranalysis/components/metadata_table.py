@@ -53,8 +53,9 @@ def build_table_rows(items_dict,long_values_store):
             make_value_cell(key, value,long_values_store),
         ]))
     return rows
+
 def build_metadata_section(dataset,delays=True):
-    """Build the metadata & delays section children for a dataset.
+    """Build the metadata & delays section children for a dataset database element.
 
     Returns a tuple of (children, long_values_store) where:
       - children is a list of Dash components to render
@@ -104,7 +105,37 @@ def build_metadata_section(dataset,delays=True):
 
     return html.Div(metadata_sections, style={"padding": "8px"}), long_values_store
 
+def build_metadata_section_datarray(datarray):
+    """Build the metadata section children for a datarray.
 
+    Returns a tuple of (children, long_values_store) where:
+      - children is a list of Dash components to render
+      - long_values_store is a dict mapping key -> full string value (for the modal)
+    """
+
+    long_values_store = {}
+
+    metadata_sections = []
+
+    if datarray.attrs:
+        try:
+            rows = build_table_rows(datarray.attrs,long_values_store)
+            metadata_sections.append(
+                dmc.Table(
+                    children=[html.Tbody(rows)],
+                    striped=True,
+                    highlightOnHover=True,
+                    withTableBorder=True,
+                    withColumnBorders=True,
+                    mb="md",
+                )
+            )
+        except Exception:
+            metadata_sections.append(html.P("Unable to parse metadata."))
+    else:
+        metadata_sections.append(html.P("No metadata available.", className="text-muted"))
+
+    return html.Div(metadata_sections, style={"padding": "8px"}), long_values_store
 
 def build_delays_table(dataset):
     rows = build_table_rows(dataset.delays,[])

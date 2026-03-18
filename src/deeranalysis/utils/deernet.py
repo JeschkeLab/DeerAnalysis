@@ -330,7 +330,7 @@ def deernet(dataset, providor=None) -> DEERnetResult:
 
     fitresult = FitResult(
         dataset = dataset,
-        t = (time_axis+shift) * 1e6, # convert back to microseconds for output
+        t = (time_axis+t_shift) * 1e6, # convert back to microseconds for output
         Vexp = data_axis,
         # model_t = new_axis *1e6, # convert back to microseconds for output
         modelUncert = modelUncert,
@@ -342,7 +342,7 @@ def deernet(dataset, providor=None) -> DEERnetResult:
         PUncert = PUncert,
         noiselvl = noiselvl,
         residuals = residuals,
-        
+        _summary = 'DEERnet Fit Result',
         )
     return fitresult
 

@@ -16,6 +16,7 @@ from deeranalysis.utils import create_subplot_figure, dataarray_from_database_en
 from deeranalysis.utils.deernet import deernet
 import deerlab as dl
 dash.register_page(__name__)
+import deeranalysis.components.fit_page_components as fpc
 
 import os
 page_id='deernet'
@@ -67,39 +68,20 @@ layout = html.Div([
             ]),
 
             html.Br(),
-            
-            dmc.Button("Run Fit", id="dn-run-fit-btn", color="blue", className="mb-3"),
-            dmc.Button("Save Fit", id="dn-save-fit-btn", color="green", className="mb-3 ms-2", disabled=True),
-            
+            fpc.fit_save_download_buttons(page_id),
             html.Div(id='dn-fit-status')
         ], width=3),
-        
         dbc.Col([
-            dmc.Paper([
-                dcc.Graph(id='dn-fit-plot',
-                        figure=plotly_deerlab(None))
-                        ]),
-            dmc.Paper([
-                dmc.Tabs([dmc.TabsList([
-                    dmc.TabsTab("Goodness of Fit", value="gof"),
-                    dmc.TabsTab("Dist. Stats", value="dist-stats")
-                    ]),
-                    dmc.TabsPanel(value="gof", children=[dcc.Graph(id='dn-gof-plot', figure=plotly_goodness_of_fit())]),
-                    dmc.TabsPanel(value="dist-stats", children=[
-                        dmc.Table(
-                        id='dist-stats-table',
-                        data={
-                            "head": ["Statistic", "Value", "Confidence Interval (95%)"],
-                        },
-                        striped=True,
-                        highlightOnHover=True,
-                    )]),
-                    ]),
-                ], variant="outline"),
-                    
-        ], width=9)
-    ]),
-    
+            html.Div([
+                fpc.fit_plot(page_id),
+                fpc.fit_results_tabs(
+                    fpc.fit_results_tab(page_id),
+                    fpc.goodness_of_fit_tab(page_id),
+                    fpc.dist_stats_tab(page_id),
+                ),
+                ], style={'display': 'flex', 'flexDirection': 'column', 'height': 'calc(100vh - 160px)', 'gap': '12px'})
+        ], width=9), # dbc.col
+    ]), # dbc.row
     # Hidden store for fit results
     dcc.Store(id='dn-fit-results-store'),
     dmc.Modal(id="dn-missing-models",
@@ -117,8 +99,8 @@ clientside_callback(
             return true
         }
         """,
-        Output("dn-run-fit-btn", "loading", allow_duplicate=True),
-        Input("dn-run-fit-btn", "n_clicks"),
+        Output({"type":"run-fit-btn","page":page_id}, "loading", allow_duplicate=True),
+        Input({"type":"run-fit-btn","page":page_id}, "n_clicks"),
         prevent_initial_call=True,
     )
 
@@ -145,15 +127,14 @@ def update_dropdown(pathname):
 
 @callback(
     Output('dn-fit-results-store', 'data'),
-    Output('dn-fit-plot', 'figure',allow_duplicate=True),
-    Output('dn-run-fit-btn', 'loading', allow_duplicate=True),
-    Output('dn-gof-plot', 'figure', allow_duplicate=True),
-    Output('dist-stats-table', 'data', allow_duplicate=True),
-    Output('dn-save-fit-btn', 'disabled'),
-    Input('dn-run-fit-btn', 'n_clicks'),
+    Output({"type": "fit-plot", "page": page_id}, 'figure'),
+    Output({"type":"run-fit-btn","page":page_id}, 'loading', allow_duplicate=True),
+    Output({"type": "gof-plot", "page": page_id}, 'figure', allow_duplicate=True),
+    Output({"type": "dist-stats-table", "page": page_id}, 'data', allow_duplicate=True),
+    Output({"type":"save-fit-btn","page":page_id}, 'disabled'),
+    Input({"type":"run-fit-btn","page":page_id}, 'n_clicks'),
     Input({'type': 'dataset-dropdown', 'page': page_id}, 'value'),
     prevent_initial_call=True,
-
 )
 def run_fit(n_clicks, dataset_id):
     ctx = dash.callback_context
@@ -182,16 +163,16 @@ def run_fit(n_clicks, dataset_id):
         V = V / np.max(np.abs(V))
 
         fig = plotly_deerlab(fitresult=dataset)
-        fig.update_layout(title=f"Dataset: {dataset_entry.name}", height=500, showlegend=True)
+        fig.update_layout(title=f"Dataset: {dataset_entry.name}", showlegend=True)
         dist_stats_output = {"head": ["Statistic", "Value", "Confidence Interval (95%)"]}
         return None, fig, False, plotly_goodness_of_fit(),dist_stats_output, True
 
-    elif triggered_id == 'dn-run-fit-btn':
+    elif triggered_id == {"type":"run-fit-btn","page":page_id}:
 
         fit = deernet(dataset,providor='CoreMLExecutionProvider')
 
         fig = plotly_deerlab(fitresult=fit)
-        fig.update_layout(title=f"Fit Result: {dataset_entry.name}", height=500, showlegend=True)
+        fig.update_layout(title=f"Fit Result: {dataset_entry.name}", showlegend=True)
 
         gof_fig = plotly_goodness_of_fit(fit)
 
@@ -201,13 +182,13 @@ def run_fit(n_clicks, dataset_id):
 
         fit_dict = fit_to_dict(fit)
         # fit_dict = {}
-        return fit_dict, fig, False,  gof_fig,dist_stats_output, False
+        return fit_dict, fig, False,  gof_fig, dist_stats_output, False
 
 
 @callback(
     Output('dn-fit-status', 'children'),
-    Input('dn-save-fit-btn', 'n_clicks'),
-    State( {'type': 'dataset-dropdown', 'page': page_id},'value'),
+    Input({"type":"save-fit-btn","page":page_id}, 'n_clicks'),
+    State({'type': 'dataset-dropdown', 'page': page_id}, 'value'), 
     State('dn-fit-results-store', 'data'),
     prevent_initial_call=True
 )

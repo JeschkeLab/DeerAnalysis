@@ -194,7 +194,7 @@ def run_fit(n_clicks, dataset_id, bg_model_option,compactness,distance_axis,path
         pass
 
     if not dataset_id:
-        return dash.no_update,dash.no_update, False, dash.no_update, dash.no_update, dash.no_update, True
+        return dash.no_update,dash.no_update, False, dash.no_update, dash.no_update, dash.no_update, True,True
 
         
     session = get_session()

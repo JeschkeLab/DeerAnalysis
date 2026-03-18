@@ -16,15 +16,16 @@ import dash_mantine_components as dmc
 from sqlalchemy.orm import Session
 from dash_iconify import DashIconify
 
+from deeranalysis.components.metadata_table import build_metadata_section_datarray, metadata_long_values_model
 dash.register_page(__name__)
-
+page_id = 'upload'
 
 layout = html.Div([
+    metadata_long_values_model(page_id),
+    dcc.Store(id={"type":"metadata-modal-store","page":page_id}, data=""),
     dmc.Title("Upload Dataset from File", order=1, mb="md"),
     dmc.Divider(mb="lg"),
     
-    html.Div(id='save-notification'),
-
     dmc.Grid([
         dmc.GridCol([
             dcc.Upload(
@@ -50,7 +51,6 @@ layout = html.Div([
             dmc.Autocomplete(id="sample-name", label="Sample Name", mb="sm"),
             dmc.TextInput(id="dataset-name", label="Dataset Name", mb="sm"),
             
-            html.Div(id='upload-status'),
             dmc.Select(
                 label='Experiment Type:',
                 id='experiment-type-dropdown',
@@ -62,11 +62,15 @@ layout = html.Div([
             ),
             
             dmc.Title("Delays", order=4, mt="md", mb="sm"),
+            html.Div(id='tmin-warning-div'),
             dmc.NumberInput(
-                id='deadtime-input',
-                label='Deadtime (ns)',
+                id={"type": "tmin-shift", 'page': page_id},
+                label='Shift tmin (ns)',
+                allowNegative=True,
                 value=0,
-                step=0.1,
+                step=4,
+                stepHoldDelay=500,
+                stepHoldInterval=100,
                 decimalScale=2,
                 mb="sm"
             ),
@@ -86,18 +90,11 @@ layout = html.Div([
                     dmc.AccordionItem(
                         value="parameters",
                         children=[
-                            dmc.AccordionControl("Parameters"),
+                            dmc.AccordionControl("Metadata"),
                             dmc.AccordionPanel(
-                                dag.AgGrid(
-                                    id='data-parameters-grid',
-                                    columnDefs=[
-                                        {'field': 'parameter', 'headerName': 'Parameter'},
-                                        {'field': 'value', 'headerName': 'Value'}
-                                    ],
-                                    rowData=[],
-                                    className="ag-theme-alpine",
-                                    style={'height': '300px', 'width': '100%'}
-                                )
+                                children=html.Div(
+                                id={'type':"metadata-content", 'page': page_id},
+                                style={"maxHeight": "28vh", "overflow": "auto", "padding": "10px"},)
                             )
                         ]
                     )
@@ -110,19 +107,28 @@ layout = html.Div([
             dcc.Graph(id='data-viewer-plot',
                       style={'height': '500px'}),
             dmc.Button("Add Dataset", id="save-dataset-btn", color="blue", mb="md"),
-            html.Div(id='save-notification'),
         ], span=8),
     ]),
 ])
 
+
+def _error_message(message):
+    return [dict(
+        title='Error',
+        message= message,
+        icon= DashIconify(icon="material-symbols:warning"),
+        color= 'red',
+        duration= 4000
+    )]
+
 @callback(
-    Output('upload-status', 'children'),
     Output('dataset-store', 'data'),
-    Output('data-parameters-grid', 'rowData'),
+    Output({'type':"metadata-content", 'page': page_id}, 'children'),
+    Output({"type":"metadata-modal-store","page":page_id}, 'data'),
     Output('delays-grid', 'rowData'),
-    Output('data-viewer-plot', 'figure'),
     Output('dataset-name', 'value'),
-    Output('deadtime-input', 'value'),
+    Output({"type": "tmin-shift", 'page': page_id}, 'value'),
+    Output('notification-container', 'sendNotifications'),
     Input('upload-data', 'contents'),
     State('upload-data', 'filename'),
     prevent_initial_call=True)
@@ -132,9 +138,10 @@ def handle_file_upload(contents_list, filenames_list):
     Suported file types: .DSC (Bruker BES3t), 'h5' (HDF5), '.csv' (Comma-separated values)
     """
 
+    no_update_7 = (dash.no_update,) * 7
     if contents_list is None:
-        return dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update
-    
+        return no_update_7
+    alert = dash.no_update
     # Ensure we're working with lists
     if not isinstance(contents_list, list):
         contents_list = [contents_list]
@@ -142,28 +149,24 @@ def handle_file_upload(contents_list, filenames_list):
     
     # Only permit multiple files for .DSC + .DTA
     if len(contents_list) > 2:
-        return html.Div([
-            html.P("Please upload only one dataset at a time. For Bruker BES3T files, upload both the .DSC and .DTA files together.")
-        ]), dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update
+        alert = _error_message("Please upload only one dataset at a time. For Bruker BES3T files, upload both the .DSC and .DTA files together.")
+        return *no_update_7[:6], alert
     elif len(contents_list) == 2:
         if not (filenames_list[0].endswith('.DSC') and filenames_list[1].endswith('.DTA')) and not (filenames_list[1].endswith('.DSC') and filenames_list[0].endswith('.DTA')):
-            return html.Div([
-                html.P("When uploading two files, please ensure they are the .DSC and .DTA files from Bruker BES3T.")
-            ]), dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update
+            alert = _error_message("When uploading two files, please ensure they are the .DSC and .DTA files from Bruker BES3T.")
+            return *no_update_7[:6], alert
         file_format= 'BES3T'
     else:
         if filenames_list[0].endswith('.DSC'):
-            return html.Div([
-                html.P("Please upload both the .DSC and .DTA files from Bruker BES3T together.")
-            ]), dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update
+            alert = _error_message("Please upload both the .DSC and .DTA files from Bruker BES3T together.")
+            return *no_update_7[:6], alert
         elif filenames_list[0].endswith('.h5'):
             file_format = 'hdf5'
         elif filenames_list[0].endswith('.csv'):
             file_format = 'csv'
         else:
-            return html.Div([
-                html.P("Unsupported file type. Please upload .DSC/.DTA (Bruker BES3T), .h5 (HDF5), or .csv files.")
-            ]), dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update
+            alert = _error_message("Unsupported file type. Please upload .DSC/.DTA (Bruker BES3T), .h5 (HDF5), or .csv files.")
+            return *no_update_7[:6], alert
         
     try:
         if file_format == 'BES3T':
@@ -180,26 +183,21 @@ def handle_file_upload(contents_list, filenames_list):
             dta_decoded = base64.b64decode(dta_content.split(',')[1])
             dataarray = bes3t_eprload(DSC=dsc_decoded,DTA=dta_decoded)
             
-            attribute_data =get_attributes_dict(dataarray)
+            metadata_children, long_values_store = build_metadata_section_datarray(dataarray)
 
             # Extract delays from pulsespel
             dataarray.attrs.update({'file_format': 'BES3T'})
             dataarray.attrs.update(parse_PulseSpel(dataarray.attrs.get('PlsSPELGlbTxt','')))
 
             delays = get_delays_dict(dataarray)
-            deadtime = delays.get('deadtime', 0)
-            # dataarray.X = dataarray.X + deadtime  # Adjust time axis for deadtime
+            tmin = delays.get('deadtime', 0)
             
-            # Show plot
-            figure = update_data_viewer(dataarray,deadtime)
         else:
-            return html.Div([
-                html.P("Unsupported file type. Please upload .DSC/.DTA (Bruker BES3T), .h5 (HDF5), or .csv files.")
-            ]), dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update
+            alert = _error_message("Currently only Bruker BES3T .DSC/.DTA file pairs are supported for upload. Support for .h5 and .csv files is coming soon!")
+            return *no_update_7[:6], alert
     except Exception as e:
-        return html.Div([
-            html.P(f"Error processing files: {str(e)}")
-        ]), dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update
+        alert = _error_message(f"Error processing files: {str(e)}")
+        return *no_update_7[:6], alert
     
     
     # save dataarray to dcc.Store for later use
@@ -209,35 +207,35 @@ def handle_file_upload(contents_list, filenames_list):
     store_data['t'] = dataarray.X.values.tolist()
     store_data['attrs'] = dataarray.attrs
     store_data['delays'] = delays
-    store_data['deadtime'] = deadtime
+    store_data['tmin'] = delays.get('deadtime',0)
 
 
     delays_data = [{'parameter': k, 'value': v} for k, v in delays.items()]
     
-    return html.Div([
-        html.P(f"Successfully uploaded {', '.join(filenames_list)} as {file_format} format.")
-    ]), store_data, attribute_data, delays_data, figure, dataarray.attrs.get('title', ''), deadtime
+    return store_data, metadata_children, long_values_store, delays_data, dataarray.attrs.get('title', ''), tmin, alert
+
 
 @callback(
     Output('data-viewer-plot', 'figure', allow_duplicate=True),
-    Input('deadtime-input', 'value'),
-    State('dataset-store', 'data'),
+    Input('dataset-store', 'data'),
     prevent_initial_call=True
 )
-def update_deadtime_plot(deadtime, dataset_store):
+def _build_signal_figure(dataset_store):
     """ Updates the plot when deadtime is changed """
-    if dataset_store is None or deadtime is None:
+    if dataset_store is None:
         return dash.no_update
     
-    t = np.array(dataset_store['t']) + deadtime
-    V_real = dataset_store['RealData']
-    V_imag = dataset_store['ImagData']
+    t_min = dataset_store.get('tmin', 0)
+    t = np.array(dataset_store['t']) + t_min
+    V = np.array(dataset_store['RealData']) + 1j * np.array(dataset_store['ImagData'])
+    V = V / np.max(np.abs(V))
+
     title_text = dataset_store['attrs'].get('title', 'Uploaded Data')
     
     figure = {
         'data': [
-            go.Scatter(x=t, y=V_real, mode='lines', name='Re. Part'),
-            go.Scatter(x=t, y=V_imag, mode='lines', name='Im. Part'),
+            go.Scatter(x=t, y=V.real, mode='lines', name='Real'),
+            go.Scatter(x=t, y=V.imag, mode='lines', name='Imag'),
         ],
         'layout': go.Layout(
             title=title_text,
@@ -249,53 +247,68 @@ def update_deadtime_plot(deadtime, dataset_store):
     return figure
 
 @callback(
-        Output('save-notification', 'children'),
+    Output({"type": "metadata-value-modal",'page': page_id}, "opened"),
+    Output({"type":"metadata-value-modal-text",'page': page_id}, "value"),
+    Input({"type": "metadata-show-btn", "key": dash.ALL}, "n_clicks"),
+    State({"type":"metadata-modal-store","page":page_id}, "data"),
+    prevent_initial_call=True,
+)
+def open_metadata_modal(n_clicks_list, store_data):
+    ctx = dash.callback_context
+    if not ctx.triggered or not any(n for n in (n_clicks_list or []) if n):
+        return dash.no_update, dash.no_update
+
+    triggered_id = ctx.triggered[0]["prop_id"].split(".")[0]
+    key = json.loads(triggered_id)["key"]
+    full_value = (store_data or {}).get(key, "Value not found.")
+    return True, full_value
+
+@callback(
+        Output('notification-container', 'sendNotifications', allow_duplicate=True),
         Output('project-name', 'value'),
         Output('sample-name', 'value'),
         Output('dataset-name', 'value', allow_duplicate=True),
         Output('dataset-store', 'data', allow_duplicate=True),
-        Output('data-parameters-grid', 'rowData', allow_duplicate=True),
         Output('delays-grid', 'rowData', allow_duplicate=True),
         Output('data-viewer-plot', 'figure', allow_duplicate=True),
-        Output('deadtime-input', 'value', allow_duplicate=True),
-        Output('upload-status', 'children', allow_duplicate=True),
+        Output({"type": "tmin-shift", 'page': page_id}, 'value', allow_duplicate=True),
+        Output({'type': "metadata-content", 'page': page_id}, 'children', allow_duplicate=True),
+        Output({"type": "metadata-modal-store", "page": page_id}, 'data', allow_duplicate=True),
         Input('save-dataset-btn', 'n_clicks'),
         State('project-name', 'value'),
         State('sample-name', 'value'),
         State('dataset-name', 'value'),
         State('dataset-store', 'data'),
         State('experiment-type-dropdown', 'value'),
-        State('deadtime-input', 'value'),
         prevent_initial_call=True)
-def save_dataset(n_clicks, project_name, sample_name, dataset_name, dataset_store, experiment_type, deadtime):
+def save_dataset(n_clicks, project_name, sample_name, dataset_name, dataset_store, experiment_type):
     """ Saves the uploaded dataset to the database """
+    no_update_10 = (dash.no_update,) * 10
     if n_clicks is None:
-        return dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update
+        return no_update_10
     if not project_name or not sample_name or not dataset_name:
-        notification = dmc.Alert(
-            "Please fill in all required fields (Project, Sample, and Dataset names)",
-            title="Missing Information",
-            color="yellow",
+        notification = [dict(
+            title='Missing Information',
+            message='Please fill in all required fields (Project, Sample, and Dataset names)',
             icon=DashIconify(icon="material-symbols:warning"),
+            color='yellow',
             duration=4000,
-        )
-        return notification, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update
+        )]
+        return notification, *no_update_10[1:]
     
     if dataset_store is None:
-        notification = dmc.Alert(
-            "No dataset uploaded. Please upload a dataset first.",
-            title="No Dataset",
-            color="yellow",
+        notification = [dict(
+            title='No Dataset',
+            message='No dataset uploaded. Please upload a dataset first.',
             icon=DashIconify(icon="material-symbols:warning"),
+            color='yellow',
             duration=4000,
-        )
-        return notification, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update
+        )]
+        return notification, *no_update_10[1:]
         
     session = get_session()
     
-    # Update delays with current deadtime
     delays = dataset_store.get('delays', {})
-    delays['deadtime'] = deadtime
 
     new_dataset = Dataset(
         name=dataset_name,
@@ -312,13 +325,13 @@ def save_dataset(n_clicks, project_name, sample_name, dataset_name, dataset_stor
     session.commit()
     session.close()
     
-    notification = dmc.Alert(
-        f"Dataset '{dataset_name}' successfully saved to project '{project_name}'!",
-        title="Success",
-        color="green",
+    notification = [dict(
+        title='Success',
+        message=f"Dataset '{dataset_name}' successfully saved to project '{project_name}'!",
         icon=DashIconify(icon="material-symbols:check-circle"),
+        color='green',
         duration=4000,
-    )
+    )]
     
     # Clear all fields
     empty_figure = go.Figure()
@@ -329,7 +342,23 @@ def save_dataset(n_clicks, project_name, sample_name, dataset_name, dataset_stor
         template='plotly_white'
     )
     
-    return notification, '', '', '', None, [], [], empty_figure, 0, html.Div()
+    return notification, '', '', '', None, [], empty_figure, 0, None, {}
+
+
+@callback(
+    Output('dataset-store', 'data', allow_duplicate=True),
+    Input({"type": "tmin-shift", 'page': page_id}, 'value'),
+    State('dataset-store', 'data'),
+    prevent_initial_call=True
+)
+def update_tmin(tmin_shift, dataset_store):
+    """ Updates the tmin value in the dataset store when the shift input is changed """
+    if dataset_store is None:
+        return dash.no_update
+
+    dataset_store['tmin'] = tmin_shift / 1e3
+    dataset_store.setdefault('delays', {})['deadtime'] = tmin_shift
+    return dataset_store
 
 
 @callback(
@@ -346,28 +375,77 @@ def update_samples_and_projects(n_clicks):
     samples = list(set(ds.sample for ds in datasets))
     return projects, samples
 
-def update_data_viewer(dataset,deadtime=0):
-    """ Updates the data viewer plot with the uploaded data """
-    # 
 
-    # convert t to microseconds 
-    t =dataset.X.values+deadtime
-    V = dataset.values
-    title_text = dataset.attrs.get('title', 'Uploaded Data')
-    figure = {
-        'data': [
-            go.Scatter(x=t, y=V.real, mode='lines', name='Re. Part'),
-            go.Scatter(x=t, y=V.imag, mode='lines', name='Im. Part'),
-        ],
-        'layout': go.Layout(
-            title=title_text,
-            xaxis_title='Time (us)',
-            yaxis_title='Signal (a.u.)',
-            template='plotly_white'
-        )
-    }
+@callback(
+    Output('delays-grid', 'rowData',allow_duplicate=True),
+    Input('experiment-type-dropdown', 'value'),
+    State('delays-grid', 'rowData'),
     
-    return figure
+    prevent_initial_call=True
+)
+def check_delays(exp_type,delays_row_data,):
+    """ Checks that enough delay parameters are present for the selected experiment type.
+    """
+
+    if exp_type == '4pDEER':
+        required_delays = ['tau1', 'tau2', ]
+    elif exp_type == '5pDEER':
+        required_delays = ['tau1', 'tau2', 'tau3']
+    elif exp_type == '3pDEER':
+        required_delays = ['tau1', ]
+    elif exp_type == 'RIDME':
+        required_delays = ['tau1', 'tau2', ]
+    else:
+        print(f"Unknown experiment type: {exp_type}. No specific delay requirements applied.")
+        return True, []  # No specific requirements for unknown experiment types
+
+    delays = {row['parameter']: row['value'] for row in delays_row_data}
+    print(f"Checking delays for experiment type {exp_type} with current delays: {delays}")
+    missing_delays = []
+    new_delays = delays.copy()
+    for delay in required_delays:
+        if delay not in delays:
+            new_delays[delay] = 0
+            missing_delays.append(delay)
+
+    new_delays_row_data = [{'parameter': k, 'value': v} for k, v in new_delays.items()]
+    return new_delays_row_data
+
+@callback(
+    Output('tmin-warning-div', 'children'),
+    Input('dataset-store', 'data'),
+    State('experiment-type-dropdown', 'value'),
+    prevent_initial_call=True
+)
+def check_tmin(store,exp_type):
+    """ Checks that the data maxmium is close to predicted value based on delays, and raises a warning if not"""
+    
+    if store is None:
+        return None
+    delays = store.get('delays', {})
+    
+    if exp_type == '4pDEER':
+        peak_time = delays.get('tau1',0)/1e3
+    elif exp_type == '5pDEER':
+        peak_time = delays.get('tau3',0)/1e3
+    elif exc_type == 'RIDME':
+        peak_time = delays.get('tau1',0)/1e3
+    else:
+        return None  # No specific requirements for unknown experiment types
+
+    t_min = store.get('tmin', 0) # already in microseconds
+    t = np.array(store['t']) + t_min
+    data_max_time = t[np.argmax(np.abs(store['RealData']))]
+    threshold = 50/1e3 # 50 ns in microseconds
+
+    if abs(peak_time - data_max_time) > threshold:
+        return dmc.Alert(
+            title="Warning: tmin may be incorrect",
+            children=f"The expected peak time based on delays is {peak_time*1e3:.0f} ns, but the data maximum is at {data_max_time*1e3:.0f} ns. Please check that tmin is set correctly.",
+            color="yellow",
+            mb="md",
+        )
+    return None
 
 def get_delays_dict(dataarray: xr.DataArray):
     """ Extracts delay parameters from the dataset attributes """
@@ -378,17 +456,4 @@ def get_delays_dict(dataarray: xr.DataArray):
         if key in dataarray.attrs:
             delays[key] = dataarray.attrs[key]
     return delays
-
-def get_attributes_dict(dataarray: xr.DataArray):
-    """ Updates the parameters table with extracted metadata """
-    # Dataset attributes to search for
-    search_attrs = [
-    'B','reptime', 'freq', 'tau1', 'tau2', 'nshots', 'nscans']
-    
-    
-    data = []
-    for key, value in dataarray.attrs.items():
-        if key in search_attrs:
-            data.append({'parameter': key, 'value': str(value)})
-    return data
 
