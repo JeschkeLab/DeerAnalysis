@@ -174,6 +174,8 @@ def update_datasets_table(n_clicks):
     if n_clicks is None:
         return dash.no_update
     session = get_session()
+    if session is None:
+        return dash.no_update
     datasets = session.query(Dataset).all()
     session.close()
     

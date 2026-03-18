@@ -40,6 +40,8 @@ def set_logs_api_global():
 
 def check_logs_api_key():
     session = get_session()
+    if session is None:
+        return False
     settings = session.query(Settings).first()  
     session.close()
     if settings and settings.logs_url and settings.logs_api_key:

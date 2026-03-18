@@ -140,6 +140,8 @@ def reset_db():
     
 def get_session():
     global Session
+    if Session is None:
+        return None
     return Session()
 
 def check_delays(dataset):

@@ -154,7 +154,7 @@ app.layout = dmc.MantineProvider(
                 dmc.AppShellMain(children=dash.page_container),
                 dmc.AppShellFooter(
                     dmc.Text(
-                        "© 2026 ETH Zürich. Developed by Hugo Karas, Stefan Stoll and Gunnar Jeschke. All rights reserved.",
+                        "© 2026 ETH Zürich. Developed by Hugo Karas. All rights reserved.",
                         size="xs",
                         c="dimmed"
                     ),
