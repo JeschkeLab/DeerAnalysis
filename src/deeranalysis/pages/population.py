@@ -7,7 +7,6 @@ import numpy as np
 import deerlab as dl
 import dash_mantine_components as dmc
 from dash_iconify import DashIconify
-from autodeer import DEERanalysis
 from deeranalysis.utils.database import get_session, Dataset, Fit, fit_global_datasets, fit_siblings
 from deeranalysis.utils import  dataarray_from_database_entry
 from deeranalysis.components.dataset_search_model import create_dataset_modal

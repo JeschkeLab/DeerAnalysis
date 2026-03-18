@@ -6,7 +6,7 @@ import numpy as np
 import deerlab as dl
 import dash_mantine_components as dmc
 from dash_iconify import DashIconify
-from autodeer import DEERanalysis
+from deeranalysis.utils.deerlab_normal import deerlab_fitting
 from deeranalysis.utils.database import get_session, Dataset, Fit
 from deeranalysis.utils import  dataarray_from_database_entry
 from deeranalysis.components.dataset_search_model import create_dataset_modal
@@ -226,7 +226,7 @@ def run_fit(n_clicks, dataset_id, bg_model_option,compactness,distance_axis,path
         pathways = [int(p) for p in pathways_options]
         print(f"Selected pathways: {pathways_options}")
         try:
-            fit = DEERanalysis(dataset,
+            fit = deerlab_fitting(dataset,
                 compactness=compactness,
                 model=None,
                 ROI=False,

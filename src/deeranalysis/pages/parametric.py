@@ -14,7 +14,7 @@ from deeranalysis.components.dataset_search_model import create_dataset_modal
 from deeranalysis.utils.deerlab_options import regparam_options,background_models,parametric_models, plotly_goodness_of_fit, plotly_deerlab,fit_to_dict,dists_stats_to_list,name_dataset_from_dict  
 from deeranalysis.components.fit_page_components import fit_save_download_buttons,distance_slider,adv_fit_options_parametric, fit_plot,DEFAULT_FIT_RESULTS_CODE,fit_results_tab, goodness_of_fit_tab, dist_stats_tab
 import deeranalysis.components.fit_page_components as fpc
-from autodeer import DEERanalysis
+from deeranalysis.utils.deerlab_normal import deerlab_fitting
 
 import dash_mantine_components as dmc
 
@@ -181,7 +181,7 @@ def run_fit(n_clicks, dataset_id, dist_model_name, bg_model_option,distance_axis
         Pmodel = getattr(dl,dist_model_name,dl.dd_gauss)
             
         pathways = [int(p) for p in pathways_options]
-        fit = DEERanalysis(dataset,
+        fit = deerlab_fitting(dataset,
             compactness=False,
             model=Pmodel,
             ROI=False,
