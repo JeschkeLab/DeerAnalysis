@@ -31,6 +31,9 @@ def set_logs_api_global():
     global url, apiKey
     try:
         session = get_session()
+        if session is None:
+            print("Error: Could not connect to the database.")
+            return
         settings = session.query(Settings).first()
         if settings and settings.logs_url and settings.logs_api_key:
             url = settings.logs_url

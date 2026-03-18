@@ -307,6 +307,15 @@ def save_dataset(n_clicks, project_name, sample_name, dataset_name, dataset_stor
         return notification, *no_update_10[1:]
         
     session = get_session()
+    if session is None:
+        notification = [dict(
+            title='Database Error',
+            message='Could not connect to the database.',
+            icon=DashIconify(icon="material-symbols:warning"),
+            color='red',
+            duration=4000,
+        )]
+        return notification, *no_update_10[1:]
     
     delays = dataset_store.get('delays', {})
 

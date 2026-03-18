@@ -29,24 +29,24 @@ def first_time_setup():
     """
     Checks if the database exists.
     """
-    if not os.path.exists(os.path.join(default_directory(), 'deeranalysis.db')):
+    database_dir = os.path.join(default_directory(), 'deeranalysis.db')
+    print(f"Checking for existing database at {database_dir}: {'Found' if database_dir else 'Not found'}")
+    if not os.path.exists(database_dir):
         return True
     return False
 
 # Get the correct base path for PyInstaller
 if getattr(sys, 'frozen', False):
-    # Running in PyInstaller bundle
     basedir = Path(sys._MEIPASS)
     desktop_mode = True
 else:
-    # Running in normal Python environment, i.e as a server deployment
     basedir = Path(__file__).parent
-    # Initialize database
-    if not first_time_setup():
-        init_db(default_directory())
-        initialize_logs_api()
-
     desktop_mode = False
+
+if not first_time_setup():
+    print("Initializing database connection...")
+    init_db(default_directory())
+    initialize_logs_api()
 
 
 

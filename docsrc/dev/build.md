@@ -2,7 +2,7 @@
 
 
 ```
-pyinstaller --noconfirm DeerAnalysis.spec
+python -m PyInstaller --noconfirm DeerAnalysis_MacOS.spec
 ```
 
 

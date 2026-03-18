@@ -62,6 +62,9 @@ def create_dataset_modal(page_id):
 )
 def update_dataset_table(search_value=''):
     session = get_session()
+    if session is None:
+        print("Error: Could not connect to the database.")
+        dash.no_update
     datasets = session.query(Dataset).all()
     
     # if search_value:
@@ -142,6 +145,9 @@ def search_fit_modal(id="fit-search-modal"):
 )
 def update_fit_search_table(search_value='',dataset_id=None):
     session = get_session()
+    if session is None:
+        print("Error: Could not connect to the database.")
+        dash.no_update
     fits = session.query(Fit).filter_by(dataset_id=dataset_id).all()
     
     # if search_value:
