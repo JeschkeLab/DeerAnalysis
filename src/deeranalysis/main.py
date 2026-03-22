@@ -1,11 +1,14 @@
 import threading
 import time
 import webview
-from deeranalysis.app import app
 import os
 
 os.environ['PYWEBVIEW_GUI'] = 'cocoa'  # force macOS backend
+os.environ['DEERANALYSIS_PYWEBVIEW'] = '1'                         
 PORT = 8050
+
+from deeranalysis.app import app
+
 
 SPLASH_HTML = """
 <!DOCTYPE html>

@@ -75,7 +75,6 @@ layout = html.Div([
             html.Div([
                 fpc.fit_plot(page_id),
                 fpc.fit_results_tabs(
-                    fpc.fit_results_tab(page_id),
                     fpc.goodness_of_fit_tab(page_id),
                     fpc.dist_stats_tab(page_id),
                 ),
@@ -132,6 +131,7 @@ def update_dropdown(pathname):
     Output({"type": "gof-plot", "page": page_id}, 'figure', allow_duplicate=True),
     Output({"type": "dist-stats-table", "page": page_id}, 'data', allow_duplicate=True),
     Output({"type":"save-fit-btn","page":page_id}, 'disabled'),
+    Output({"type": "download-fit-btn", "page": page_id}, 'disabled'),
     Input({"type":"run-fit-btn","page":page_id}, 'n_clicks'),
     Input({'type': 'dataset-dropdown', 'page': page_id}, 'value'),
     prevent_initial_call=True,
@@ -146,7 +146,7 @@ def run_fit(n_clicks, dataset_id):
         pass
 
     if not dataset_id:
-        return dash.no_update
+        return dash.no_update,dash.no_update, False,dash.no_update,dash.no_update,True,True,
         
     session = get_session()
     dataset_entry = session.query(Dataset).filter_by(id=dataset_id).first()
@@ -165,7 +165,7 @@ def run_fit(n_clicks, dataset_id):
         fig = plotly_deerlab(fitresult=dataset)
         fig.update_layout(title=f"Dataset: {dataset_entry.name}", showlegend=True)
         dist_stats_output = {"head": ["Statistic", "Value", "Confidence Interval (95%)"]}
-        return None, fig, False, plotly_goodness_of_fit(),dist_stats_output, True
+        return None, fig, False, plotly_goodness_of_fit(),dist_stats_output, True, True
 
     elif triggered_id == {"type":"run-fit-btn","page":page_id}:
 
@@ -182,7 +182,7 @@ def run_fit(n_clicks, dataset_id):
 
         fit_dict = fit_to_dict(fit)
         # fit_dict = {}
-        return fit_dict, fig, False,  gof_fig, dist_stats_output, False
+        return fit_dict, fig, False,  gof_fig, dist_stats_output, False, False
 
 
 @callback(

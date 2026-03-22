@@ -15,7 +15,7 @@ import json
 from deeranalysis.utils.database import get_session, Dataset,check_delays
 from deeranalysis.utils import create_subplot_figure
 from deeranalysis.components.metadata_table import build_metadata_section,build_delays_table, metadata_long_values_model,build_delays_AGgrid,delays_columnDefs
-from deeranalysis.components.download_modal import create_fit_download_modal
+from deeranalysis.components.download_modal import create_fit_download_modal, create_dataset_download_modal
 
 dash.register_page(__name__, path_template="/dataset/<dataset_id>")
 page_id = "dataset-detail"
@@ -80,6 +80,7 @@ def layout(dataset_id=None):
     return html.Div([
         dcc.Store(id="dd-dataset-id", data=int(dataset_id)),
         metadata_long_values_model(page_id),
+        create_dataset_download_modal(page_id=page_id),
         create_fit_download_modal(page_id=page_id),
         dcc.Location(id="dd-redirect", refresh=True),
         dcc.Store(id={"type":"metadata-modal-store","page":page_id}, data=long_values_store),  # Store for long metadata values for modals
@@ -358,6 +359,20 @@ def delete_dataset(n_clicks,dataset_id):
         return dcc.Location(pathname="/", id="dd-redirect-home"), False
     except Exception as exc:
         return _alert(f"Error deleting dataset: {exc}", "red", "Delete Error"), False
+    
+
+@callback(
+    Output({"type": "dataset-dl-modal", 'page': page_id}, "opened"),
+    Output({"type": "dataset-dl-store",'page': page_id}, "data"),
+    Input("dd-download-btn", "n_clicks"),
+    State("dd-dataset-id", "data"),
+    prevent_initial_call=True,
+)
+def toggle_download_modal(n_clicks,ds_id):
+    
+    if n_clicks is None:
+        return False,dash.no_update
+    return True,ds_id
     
 
 @callback(

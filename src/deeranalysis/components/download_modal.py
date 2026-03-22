@@ -6,7 +6,11 @@ import io
 import traceback
 from deeranalysis.utils.io import datasetSQL_to_file,fitSQL_to_file
 from deeranalysis.utils.database import get_session, Dataset,Fit
+import sys
+import os
 
+def _is_pywebview():
+    return os.environ.get('DEERANALYSIS_PYWEBVIEW') == '1'
 
 DATASET_DOWNLOAD_FORMAT_OPTIONS = [
     {"value": "bruker", "label": "Bruker (.DTA/.DSC)"},
@@ -27,6 +31,13 @@ FIT_DOWNLOAD_FORMAT_OPTIONS = [
     {"value": "matlab", "label": "Matlab (.mat)"},
     {"value": "csv",    "label": "CSV (.csv)"},
 ]
+FILE_TYPE_FILTERS = {
+    ".h5":  ("HDF5 files (*.h5)",),
+    ".mat": ("MATLAB files (*.mat)",),
+    ".csv": ("CSV files (*.csv)",),
+    ".zip": ("ZIP archives (*.zip)",),
+    ".DTA": ("Bruker files (*.DTA)",),
+}
 
 # ---------------------------------------------------------------------------
 # Component factories
@@ -60,6 +71,7 @@ def create_dataset_download_modal(page_id="dataset-download-modal"):
             title=dmc.Text("Download Dataset", fw=600, size="lg"),
             size="md",
             opened=False,
+            withinPortal=False,
             children=[
                 dmc.Stack([
                     html.Div(id={"type": "dataset-dl-alert", "page": page_id}),
@@ -78,6 +90,7 @@ def create_dataset_download_modal(page_id="dataset-download-modal"):
                         description="Enter the filename (without extension).",
                         placeholder="dataset",
                         w="100%",
+                        style={"display": "none"} if _is_pywebview() else None,
                     ),
                     dcc.Download(id={"type": "dataset-dl-download", "page": page_id}),
                     dmc.Group(
@@ -144,6 +157,7 @@ def create_fit_download_modal(page_id="fit-download-modal"):
                         description="Enter the filename (without extension).",
                         placeholder="fit_result",
                         w="100%",
+                        style={"display": "none"} if _is_pywebview() else None,
                     ),
                     dmc.Checkbox(
                         id={"type": "fit-dl-include-uncert", "page": page_id},
@@ -179,7 +193,29 @@ def create_fit_download_modal(page_id="fit-download-modal"):
         ),
     ])
 
+def _save_file_native(content: bytes, suggested_name: str):
+    """Use pywebview's native save dialog to write a file."""
+    import webview
+    # webview.windows[0] is available after webview.start()
+    ext = os.path.splitext(suggested_name)[1]
+    file_types = FILE_TYPE_FILTERS.get(ext, ("All files (*.*)",))
 
+    result = webview.windows[0].create_file_dialog(
+        webview.FileDialog.SAVE,
+        save_filename=suggested_name,
+        file_types=file_types,
+    )
+    if not result:
+        return False
+
+    path = result if isinstance(result, str) else result[0]
+    if isinstance(content, str):
+        with open(path, 'w', encoding='utf-8') as f:
+            f.write(content)
+    else:
+        with open(path, 'wb') as f:
+            f.write(content)
+    return True
 # ---------------------------------------------------------------------------
 # Pattern-matched callbacks — registered once, cover every mounted instance
 # ---------------------------------------------------------------------------
@@ -213,8 +249,10 @@ def _close_fit_download_modal(n_clicks):
     prevent_initial_call=True,
 )
 def _download_dataset(n_clicks, dataset_id, fmt, filename):
+    print(f"Triggered dataset download callback with dataset_id={dataset_id}, fmt={fmt}, filename={filename}")
     if not n_clicks or dataset_id is None:
-        return dash.no_update, dash.no_update
+        print("Download callback triggered without clicks or dataset_id")
+        return dash.no_update, dash.no_update, dash.no_update
 
     filename = (filename or "dataset").strip() or "dataset"
     ext = EXTENSIONS.get(fmt, "")
@@ -249,7 +287,6 @@ def _download_dataset(n_clicks, dataset_id, fmt, filename):
             )
             return dash.no_update, True, alert
         
-        return dcc.send_bytes(buf.getvalue(), full_name), True, dash.no_update
     elif fmt == "matlab":
         buf = io.BytesIO()
         try:
@@ -261,7 +298,6 @@ def _download_dataset(n_clicks, dataset_id, fmt, filename):
                 variant="filled",
             )
             return dash.no_update, True, alert
-        return dcc.send_bytes(buf.getvalue(), full_name), True, dash.no_update
     elif fmt == "csv":
         buf = io.StringIO()
         try:
@@ -276,9 +312,15 @@ def _download_dataset(n_clicks, dataset_id, fmt, filename):
             )
             return dash.no_update, True, alert
 
-        return dcc.send_string(buf.getvalue(), full_name), True, dash.no_update
+        
     
-
+    if _is_pywebview():
+        _save_file_native(buf.getvalue(), full_name)
+        return dash.no_update, True, dash.no_update
+    elif isinstance(buf, io.BytesIO):
+        return dcc.send_bytes(buf.getvalue(), full_name), True, dash.no_update
+    elif isinstance(buf, io.StringIO):
+        return dcc.send_string(buf.getvalue(), full_name), True, dash.no_update
     return dash.no_update, False, dash.no_update
 
 
@@ -318,7 +360,6 @@ def _download_fit(n_clicks, fit_id, fmt, filename):
                 variant="filled",
             )
             return dash.no_update, True, alert
-        return dcc.send_bytes(buf.getvalue(), full_name), True, dash.no_update
     elif fmt == "matlab":
         full_name = filename + ext
         buf = io.BytesIO()
@@ -331,7 +372,7 @@ def _download_fit(n_clicks, fit_id, fmt, filename):
                 variant="filled",
             )
             return dash.no_update, True, alert
-        return dcc.send_bytes(buf.getvalue(), full_name), True, dash.no_update
+
     elif fmt == "csv":
         buf = io.BytesIO()
         full_name = filename + ".zip" # We will create a zip file containing the CSVs
@@ -346,6 +387,14 @@ def _download_fit(n_clicks, fit_id, fmt, filename):
                 variant="filled",
             )
             return dash.no_update, True, alert
-        return dcc.send_bytes(buf.getvalue(), full_name), True, dash.no_update
+        
 
+    if _is_pywebview():
+        _save_file_native(buf.getvalue(), full_name)
+        return dash.no_update, True, dash.no_update
+    elif isinstance(buf, io.BytesIO):
+        return dcc.send_bytes(buf.getvalue(), full_name), True, dash.no_update
+    elif isinstance(buf, io.StringIO):
+        return dcc.send_string(buf.getvalue(), full_name), True, dash.no_update
+    
     return dash.no_update, False
