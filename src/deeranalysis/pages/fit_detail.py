@@ -539,8 +539,13 @@ def _fits_and_dataset_to_dict(dataset, fit=None):
     output['V'] = np.array(dataset.V, dtype=float)
     output['V'] /= output['V'].max()
     output['model'] = np.array(fit.model, dtype=float)
+    output['model_t'] = np.array(fit.t, dtype=float)
     output['r'] = np.array(fit.r, dtype=float)
     output['P'] = np.array(fit.P_model, dtype=float)
+    try:
+        output['PUncert'] = np.array(fit.PUncert, dtype=float) if fit.PUncert is not None else None
+    except Exception:
+        output['PUncert'] = None
     return output
 
 # ---- Download and Deletion Callbacks -------------------------------------------------------

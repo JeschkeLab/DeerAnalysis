@@ -152,6 +152,8 @@ def plotly_comparison(results, titles=None, offset=0.3, ci=95, show_ci=True):
             PUncert = res.PUncert.ci(ci) if show_ci else None
             r = res.r
             P = res.P
+            model_t = res.model_t if hasattr(res,'model_t') else data_t
+            background = res.background if hasattr(res,'background') else None
         elif isinstance(res, dict):
             data_t = res['t']
             data_V = res['V'] + vspacing[i]
@@ -159,19 +161,27 @@ def plotly_comparison(results, titles=None, offset=0.3, ci=95, show_ci=True):
             r = res['r']
             P = res['P']
             PUncert = (res['PUncert'] if 'PUncert' in res else None) if show_ci else None
+            model_t = res['model_t'] if 'model_t' in res else data_t
+            background = res['background'] if 'background' in res else None
         else:
             raise ValueError("Each fit result must be either a dl.FitResult, xr.DataArray or a dict. Invalid type: {}".format(type(res)))
+        
+        if len(model_t) != len(data_model):
+            raise ValueError(f"Length of model_t ({len(model_t)}) does not match length of data_model ({len(data_model)}). Please ensure that model_t and model have the same length.")
         fig.add_trace(go.Scatter(
             x=data_t, y=data_V, mode='markers', name='Data',
             legendgroup=titles[i], legendgrouptitle_text=titles[i],
             marker={'color': colour_scheme_light[i]}), row=1, col=1)
-        fig.add_trace(go.Scatter(x=data_t, y=data_model, mode='lines', name='Model', legendgroup=titles[i], line={'color': colour_scheme_dark[i]}), row=1, col=1)
+        if background is not None:
+            fig.add_trace(go.Scatter(x=model_t, y=background, mode='lines', name='Background', line={'color':colour_scheme_dark[i],'dash':'dash'}), row=1, col=1)
+        fig.add_trace(go.Scatter(x=model_t, y=data_model, mode='lines', name='Model', legendgroup=titles[i], line={'color': colour_scheme_dark[i]}), row=1, col=1)
 
         fig.add_trace(go.Scatter(x=r, y=P, mode='lines', name='P(r)', legendgroup=titles[i], line={'color': colour_scheme_dark[i]}), row=1, col=2)
         if PUncert is not None:
             ci_label = f"{ci}% CI"
             fig.add_trace(go.Scatter(x=r, y=PUncert[:, 0], mode='lines', line=dict(width=0), legendgroup=titles[i], showlegend=False, hoverinfo='skip'), row=1, col=2)
             fig.add_trace(go.Scatter(x=r, y=PUncert[:, 1], mode='lines', line=dict(width=0, color=colour_scheme_light[i]), legendgroup=titles[i], fill='tonexty', name=ci_label), row=1, col=2)
+
     return fig
 
 def plotly_deerlab(fitresult=None, orientation='h'):
@@ -208,6 +218,9 @@ def plotly_deerlab(fitresult=None, orientation='h'):
         P = fitresult.P
         PUncert = fitresult.PUncert.ci(95)
         r = fitresult.r
+        background = fitresult.background if hasattr(fitresult,'background') else None
+        model_t = fitresult['model_t'] if 'model_t' in fitresult else data_t
+
     elif isinstance(fitresult,xr.DataArray):
         data_t = fitresult.t.values
         data_V = fitresult.values
@@ -217,25 +230,30 @@ def plotly_deerlab(fitresult=None, orientation='h'):
         P = None
         PUncert = None
         r = None
+        background = None
     elif isinstance(fitresult, dict):
         data_t = fitresult['t']
         data_V = fitresult['V']
         data_model = fitresult['model'] if 'model' in fitresult else None
-        if hasattr(fitresult,'model_t'):
+        if 'model_t' in fitresult and fitresult['model_t'] is not None:
             model_t = fitresult['model_t']
         else:
             model_t = data_t
         P = fitresult['P'] if 'P' in fitresult else None
         PUncert = fitresult['PUncert'] if 'PUncert' in fitresult else None
         r = fitresult['r'] if 'r' in fitresult else None
+        background = fitresult['background'] if 'background' in fitresult else None
     else:
         raise ValueError("fitresult must be either a DeerLab FitResult object or an xarray DataArray, not {}".format(type(fitresult)))
     i=0
     fig.add_trace(go.Scatter(
             x=data_t, y=data_V, mode='markers', name='Data',
             line={'color':colour_scheme_light[i]}), row=1, col=1)
+    if background is not None:
+        fig.add_trace(go.Scatter(x=model_t, y=background, mode='lines', name='Background', line={'color':colour_scheme_dark[i],'dash':'dash'}), row=1, col=1)
     if data_model is not None:
         fig.add_trace(go.Scatter(x=model_t, y=data_model, mode='lines', name='Model', line={'color':colour_scheme_dark[i]}), row=1, col=1)
+    
     if P is not None:
         fig.add_trace(go.Scatter(x=r, y=P, mode='lines', name='P(r)', line={'color':colour_scheme_dark[i]}), row=1, col=2)
     if PUncert is not None:
@@ -258,6 +276,9 @@ def fit_to_dict(fit):
             else:
                 output['fit_type'] = 'non-parametric'
                 output['dist_model'] = None
+
+            if hasattr(fit,'background'):
+                output['background'] = fit.background.tolist()
             output['pathways'] = fit.Vmodel.pathways
         else:
             output['bg_model'] = 'Neural Network'

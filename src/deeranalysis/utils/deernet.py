@@ -155,6 +155,7 @@ def deernet(dataset, providor=None) -> DEERnetResult:
         time_axis = dataset.t.values
     else:
         time_axis = dataset.coords[list(dataset.coords)[0]].values
+    t_min = time_axis.min()
     data_axis = dataset.values
     
     time_axis, data_axis, t_shift = deernet_prep(time_axis, data_axis)

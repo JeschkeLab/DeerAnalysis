@@ -52,6 +52,7 @@ class Fit(Base):
     # Time domain data
     t = Column(JSON, nullable=False) # Fitted data model time axis
     model = Column(JSON, nullable=False) # Fitted data model
+    background = Column(JSON, nullable=True, default=None) # Fitted background (if applicable)
 
     # Distance domain data
     r = Column(JSON,nullable=False) # r axis for the distance distribution

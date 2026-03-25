@@ -230,6 +230,7 @@ def _fit_to_dict(dataset, fit):
     out['model'] = np.array(fit.model, dtype=float)
     out['r'] = np.array(fit.r, dtype=float)
     out['P'] = np.array(fit.P_model, dtype=float)
+    out['model_t'] = np.array(fit.t, dtype=float)
     try:
         out['PUncert'] = np.array(fit.PUncert, dtype=float) if fit.PUncert is not None else None
     except Exception:

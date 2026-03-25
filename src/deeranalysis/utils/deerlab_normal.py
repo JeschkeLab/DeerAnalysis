@@ -71,7 +71,7 @@ def val_in_us(Param):
 
 
 
-def deerlab_fitting(dataset, compactness=True, model=None, ROI=False, exp_type='5pDEER', verbosity=0,
+def deerlab_fitting(dataset, compactness=True, model=None, exp_type='5pDEER', verbosity=0,
                  remove_crossing=True, bg_model=dl.bg_hom3d, **kwargs):
     """
     Analyze DEER data using DeerLab.
@@ -392,26 +392,14 @@ def deerlab_fitting(dataset, compactness=True, model=None, ROI=False, exp_type='
     fit.t = t
     fit.mask = mask
 
+    fit.background = background_func(t, fit)
+
     if not hasattr(fit, "P"):
         fit.P = fit.evaluate(model,r)
         fit.PUncert = fit.propagate(model,r, lb=np.zeros_like(r))
     
     
-    if ROI:
-        # tau_max = lambda r: (r**3) *(3/4**3)
-        tau_max = lambda r:  (r/3)**3 * 2
-        fit.ROI = IdentifyROI(fit.P, r, criterion=0.90, method="gauss")
-        if fit.ROI[0] < r.min():
-            fit.ROI[0] = r.min()
-        rec_tau_max = tau_max(fit.ROI[1])
-        fit.rec_tau_max = rec_tau_max
-        dt_rec = lambda r: (r**3 *0.85)/(4*52.04)
-        fit.rec_dt = np.max([dt_rec(fit.ROI[0]), 10e-3])
-
-        return fit, rec_tau_max
-    else:
-        fit.ROI=None
-        return fit
+    return fit
 
 def background_func(t, fit):
     Vmodel = fit.Vmodel
