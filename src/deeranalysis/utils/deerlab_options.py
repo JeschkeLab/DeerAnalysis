@@ -107,28 +107,27 @@ def plotly_goodness_of_fit(results=None):
     return fig
 
 
-def plotly_comparison(results,titles=None):
+def plotly_comparison(results, titles=None, offset=0.3, ci=95, show_ci=True):
     """
-    Compares mutliple fits or datasets by plotting thier time domain data and distance distributions in a single plotly figure with two subplots.
-
-    The input is not xr.dataarray or dl.FitResult but rather a list of dicts with the following structure:
-    {
-    "name": "Fit 1",
-    "t": [time axis],
-    "model": [fitted model],
-    "P": [distance distribution],
-    "PUncert": [distance distribution uncertainty]
-    }
+    Compares multiple fits or datasets by plotting their time domain data and distance distributions
+    in a single plotly figure with two subplots.
 
     Parameters
     ----------
-    *fits : list of dicts 
-    
+    results : list of dl.FitResult or dict
+        Each dict should have keys: 't', 'V', 'model', 'r', 'P', optionally 'PUncert'.
+    titles : list of str, optional
+    offset : float
+        Vertical spacing between adjacent datasets in the time domain plot.
+    ci : int
+        Confidence interval percentage to display (e.g. 95).
+    show_ci : bool
+        Whether to show the uncertainty bands on the distance distribution.
     """
     import plotly.graph_objects as go
     from plotly.subplots import make_subplots
     
-    fig = make_subplots(rows=1, cols=2, subplot_titles=["Time Domain", "Distance Distribution"], horizontal_spacing=0.1)
+    fig = make_subplots(rows=1, cols=2, subplot_titles=["Time Domain", "Distance Distribution"], horizontal_spacing=0.1,)
     
     # If no fits provided, return empty figure with titles
     if results is None or len(results) == 0:
@@ -137,45 +136,42 @@ def plotly_comparison(results,titles=None):
     if titles is None:
         titles = [f"Fit {i+1}" for i in range(len(results))]
 
-    colour_scheme_dark = ['#7C37DB','#DB7C17','#166122']
-    colour_scheme_light = ['#A787D6',"#EDA659",'#67B875']
-
     # Set axes labels
     fig.update_xaxes(title_text="Time (µs)", row=1, col=1)
     fig.update_yaxes(title_text="Signal (a.u.)", row=1, col=1)
     fig.update_xaxes(title_text="Distance (nm)", row=1, col=2)
     fig.update_yaxes(title_text="P(r) (nm⁻¹)", row=1, col=2)
 
-    vspacing = np.linspace(0, 0.5, len(results))
+    vspacing = np.arange(len(results)) * offset
 
     for i, res in enumerate(results):
         if isinstance(res, dl.FitResult):
-
             data_t = res.dataset.t.values
-            data_V = res.Vexp + vspacing[i]  # Shift data up by vspacing[i] for better visibility
-            data_model = res.model + vspacing[i]  # Shift model up by vspacing[i] for better visibility
-            PUncert = res.PUncert.ci(95) 
+            data_V = res.Vexp + vspacing[i]
+            data_model = res.model + vspacing[i]
+            PUncert = res.PUncert.ci(ci) if show_ci else None
             r = res.r
             P = res.P
         elif isinstance(res, dict):
             data_t = res['t']
-            data_V = res['V'] + vspacing[i]  # Shift data up by vspacing[i] for better visibility
-            data_model = res['model'] + vspacing[i]  # Shift model up by vspacing[i] for better visibility
+            data_V = res['V'] + vspacing[i]
+            data_model = res['model'] + vspacing[i]
             r = res['r']
             P = res['P']
-            PUncert = res['PUncert'] if 'PUncert' in res else None
+            PUncert = (res['PUncert'] if 'PUncert' in res else None) if show_ci else None
         else:
             raise ValueError("Each fit result must be either a dl.FitResult, xr.DataArray or a dict. Invalid type: {}".format(type(res)))
         fig.add_trace(go.Scatter(
             x=data_t, y=data_V, mode='markers', name='Data',
-            legendgroup=titles[i],legendgrouptitle_text=titles[i],
-            line={'color':colour_scheme_light[i]}), row=1, col=1)
-        fig.add_trace(go.Scatter(x=data_t, y=data_model, mode='lines', name='Model', legendgroup=titles[i], line={'color':colour_scheme_dark[i]}), row=1, col=1)
+            legendgroup=titles[i], legendgrouptitle_text=titles[i],
+            marker={'color': colour_scheme_light[i]}), row=1, col=1)
+        fig.add_trace(go.Scatter(x=data_t, y=data_model, mode='lines', name='Model', legendgroup=titles[i], line={'color': colour_scheme_dark[i]}), row=1, col=1)
 
-        fig.add_trace(go.Scatter(x=r, y=P, mode='lines', name='P(r)', legendgroup=titles[i], line={'color':colour_scheme_dark[i]}), row=1, col=2)
+        fig.add_trace(go.Scatter(x=r, y=P, mode='lines', name='P(r)', legendgroup=titles[i], line={'color': colour_scheme_dark[i]}), row=1, col=2)
         if PUncert is not None:
-            fig.add_trace(go.Scatter(x=r, y=PUncert[:,0], mode='lines', line=dict(width=0),legendgroup=titles[i], showlegend=False, hoverinfo='skip'), row=1, col=2)
-            fig.add_trace(go.Scatter(x=r, y=PUncert[:,1], mode='lines', line=dict(width=0,color=colour_scheme_light[i]),legendgroup=titles[i], fill='tonexty', name='95% CI'), row=1, col=2)
+            ci_label = f"{ci}% CI"
+            fig.add_trace(go.Scatter(x=r, y=PUncert[:, 0], mode='lines', line=dict(width=0), legendgroup=titles[i], showlegend=False, hoverinfo='skip'), row=1, col=2)
+            fig.add_trace(go.Scatter(x=r, y=PUncert[:, 1], mode='lines', line=dict(width=0, color=colour_scheme_light[i]), legendgroup=titles[i], fill='tonexty', name=ci_label), row=1, col=2)
     return fig
 
 def plotly_deerlab(fitresult=None, orientation='h'):
