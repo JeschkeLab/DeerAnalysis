@@ -13,6 +13,8 @@ from deeranalysis.components.dataset_search_model import create_dataset_modal
 from deeranalysis.components.download_modal import create_fit_download_modal
 from deeranalysis.components.fit_page_components import fit_results_tabs, DEFAULT_FIT_RESULTS_CODE,fit_results_tab, goodness_of_fit_tab, dist_stats_tab
 from deeranalysis.utils.deerlab_options import regparam_options,background_models, plotly_goodness_of_fit, plotly_deerlab,dists_stats_to_list, fit_to_dict,name_dataset_from_dict
+
+import deeranalysis.components.fit_page_components as fpc
 dash.register_page(__name__)
 
 page_id='non-parametric'
@@ -58,20 +60,7 @@ layout = html.Div([
             dmc.Space(h=10),        
             dmc.Chip('Compactness', id='np-compactness-option', value=False, checked=False),
             dmc.Space(h=10),
-            html.Label("Distance Axis:"),
-            dcc.RangeSlider(
-                id='np-distance-axis',
-                min=1.5,
-                max=12,
-                step=0.25,
-                value=[1.75, 6],
-                marks={i: f'{i}' for i in range(1, 13)},
-                allowCross=False,
-                allow_direct_input=True,
-                className="dmc"
-                
-                # tooltip={"placement": "bottom", "always_visible": True}
-            ),
+            fpc.distance_slider(page_id),
             dmc.Space(h=10),
             # dmc.Paper([
                 dmc.Accordion(
@@ -179,7 +168,7 @@ def update_dropdown(pathname):
     Input({'type': 'dataset-dropdown', 'page': page_id}, 'value'),
     State('np-bg-model', 'value'),
     State('np-compactness-option', 'checked'),
-    State('np-distance-axis', 'value'),
+    State({"type": "distance-axis", "page": page_id}, 'value'),
     State('np-pathways-options', 'value'),
     State('np-regparam-method', 'value'),
     prevent_initial_call=True,

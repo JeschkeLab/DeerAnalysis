@@ -44,32 +44,32 @@ def adv_fit_options_parametric(page_id):
     ],gap="xs",)
 
 
-# def distance_slider(page_id):
-#     return dmc.Stack([dmc.Text("Distance Axis:", size="md", fw=500, mb=4),
-#         dcc.RangeSlider(
-#                 id= {"type": "distance-axis", "page": page_id},
-#                 min=1.5,
-#                 max=12,
-#                 step=0.25,
-#                 value=[1.75, 6],
-#                 marks={i: f'{i}' for i in range(1, 13)},
-#                 allowCross=False,
-#                 allow_direct_input=True,
-#                 className="dmc"
-#             )],gap=2,)
-
 def distance_slider(page_id):
-    return dcc.RangeSlider(
-                    id= {"type": "distance-axis", "page": page_id},
-                    min=1.5,
-                    max=12,
-                    step=0.5,
-                    value=[1.5, 6],
-                    marks={i: f'{i}' for i in range(1, 13)},
-                    allowCross=False,
-                    allow_direct_input=True,
-                    className="dmc"
-            )
+    return dmc.Stack([dmc.Text("Distance Axis (nm): ", size="md", fw=500, mb=4),
+        dcc.RangeSlider(
+                id= {"type": "distance-axis", "page": page_id},
+                min=1.5,
+                max=12,
+                step=0.25,
+                value=[1.75, 6],
+                marks={i: f'{i}' for i in range(1, 13)},
+                allowCross=False,
+                allow_direct_input=True,
+                className="dmc"
+            )],gap=2,)
+
+# def distance_slider(page_id):
+#     return dcc.RangeSlider(
+#                     id= {"type": "distance-axis", "page": page_id},
+#                     min=1.5,
+#                     max=12,
+#                     step=0.5,
+#                     value=[1.5, 6],
+#                     marks={i: f'{i}' for i in range(1, 13)},
+#                     allowCross=False,
+#                     allow_direct_input=True,
+#                     className="dmc"
+#             )
 
 def fit_results_tab(page_id):
     """
@@ -92,7 +92,7 @@ def fit_results_tab(page_id):
         dmc.CodeHighlight(
             id={"type": "fit-results-code", "page": page_id},
             code=DEFAULT_FIT_RESULTS_CODE,
-            language="python",
+            language="bash",
         )
     ], style={'flex': '1', 'minHeight': 0, 'overflow': 'auto'})
     return tabstab, panel

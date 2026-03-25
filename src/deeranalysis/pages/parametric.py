@@ -64,20 +64,8 @@ layout = html.Div([
                 value=['1'], # Default selected pathways
             ),
             dmc.Space(h=10),
+            fpc.distance_slider(page_id),
             html.Label("Distance Axis:"),
-            dcc.RangeSlider(
-                id='p-distance-axis',
-                min=1.5,
-                max=12,
-                step=0.25,
-                value=[1.75, 6],
-                marks={i: f'{i}' for i in range(1, 13)},
-                allowCross=False,
-                allow_direct_input=True,
-                className="dmc"
-                
-                # tooltip={"placement": "bottom", "always_visible": True}
-            ),
             dmc.Space(h=10),
             
             fit_save_download_buttons(page_id),
@@ -137,7 +125,7 @@ def update_dropdown(pathname):
     Input({'type': 'dataset-dropdown', 'page': page_id}, 'value'),
     State('p-dist-model', 'value'),
     State('p-bg-model', 'value'),
-    State('p-distance-axis', 'value'),
+    State({"type": "distance-axis", "page": page_id}, 'value'),
     State('p-pathways-options', 'value'),
     prevent_initial_call=True
 )
