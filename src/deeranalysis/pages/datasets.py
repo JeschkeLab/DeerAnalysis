@@ -285,8 +285,7 @@ def update_graph_on_selection(selected_rows):
     dataset_entry = session.query(Dataset).filter_by(id=dataset_id).first()
     dataset = dataarray_from_database_entry(dataset_entry)
     
-    deadtime = dataset.attrs.get('deadtime', 0)/1e3
-    dataset = dataset.assign_coords(t=dataset.t.values + float(deadtime))
+    dataset = dataset.assign_coords(t=dataset.t.values)
     session.close()
 
     if dataset is None:

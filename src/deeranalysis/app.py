@@ -30,7 +30,7 @@ def first_time_setup():
     Checks if the database exists.
     """
     database_dir = os.path.join(default_directory(), 'deeranalysis.db')
-    print(f"Checking for existing database at {database_dir}: {'Found' if database_dir else 'Not found'}")
+    # print(f"Checking for existing database at {database_dir}: {'Found' if database_dir else 'Not found'}")
     if not os.path.exists(database_dir):
         return True
     return False
@@ -44,7 +44,7 @@ else:
     desktop_mode = False
 
 if not first_time_setup():
-    print("Initializing database connection...")
+    # print("Initializing database connection...")
     init_db(default_directory())
     initialize_logs_api()
 

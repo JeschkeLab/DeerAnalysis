@@ -73,8 +73,10 @@ def layout(dataset_id=None):
 
     metadata_children, long_values_store = build_metadata_section(dataset,delays=False)  # Pre-build metadata section to populate long_values_store for modals
     delays_children = build_delays_AGgrid(dataset,page_id,False) if dataset.delays else html.P("No delays available.", className="text-muted")
+    tmin = np.min(dataset.t)*1e3 if dataset.t else 0
+
     # ---- time-domain signal preview ----------------------------------------
-    signal_fig = _build_signal_figure(dataset)
+    signal_fig = _build_signal_figure(dataset,tmin)
 
     # ---- layout -------------------------------------------------------------
     return html.Div([
@@ -182,7 +184,7 @@ def layout(dataset_id=None):
                         dmc.Space(style={"flex": 1}),
                         dmc.ActionIcon(DashIconify(icon='mdi:edit',),id='dd-delays-editable',variant="subtle",)],),
                     html.Div(
-                        [dmc.Group(dmc.NumberInput(0,allowNegative=True,label='Shift tmin (ns):',id={"type": "tmin-shift", 'page': page_id},disabled=True),align='center'),
+                        [dmc.Group(dmc.NumberInput(tmin,allowNegative=True,label='tmin (ns):',id={"type": "tmin", 'page': page_id},disabled=True),align='center'),
                          dmc.Space(h=10),  
                          delays_children],
                         id="delays-content",
@@ -284,11 +286,11 @@ def _build_fits_rows(dataset):
     return rows
 
 
-def _build_signal_figure(dataset,tmin_shift=0):
+def _build_signal_figure(dataset,tmin=0):
     try:
-        deadtime = float((dataset.meta or {}).get("deadtime", 0)) / 1e3
-        deadtime += tmin_shift / 1e3  # Apply tmin shift to deadtime
-        t = np.array(dataset.t) + deadtime
+        print(f"Building signal figure for dataset {dataset.id} with tmin={tmin} ns")
+        t = np.array(dataset.t)
+        t = t-t[0]+(tmin/1e3)  # Shift time axis by tmin
         V = np.array(dataset.V) + 1j * np.array(dataset.V_im)
         V = V / np.max(np.abs(V))
 
@@ -429,7 +431,7 @@ def save_basic_info(n_clicks, dataset_id, name, project, sample, exp):
 @callback(
     Output({"type": "delays-grid",'page': page_id}, "columnDefs"),
     Output("dd-delays-editable", "children"),
-    Output({"type": "tmin-shift", 'page': page_id}, "disabled"),
+    Output({"type": "tmin", 'page': page_id}, "disabled"),
     Input("dd-delays-editable", "n_clicks"),
     prevent_initial_call=True,
 )
@@ -446,14 +448,14 @@ def make_delays_editable_save(n_clicks):
 
 @callback(
     Output("dd-notification", "children",allow_duplicate=True),
-    Output({"type": "tmin-shift", 'page': page_id}, "value",allow_duplicate=True),
+    # Output({"type": "tmin", 'page': page_id}, "value",allow_duplicate=True),
     Input("dd-delays-editable", "n_clicks"),
     State("dd-dataset-id", "data"),
     State({"type": "delays-grid",'page': page_id}, "rowData"),
-    State({"type": "tmin-shift", 'page': page_id}, "value"),
+    State({"type": "tmin", 'page': page_id}, "value"),
     prevent_initial_call=True,
 )
-def save_delays(n_clicks,dataset_id,rowData,tmin_shift):
+def save_delays(n_clicks,dataset_id,rowData,tmin):
     if n_clicks % 2 != 0:
         # If button is in "Edit" mode, do not save
         return dash.no_update
@@ -465,18 +467,20 @@ def save_delays(n_clicks,dataset_id,rowData,tmin_shift):
             return _alert("Dataset not found in the database.", "red", "Save Error")
         new_delays = {row["parameter"]: row["value"] for row in rowData}
         dataset.delays = new_delays
+        t = np.array(dataset.t)
 
-        if tmin_shift != 0:
+        if tmin/1e3 != t[0]:
+            tmin_shift = tmin/1e3 - t[0]
             print(f"Applying tmin shift of {tmin_shift} ns to dataset {dataset_id}")
-            new_t = np.array(dataset.t) + tmin_shift/1e3
+            new_t = np.array(dataset.t) + tmin_shift
             dataset.t = new_t.tolist() 
 
         
         session.commit()
         session.close()
-        return _alert("Delays saved successfully.", "green", "Saved"),0
+        return _alert("Delays saved successfully.", "green", "Saved")#,0
     except Exception as exc:
-        return _alert(f"Error saving delays: {exc}", "red", "Save Error"),dash.no_update
+        return _alert(f"Error saving delays: {exc}", "red", "Save Error")#,dash.no_update
 
 @callback(
     Output({"type": "metadata-value-modal",'page': page_id}, "opened"),
@@ -498,17 +502,17 @@ def open_metadata_modal(n_clicks_list, store_data):
 
 @callback(
     Output({"type": "signal-graph", 'page': page_id},"figure",allow_duplicate=True),
-    Input({"type": "tmin-shift", 'page': page_id}, "value"),
+    Input({"type": "tmin", 'page': page_id}, "value"),
     State("dd-dataset-id", "data"),
     prevent_initial_call=True,
 )
-def update_graph(tmin_shift,dataset_id, ):
+def update_graph(tmin,dataset_id, ):
     session = get_session()
     dataset = session.query(Dataset).filter_by(id=dataset_id).first()
     session.close()
     if dataset is None:
         return dash.no_update
-    fig = _build_signal_figure(dataset,tmin_shift)
+    fig = _build_signal_figure(dataset,tmin)
     return fig
 
 @callback(

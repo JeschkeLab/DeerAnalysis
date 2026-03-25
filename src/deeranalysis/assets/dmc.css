@@ -16,3 +16,21 @@
     --Dash-Fill-Primary-Active: rgba(255, 255, 255, 0.12);
     --Dash-Fill-Disabled: rgba(255, 255, 255, 0.15);
 }
+
+.mantine-Notification-root {
+    min-width: 480px;
+    max-width: 720px;
+}
+
+.mantine-Notification-title {
+    font-size: var(--mantine-font-size-lg);
+}
+
+.mantine-Notification-description {
+    font-size: var(--mantine-font-size-md);
+}
+
+.mantine-Notification-icon {
+    width: 28px;
+    height: 28px;
+}

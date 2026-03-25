@@ -30,19 +30,21 @@ layout = html.Div([
         dmc.GridCol([
             dcc.Upload(
                 id='upload-data',
-                children=[
-                    dmc.Text("Drag and Drop or Select Files: .DSC/.DTA, .h5, .csv ", size="sm"),
-                    dmc.Text("\n(Select both .DSC and .DTA at the same time)", size="sm"),
-                ],
+                children=dmc.Group([
+                    DashIconify(icon="material-symbols:upload-file-outline", width=36, color="var(--mantine-color-blue-6)"),
+                    dmc.Stack([
+                        dmc.Text("Drag and drop files or click to select", size="sm", fw=500),
+                        dmc.Text(".DSC/.DTA, .h5, .csv  —  select both .DSC and .DTA together", size="xs", c="dimmed"),
+                    ], gap=2),
+                ], px="md", py="sm"),
                 style={
-                    'width': '95%',
-                    'height': '60px',
-                    'lineHeight': '30px',
-                    'borderWidth': '1px',
+                    'width': '100%',
+                    'borderWidth': '2px',
                     'borderStyle': 'dashed',
-                    'borderRadius': '5px',
-                    'textAlign': 'center',
-                    'margin': '10px'
+                    'borderRadius': 'var(--mantine-radius-sm)',
+                    'borderColor': 'var(--mantine-color-blue-3)',
+                    'backgroundColor': 'var(--mantine-color-blue-light)',
+                    'cursor': 'pointer',
                 },
                 multiple=True, className="mb-2"
             ),
@@ -64,8 +66,8 @@ layout = html.Div([
             dmc.Title("Delays", order=4, mt="md", mb="sm"),
             html.Div(id='tmin-warning-div'),
             dmc.NumberInput(
-                id={"type": "tmin-shift", 'page': page_id},
-                label='Shift tmin (ns)',
+                id={"type": "tmin", 'page': page_id},
+                label='tmin (ns)',
                 allowNegative=True,
                 value=0,
                 step=4,
@@ -103,10 +105,10 @@ layout = html.Div([
             )
         ], span=4),
         dmc.GridCol([
-            dmc.Title("Data Viewer", order=4, mb="sm"),
+            dmc.Title("Data Viewer", order=2, mb="sm"),
             dcc.Graph(id='data-viewer-plot',
                       style={'height': '500px'}),
-            dmc.Button("Add Dataset", id="save-dataset-btn", color="blue", mb="md"),
+            dmc.Button("Add Dataset to Libary", id="save-dataset-btn", color="blue", mb="lg",size="lg"),
         ], span=8),
     ]),
 ])
@@ -118,7 +120,8 @@ def _error_message(message):
         message= message,
         icon= DashIconify(icon="material-symbols:warning"),
         color= 'red',
-        duration= 4000
+        duration= 4000,
+        position = "top-center",
     )]
 
 @callback(
@@ -127,7 +130,7 @@ def _error_message(message):
     Output({"type":"metadata-modal-store","page":page_id}, 'data'),
     Output('delays-grid', 'rowData'),
     Output('dataset-name', 'value'),
-    Output({"type": "tmin-shift", 'page': page_id}, 'value'),
+    Output({"type": "tmin", 'page': page_id}, 'value'),
     Output('notification-container', 'sendNotifications'),
     Input('upload-data', 'contents'),
     State('upload-data', 'filename'),
@@ -190,7 +193,7 @@ def handle_file_upload(contents_list, filenames_list):
             dataarray.attrs.update(parse_PulseSpel(dataarray.attrs.get('PlsSPELGlbTxt','')))
 
             delays = get_delays_dict(dataarray)
-            tmin = delays.get('deadtime', 0)
+            tmin = dataarray.attrs.get('deadtime', 0)
             
         else:
             alert = _error_message("Currently only Bruker BES3T .DSC/.DTA file pairs are supported for upload. Support for .h5 and .csv files is coming soon!")
@@ -207,7 +210,7 @@ def handle_file_upload(contents_list, filenames_list):
     store_data['t'] = dataarray.X.values.tolist()
     store_data['attrs'] = dataarray.attrs
     store_data['delays'] = delays
-    store_data['tmin'] = delays.get('deadtime',0)
+    store_data['tmin'] = tmin
 
 
     delays_data = [{'parameter': k, 'value': v} for k, v in delays.items()]
@@ -221,7 +224,7 @@ def handle_file_upload(contents_list, filenames_list):
     prevent_initial_call=True
 )
 def _build_signal_figure(dataset_store):
-    """ Updates the plot when deadtime is changed """
+    """ Updates the plot when tmin is changed """
     if dataset_store is None:
         return dash.no_update
     
@@ -271,7 +274,7 @@ def open_metadata_modal(n_clicks_list, store_data):
         Output('dataset-store', 'data', allow_duplicate=True),
         Output('delays-grid', 'rowData', allow_duplicate=True),
         Output('data-viewer-plot', 'figure', allow_duplicate=True),
-        Output({"type": "tmin-shift", 'page': page_id}, 'value', allow_duplicate=True),
+        Output({"type": "tmin", 'page': page_id}, 'value', allow_duplicate=True),
         Output({'type': "metadata-content", 'page': page_id}, 'children', allow_duplicate=True),
         Output({"type": "metadata-modal-store", "page": page_id}, 'data', allow_duplicate=True),
         Input('save-dataset-btn', 'n_clicks'),
@@ -290,9 +293,10 @@ def save_dataset(n_clicks, project_name, sample_name, dataset_name, dataset_stor
         notification = [dict(
             title='Missing Information',
             message='Please fill in all required fields (Project, Sample, and Dataset names)',
-            icon=DashIconify(icon="material-symbols:warning"),
+            icon=DashIconify(icon="mdi:alert-circle-outline",height=50),
             color='yellow',
             duration=4000,
+            position = "top-center",
         )]
         return notification, *no_update_10[1:]
     
@@ -300,9 +304,10 @@ def save_dataset(n_clicks, project_name, sample_name, dataset_name, dataset_stor
         notification = [dict(
             title='No Dataset',
             message='No dataset uploaded. Please upload a dataset first.',
-            icon=DashIconify(icon="material-symbols:warning"),
+            icon=DashIconify(icon="mdi:alert-circle-outline",height=50),
             color='yellow',
             duration=4000,
+            position = "top-center"
         )]
         return notification, *no_update_10[1:]
         
@@ -314,16 +319,24 @@ def save_dataset(n_clicks, project_name, sample_name, dataset_name, dataset_stor
             icon=DashIconify(icon="material-symbols:warning"),
             color='red',
             duration=4000,
+            position = "top-center",
         )]
         return notification, *no_update_10[1:]
     
     delays = dataset_store.get('delays', {})
 
+    t = np.array(dataset_store['t'])
+    t=t-t[0]
+    tmin = dataset_store.get('tmin', 0) # ns
+    print(f"Saving dataset with tmin={tmin} microseconds and delays={delays}")
+    # Shift the time axis by tmin_shift
+    t = t + tmin
+
     new_dataset = Dataset(
         name=dataset_name,
         project=project_name,
         sample=sample_name,
-        t=dataset_store['t'],
+        t=t.tolist(),
         V=dataset_store['RealData'],
         V_im=dataset_store['ImagData'],
         exp=experiment_type,
@@ -356,17 +369,16 @@ def save_dataset(n_clicks, project_name, sample_name, dataset_name, dataset_stor
 
 @callback(
     Output('dataset-store', 'data', allow_duplicate=True),
-    Input({"type": "tmin-shift", 'page': page_id}, 'value'),
+    Input({"type": "tmin", 'page': page_id}, 'value'),
     State('dataset-store', 'data'),
     prevent_initial_call=True
 )
-def update_tmin(tmin_shift, dataset_store):
+def update_tmin(tmin, dataset_store):
     """ Updates the tmin value in the dataset store when the shift input is changed """
     if dataset_store is None:
         return dash.no_update
 
-    dataset_store['tmin'] = tmin_shift / 1e3
-    dataset_store.setdefault('delays', {})['deadtime'] = tmin_shift
+    dataset_store['tmin'] = tmin / 1e3
     return dataset_store
 
 
@@ -437,7 +449,7 @@ def check_tmin(store,exp_type):
         peak_time = delays.get('tau1',0)/1e3
     elif exp_type == '5pDEER':
         peak_time = delays.get('tau3',0)/1e3
-    elif exc_type == 'RIDME':
+    elif exp_type == 'RIDME':
         peak_time = delays.get('tau1',0)/1e3
     else:
         return None  # No specific requirements for unknown experiment types

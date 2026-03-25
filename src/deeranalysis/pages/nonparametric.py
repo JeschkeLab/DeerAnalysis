@@ -189,16 +189,11 @@ def run_fit(n_clicks, dataset_id, bg_model_option,compactness,distance_axis,path
     session = get_session()
     dataset_entry = session.query(Dataset).filter_by(id=dataset_id).first()
     dataset = dataarray_from_database_entry(dataset_entry)
-    deadtime = dataset.attrs.get('deadtime', 0)/1e3
-    dataset = dataset.assign_coords(t=dataset.t.values + float(deadtime))
+    dataset = dataset.assign_coords(t=dataset.t.values)
     session.close()
     
     if triggered_id == {"page":page_id,"type":"dataset-dropdown"}:
         # Just plot the data
-        t = dataset.t.values + float(deadtime)    
-        V = dataset.values
-        V = V / np.max(np.abs(V))
-
         fig = plotly_deerlab(fitresult=dataset)
         fig.update_layout(title=f"Dataset: {dataset_entry.name}", showlegend=True)
         dist_stats_output = {"head": ["Statistic", "Value", "Confidence Interval (95%)"]}
