@@ -167,11 +167,13 @@ def layout(dataset_id=None):
                             span=6,
                         ),
                         dmc.GridCol(
-                            dmc.TextInput(
-                                id="dd-created",
+                            dmc.DateTimePicker(
+                                id="dd-created_at",
                                 label="Created At",
-                                value=created_str,
-                                disabled=True,
+                                value=dataset.created_at or "",
+                                readOnly=True,
+                                variant="default",
+                                styles={"input": {"backgroundColor": "#fff", "color": "#212529", "opacity": 1, "cursor": "default"}},
                             ),
                             span=6,
                         ),
@@ -282,6 +284,7 @@ def _build_fits_rows(dataset):
             "Engine": getattr(fit, "engine",     ""),
             "Date":   str(getattr(fit, "created_at", "")),
             "id":     fit.id,
+            "RMSD":   rmsd,
         })
     return rows
 
