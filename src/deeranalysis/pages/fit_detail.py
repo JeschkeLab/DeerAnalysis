@@ -285,9 +285,16 @@ def _fit_gof_stats(fit):
     if not fit.gof:
         content = dmc.Text("No goodness-of-fit metrics available.", style={"whiteSpace": "pre-wrap"})
     else:
-
-        gof_items = [f"{key}: {value:.4f}" for key, value in fit.gof.items()]
-        content = dmc.Text("\n".join(gof_items), style={"whiteSpace": "pre-wrap"})
+        gof_stats_output = {
+            "head": ["Statistic", "Value"],
+            "body": [[k, f"{v:.4f}"] for k, v in fit.gof.items()]
+        }
+        content = dmc.Table(
+                id={"type": "gof-stats-table", "page": page_id},
+                data=gof_stats_output,
+                striped=True,
+                highlightOnHover=True,
+            )
 
     return dmc.Paper([
         dmc.Group([
@@ -310,11 +317,22 @@ def _fit_gof_stats(fit):
 
 def _fit_dist_stats(fit):
     if not fit.dist_stats:
-        content = "No distance distribution statistics available."
+        text = "No distance distribution statistics available."
+        content = dmc.Text(text, style={"whiteSpace": "pre-wrap"})
     else:
-        dist_stats_items = [f"{key}: {value:.4f}" for key, value in fit.dist_stats.items()]
-        content = "\n".join(dist_stats_items)
-
+        dist_stats_output = {
+            "head": ["Statistic", "Value", "Confidence Interval (95%)"],
+            "body": [
+                [k, f"{v['value']:.3f}", f"[{v['ci'][0]:.3f}, {v['ci'][1]:.3f}]" if v['ci'] else "N/A"]
+                for k, v in fit.dist_stats.items()
+            ]
+        }
+        content = dmc.Table(
+                id={"type": "dist-stats-table", "page": page_id},
+                data=dist_stats_output,
+                striped=True,
+                highlightOnHover=True,
+            )
     return dmc.Paper([
         dmc.Group([
             dmc.Title("Distance Distribution Statistics", order=4, mb="sm"),
@@ -328,7 +346,7 @@ def _fit_dist_stats(fit):
             ),
         ], justify="space-between", mb="sm"),
         dmc.Collapse(
-            dmc.Text(content, style={"whiteSpace": "pre-wrap"}),
+            content,
             id="fd-dist-collapse",
             opened=True,
         ),

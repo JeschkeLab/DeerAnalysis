@@ -329,6 +329,14 @@ def deernet(dataset, providor=None) -> DEERnetResult:
 
     residuals = data_axis - modelUncert.mean
 
+    stats = {}
+    stats['rmsd'] = np.sqrt(np.mean(residuals**2))
+    stats['r2'] = 1 - np.sum((residuals)**2)/np.sum((modelUncert.mean-np.mean(modelUncert.mean))**2)
+    MNR = dataset.mdpths_av[0][0] / noiselvl
+    stats['MNR'] = MNR
+    stats['SNR'] = 1/ noiselvl 
+    stats['mod_depth'] = dataset.mdpths_av[0][0]
+
     fitresult = FitResult(
         dataset = dataset,
         t = (time_axis+t_shift) * 1e6, # convert back to microseconds for output
@@ -343,6 +351,7 @@ def deernet(dataset, providor=None) -> DEERnetResult:
         PUncert = PUncert,
         noiselvl = noiselvl,
         residuals = residuals,
+        stats=stats,
         _summary = 'DEERnet Fit Result',
         )
     return fitresult

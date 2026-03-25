@@ -173,11 +173,17 @@ def run_fit(n_clicks, dataset_id):
         gof_fig = plotly_goodness_of_fit(fit)
 
         dist_stats = dl.diststats(fit.r,fit.P,fit.PUncert)
-        dist_stats_output = {"head": ["Statistic", "Value", "Confidence Interval (95%)"],
-                             "body": dists_stats_to_list(*dist_stats)}
-
+        dist_stats_dict = dists_stats_to_list(*dist_stats)
+        dist_stats_output = {
+            "head": ["Statistic", "Value", "Confidence Interval (95%)"],
+            "body": [
+                [k, f"{v['value']:.3f}", f"[{v['ci'][0]:.3f}, {v['ci'][1]:.3f}]" if v['ci'] else "N/A"]
+                for k, v in dist_stats_dict.items()
+            ]
+        }
         fit_dict = fit_to_dict(fit)
-        # fit_dict = {}
+        fit_dict['dist_stats'] = dist_stats_dict
+        fit_dict['gof'] = fit.stats
         return fit_dict, fig, False,  gof_fig, dist_stats_output, False, False
 
 

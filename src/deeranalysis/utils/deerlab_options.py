@@ -297,28 +297,45 @@ def fit_to_dict(fit):
     return output
     
     
-def dists_stats_to_list(dist_stats, dist_uncert,ci=95):
-    """Converts the distance distribution statistics to a list of dictionaries for display in the table."""
-    stats = list(dist_stats.keys())
+# def dists_stats_to_list(dist_stats, dist_uncert,ci=95):
+#     """Converts the distance distribution statistics to a list of dictionaries for display in the table."""
+#     stats = list(dist_stats.keys())
 
-    Output = []
-    for stat in stats:
-        row = []
-        key = stat
-        row.append(stat)
-        if isinstance(dist_stats[stat], (int, float)):
+#     Output = []
+#     for stat in stats:
+#         row = []
+#         key = stat
+#         row.append(stat)
+#         if isinstance(dist_stats[stat], (int, float)):
 
-            row.append(f"{dist_stats[stat]:.3f}")
-        elif isinstance(dist_stats[stat], (list, np.ndarray)):
-            row.append(", ".join([f"{x:.3f}" for x in dist_stats[stat]]))
+#             row.append(f"{dist_stats[stat]:.3f}")
+#         elif isinstance(dist_stats[stat], (list, np.ndarray)):
+#             row.append(", ".join([f"{x:.3f}" for x in dist_stats[stat]]))
             
+#         if dist_uncert is not None and key in dist_uncert and dist_uncert[key] is not None:
+#             lb,ub = dist_uncert[key].ci(ci)
+#             row.append(f"[{lb:.3f}, {ub:.3f}]")
+#         else:
+#             row.append("N/A")
+#         Output.append(row)
+#     return Output
+
+def dists_stats_to_list(dist_stats, dist_uncert, ci=95):
+    """Converts distance distribution statistics to a JSON-serializable dict of key scalar statistics."""
+    KEY_STATS = ['mean', 'median', 'mode', 'std', 'iqr', 'skewness', 'kurtosis']
+    output = {}
+    for key in KEY_STATS:
+        if key not in dist_stats:
+            continue
+        val = dist_stats[key]
+        entry = {'value': float(val)}
         if dist_uncert is not None and key in dist_uncert and dist_uncert[key] is not None:
-            lb,ub = dist_uncert[key].ci(ci)
-            row.append(f"[{lb:.3f}, {ub:.3f}]")
+            lb, ub = dist_uncert[key].ci(ci)
+            entry['ci'] = [float(lb), float(ub)]
         else:
-            row.append("N/A")
-        Output.append(row)
-    return Output
+            entry['ci'] = None
+        output[key] = entry
+    return output
 
 def name_dataset_from_dict(dataset_dict):
     """Creates a name for the fit based on the dataset and fit parameters."""
@@ -338,3 +355,4 @@ def name_dataset_from_dict(dataset_dict):
         el2 = ""
 
     return f"{el1}-{el2}"
+

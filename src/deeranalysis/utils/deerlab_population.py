@@ -217,6 +217,8 @@ def deerlab_population_fitting(datasets, model=dl.dd_gauss, n_pops = 2,bg_model=
     fit.t = ts
     fit.pathways = pathways
 
+    fit.stats['SNR'] = 1/fit.noiselvl
+
     return fit
 
 

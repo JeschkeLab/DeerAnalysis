@@ -231,6 +231,8 @@ def _fit_to_dict(dataset, fit):
     out['r'] = np.array(fit.r, dtype=float)
     out['P'] = np.array(fit.P_model, dtype=float)
     out['model_t'] = np.array(fit.t, dtype=float)
+    out['dist_stats'] = fit.dist_stats or {}
+    out['gof'] = fit.gof or {}
     try:
         out['PUncert'] = np.array(fit.PUncert, dtype=float) if fit.PUncert is not None else None
     except Exception:
@@ -238,70 +240,107 @@ def _fit_to_dict(dataset, fit):
     return out
 
 
-TIME_METRICS   = ["SNR (dB)", "Modulation Depth", "RMSD"]
-DIST_METRICS   = ["Mean Distance (nm)", "Std Distance (nm)"]
+TIME_METRICS = ["SNR", "MND", "RMSD"]
+KEY_STATS = ['mean', 'median', 'mode', 'std', 'iqr', 'skewness', 'kurtosis']
+STAT_LABELS = {
+    'mean':     'Mean (nm)',
+    'median':   'Median (nm)',
+    'mode':     'Mode (nm)',
+    'std':      'Std. Dev. (nm)',
+    'iqr':      'IQR (nm)',
+    'skewness': 'Skewness',
+    'kurtosis': 'Kurtosis',
+}
 
+TIME_LABELS = {
+    'SNR': 'SNR',
+    'MNR': 'MNR',
+    'rmsd': 'RMSD',
+    'R2': 'R²',}
 
 def _compute_stat(metric, dd):
     try:
         V     = dd['V']
         model = dd['model']
-        r     = dd['r']
-        P     = dd['P']
-        if metric == "SNR (dB)":
+        if metric == "SNR":
             noise = np.std(V - model)
             return f"{20 * np.log10(1.0 / noise):.1f}" if noise > 0 else "∞"
         elif metric == "Modulation Depth":
             return f"{float(np.max(model) - np.min(model)):.4f}"
         elif metric == "RMSD":
             return f"{np.sqrt(np.mean((V - model) ** 2)):.4f}"
-        elif metric == "Mean Distance (nm)":
-            dr = r[1] - r[0]
-            norm = np.sum(P * dr)
-            return f"{np.sum(r * P * dr) / norm:.3f}" if norm > 0 else "N/A"
-        elif metric == "Std Distance (nm)":
-            dr   = r[1] - r[0]
-            norm = np.sum(P * dr)
-            if norm <= 0:
-                return "N/A"
-            mean_r = np.sum(r * P * dr) / norm
-            return f"{np.sqrt(np.sum((r - mean_r) ** 2 * P * dr) / norm):.3f}"
-    except Exception:
+    except Exception as e:
+        print(f"Error computing {metric} for dataset. {e}")
         pass
     return "N/A"
 
 
-def _make_dmc_table(metrics, data_dicts, titles, section_title):
-    """Build a single dmc.Table for a given list of metrics."""
-    # Header row: "Metric" + one cell per dataset
-    header_cells = [dmc.TableTh("Metric")]
+def _format_dist_stat(entry):
+    """Format a dist_stats entry {'value': float, 'ci': [lb, ub] | None} as a string."""
+    if entry is None:
+        return "N/A"
+    elif isinstance(entry, (int, float)):
+        return f"{entry:.3f}"
+    elif isinstance(entry,str):
+        return entry
+    else:
+        val = f"{entry['value']:.3f}"
+        if entry.get('ci'):
+            lb, ub = entry['ci']
+            return f"{val} [{lb:.3f}, {ub:.3f}]"
+        return val
+
+
+
+def _header_cells(titles):
+    cells = [dmc.TableTh("Metric")]
     for i, title in enumerate(titles):
         swatch = html.Span(style={
             'display': 'inline-block', 'width': '10px', 'height': '10px',
             'borderRadius': '2px', 'backgroundColor': colour_scheme_dark[i],
             'marginRight': '5px', 'verticalAlign': 'middle',
         })
-        header_cells.append(dmc.TableTh([swatch, title]))
+        cells.append(dmc.TableTh([swatch, title]))
+    return cells
 
+
+def _make_time_table(data_dicts, titles):
     body_rows = []
-    for metric in metrics:
-        cells = [dmc.TableTd(dmc.Text(metric, size="sm", fw=500))]
+    
+    for key in TIME_LABELS:
+        label = TIME_LABELS[key]
+        cells = [dmc.TableTd(dmc.Text(label, size="sm", fw=500))]
         for dd in data_dicts:
-            cells.append(dmc.TableTd(dmc.Text(_compute_stat(metric, dd), size="sm")))
+            print(dd.get('gof', {}))
+            entry = dd.get('gof', {}).get(key,'N/A')
+            cells.append(dmc.TableTd(dmc.Text(_format_dist_stat(entry), size="sm")))
         body_rows.append(dmc.TableTr(cells))
 
     return dmc.Stack([
-        dmc.Text(section_title, size="sm", fw=600, c="dimmed"),
+        dmc.Text("Time Domain", size="sm", fw=600, c="dimmed"),
         dmc.Table(
-            [
-                dmc.TableThead(dmc.TableTr(header_cells)),
-                dmc.TableTbody(body_rows),
-            ],
-            striped=True,
-            highlightOnHover=True,
-            withColumnBorders=True,
-            withTableBorder=True,
-            fz="sm",
+            [dmc.TableThead(dmc.TableTr(_header_cells(titles))), dmc.TableTbody(body_rows)],
+            striped=True, highlightOnHover=True, withColumnBorders=True, withTableBorder=True, fz="sm",
+        ),
+    ], gap="xs")
+
+
+def _make_dist_table(data_dicts, titles):
+    body_rows = []
+    
+    for key in KEY_STATS:
+        label = STAT_LABELS[key]
+        cells = [dmc.TableTd(dmc.Text(label, size="sm", fw=500))]
+        for dd in data_dicts:
+            entry = dd.get('dist_stats', {}).get(key)
+            cells.append(dmc.TableTd(dmc.Text(_format_dist_stat(entry), size="sm")))
+        body_rows.append(dmc.TableTr(cells))
+
+    return dmc.Stack([
+        dmc.Text("Distance Domain", size="sm", fw=600, c="dimmed"),
+        dmc.Table(
+            [dmc.TableThead(dmc.TableTr(_header_cells(titles))), dmc.TableTbody(body_rows)],
+            striped=True, highlightOnHover=True, withColumnBorders=True, withTableBorder=True, fz="sm",
         ),
     ], gap="xs")
 
@@ -310,11 +349,8 @@ def _build_stats_tables(data_dicts, titles):
     if not data_dicts:
         return dmc.Text("No fits selected.", c="dimmed", size="sm")
 
-    time_table = _make_dmc_table(TIME_METRICS, data_dicts, titles, "Time Domain")
-    dist_table = _make_dmc_table(DIST_METRICS, data_dicts, titles, "Distance Domain")
-
     return dmc.SimpleGrid(
-        [time_table, dist_table],
+        [_make_time_table(data_dicts, titles), _make_dist_table(data_dicts, titles)],
         cols=2,
         spacing="md",
     )

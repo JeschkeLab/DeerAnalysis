@@ -393,6 +393,8 @@ def deerlab_fitting(dataset, compactness=True, model=None, exp_type='5pDEER', ve
     fit.mask = mask
 
     fit.background = background_func(t, fit)
+    fit.stats['MNR'] = MNR
+    fit.stats['SNR'] = 1/fit.noiselvl
 
     if not hasattr(fit, "P"):
         fit.P = fit.evaluate(model,r)

@@ -155,6 +155,8 @@ def deerlab_global_fitting(datasets,linked_params,bg_model=dl.bg_hom3d, verbosit
     fit.t = ts
     fit.pathways = pathways
 
+    fit.stats['SNR'] = 1/fit.noiselvl
+
     return fit
 
 def extract_global_P(fit):
