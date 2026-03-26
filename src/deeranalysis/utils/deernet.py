@@ -499,7 +499,10 @@ def deernet2(dataset, model_size, providor=None,model_dir=None) -> DEERnetResult
 
         mdpths[0,:,n] = x[n_traces:(2*n_traces)]
         distds[:,:,n] = mdpths[0,:,n] * deer_trace.reshape([dist_size,n_traces])
-    
+
+        # Normalise to 1
+        distds[:,:,n] = distds[:,:,n] / np.trapezoid(distds[:,0,n],new_dist)
+
     ## Generating Data
     dataset = DEERnetResult(
         data_axis,
