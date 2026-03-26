@@ -9,6 +9,13 @@ PORT = 8050
 
 from deeranalysis.app import app
 
+# Close the PyInstaller splash screen (Windows only; no-op on other platforms)
+try:
+    import pyi_splash
+    pyi_splash.close()
+except ImportError:
+    pass
+
 
 SPLASH_HTML = """
 <!DOCTYPE html>

@@ -1,6 +1,18 @@
 
 
 
+1. Build virtual environment and install dependencies:
+
+```
+python -m venv .venv
+source .venv/bin/activate
+pip install ../DeerLab
+pip install ../PyEPR
+pip install .
+pip install pyinstaller
+```
+
+
 ```
 python -m PyInstaller --noconfirm DeerAnalysis_MacOS.spec
 ```
