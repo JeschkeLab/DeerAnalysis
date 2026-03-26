@@ -19,6 +19,7 @@ from deeranalysis.utils import create_subplot_figure,plotly_deerlab
 from deeranalysis.components.metadata_table import build_metadata_section,build_delays_table, metadata_long_values_model,build_delays_AGgrid,delays_columnDefs
 from deeranalysis.components.download_modal import create_fit_download_modal
 
+from deerlab.classes import UQResult
 dash.register_page(__name__, path_template="/fit/<fit_id>")
 page_id = "fit-detail"
 
@@ -102,7 +103,7 @@ def layout(fit_id=None):
         dmc.Divider(mb="md"),
 
         # ---- notification area ----------------------------------------------
-        html.Div(id="dd-notification"),
+        html.Div(id="fd-notification"),
 
         # ---- Content -------------------------------------------------------
         dbc.Row([
@@ -550,6 +551,14 @@ def _fit_plot(fit,dataset):
         ),
     ], p="md", mb="md", withBorder=True, radius="md")   
 
+def _convert_lists_in_dicts_to_arrays(d):
+    """Recursively convert lists in a dict to numpy arrays."""
+    if isinstance(d, dict):
+        return {k: _convert_lists_in_dicts_to_arrays(v) for k, v in d.items()}
+    elif isinstance(d, list):
+        return np.array(d)
+    else:
+        return d
 
 def _fits_and_dataset_to_dict(dataset, fit=None):
     output = {}
@@ -560,10 +569,12 @@ def _fits_and_dataset_to_dict(dataset, fit=None):
     output['model_t'] = np.array(fit.t, dtype=float)
     output['r'] = np.array(fit.r, dtype=float)
     output['P'] = np.array(fit.P_model, dtype=float)
-    try:
-        output['PUncert'] = np.array(fit.PUncert, dtype=float) if fit.PUncert is not None else None
-    except Exception:
+    if isinstance(fit.PUncert,dict):
+        PUncert = UQResult.from_dict(_convert_lists_in_dicts_to_arrays(fit.PUncert))
+        output['PUncert'] = PUncert.ci(95)
+    else:
         output['PUncert'] = None
+
     return output
 
 # ---- Download and Deletion Callbacks -------------------------------------------------------

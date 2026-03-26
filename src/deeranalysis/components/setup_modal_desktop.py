@@ -135,7 +135,7 @@ def create_setup_modal(id="setup-modal"):
 
     layout = dmc.Modal(id=id,
                        size="60%",
-                       title="Welcome to DeerAnalysis!",
+                       title="Welcome to DeerAnalysis 2026!",
                        children=[
         dmc.Stepper(
             id=f"{id}-stepper",
@@ -162,7 +162,7 @@ def create_setup_modal(id="setup-modal"):
                     description="DeerNet",
                     children=[
                         dmc.Text("DeerNet is neural network based tool for analysing DEER data."),
-                        dmc.Text("DeerNet is an optional-plugin for DeerAnalysis, but requires the AI-models to be downloaded. If you want to use DeerNet, please download the models using the button below. This can also be done later in the settings page."),
+                        dmc.Text("DeerNet is an optional plugin for DeerAnalysis, but requires the AI-models to be downloaded. If you want to use DeerNet, please download the models using the green button below. This can also be done later in the settings page."),
                         dmc.Button("Download DeerNet Models", id="download-deernet-models", variant="outline", color="green", className="mt-2"),
                     ]
                 ),

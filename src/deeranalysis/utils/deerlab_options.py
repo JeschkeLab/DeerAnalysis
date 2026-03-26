@@ -160,7 +160,13 @@ def plotly_comparison(results, titles=None, offset=0.3, ci=95, show_ci=True):
             data_model = res['model'] + vspacing[i]
             r = res['r']
             P = res['P']
-            PUncert = (res['PUncert'] if 'PUncert' in res else None) if show_ci else None
+            if 'PUncert' in res and res['PUncert'] is not None and show_ci:
+                if isinstance(res['PUncert'], dl.UQResult):
+                    PUncert = res['PUncert'].ci(ci)
+                else:
+                    PUncert = res['PUncert']
+            else:
+                PUncert = None
             model_t = res['model_t'] if 'model_t' in res else data_t
             background = res['background'] if 'background' in res else None
         else:
@@ -240,7 +246,13 @@ def plotly_deerlab(fitresult=None, orientation='h'):
         else:
             model_t = data_t
         P = fitresult['P'] if 'P' in fitresult else None
-        PUncert = fitresult['PUncert'] if 'PUncert' in fitresult else None
+        if 'PUncert' in fitresult and fitresult['PUncert'] is not None:
+            if isinstance(fitresult['PUncert'], dl.UQResult):
+                PUncert = fitresult['PUncert'].ci(95)
+            else:
+                PUncert = fitresult['PUncert']
+        else:
+            PUncert = None
         r = fitresult['r'] if 'r' in fitresult else None
         background = fitresult['background'] if 'background' in fitresult else None
     else:
@@ -292,7 +304,7 @@ def fit_to_dict(fit):
     output['P_model'] = fit.P.tolist() if fit.P is not None else None
     
     output['r'] = fit.r.tolist() if fit.r is not None else None
-    output['PUncert'] = None
+    output['PUncert'] = fit.PUncert.to_dict() if fit.PUncert is not None else None
     output['model_description'] = fit.__str__() if fit is not None else None
     return output
     

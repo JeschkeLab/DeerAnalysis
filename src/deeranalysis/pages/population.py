@@ -62,7 +62,7 @@ layout = html.Div([
             dmc.CheckboxGroup(
                 id={'type': 'pathways-options', 'page': page_id},
                 label="Pathways to include:",
-                description="These pathways will be applied to all datasets, if they are fesiable for the coresponding experiment.",
+                description="These pathways will be applied to all datasets, if they are fesiable for the corresponding experiment.",
                 children=dmc.Group([
                     dmc.Checkbox(value='1', label='1'),
                     dmc.Checkbox(value='2', label='2'),

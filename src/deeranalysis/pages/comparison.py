@@ -9,6 +9,8 @@ from deeranalysis.components.fit_finder import fit_select
 from deeranalysis.components.dataset_search_model import create_dataset_modal, search_fit_modal
 from deeranalysis.utils.deerlab_options import plotly_comparison, colour_scheme_dark, colour_scheme_light
 
+
+from deerlab import UQResult
 dash.register_page(__name__)
 
 PAGE_ID = 'comparison'
@@ -222,6 +224,15 @@ def compare_fits(fit_ids, offset, ci_str, show_ci):
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
+def _convert_lists_in_dicts_to_arrays(d):
+    """Recursively convert lists in a dict to numpy arrays."""
+    if isinstance(d, dict):
+        return {k: _convert_lists_in_dicts_to_arrays(v) for k, v in d.items()}
+    elif isinstance(d, list):
+        return np.array(d)
+    else:
+        return d
+
 def _fit_to_dict(dataset, fit):
     out = {}
     out['t'] = np.array(dataset.t, dtype=float)
@@ -233,9 +244,11 @@ def _fit_to_dict(dataset, fit):
     out['model_t'] = np.array(fit.t, dtype=float)
     out['dist_stats'] = fit.dist_stats or {}
     out['gof'] = fit.gof or {}
-    try:
-        out['PUncert'] = np.array(fit.PUncert, dtype=float) if fit.PUncert is not None else None
-    except Exception:
+
+    if isinstance(fit.PUncert,dict):
+        PUncert = UQResult.from_dict(_convert_lists_in_dicts_to_arrays(fit.PUncert))
+        out['PUncert'] = PUncert #.ci(95)
+    else:
         out['PUncert'] = None
     return out
 
@@ -311,7 +324,6 @@ def _make_time_table(data_dicts, titles):
         label = TIME_LABELS[key]
         cells = [dmc.TableTd(dmc.Text(label, size="sm", fw=500))]
         for dd in data_dicts:
-            print(dd.get('gof', {}))
             entry = dd.get('gof', {}).get(key,'N/A')
             cells.append(dmc.TableTd(dmc.Text(_format_dist_stat(entry), size="sm")))
         body_rows.append(dmc.TableTr(cells))
