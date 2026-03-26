@@ -13,7 +13,7 @@ from deeranalysis.components.setup_modal_desktop import get_DeerAnalysis_directo
 from deeranalysis.utils.deerlab_options import  plotly_goodness_of_fit, plotly_deerlab, dists_stats_to_list, fit_to_dict,name_dataset_from_dict
 from deeranalysis.utils.database import get_session, Dataset, Fit
 from deeranalysis.utils import create_subplot_figure, dataarray_from_database_entry
-from deeranalysis.utils.deernet import deernet
+from deeranalysis.utils.deernet import deernet,deernet2
 import deerlab as dl
 dash.register_page(__name__)
 import deeranalysis.components.fit_page_components as fpc
@@ -27,7 +27,6 @@ layout = html.Div([
 
     dbc.Row([
         dbc.Col([
-            dmc.Alert("Only DeerNet 1 models are currently supported. DeerNet 2 is coming soon!", title="Warning!", color="yellow"),
             create_dataset_modal(page_id=page_id),
             html.Div([
                 dmc.Select(id={'type': 'dataset-dropdown', 'page': page_id}, label="Select a dataset", style={'flex': '1 1 0'}),
@@ -38,8 +37,8 @@ layout = html.Div([
             dmc.Select(label='Model Size',
                 id='dn-model-size',
                 data=[
-                    # {'value': '128', 'label': '128'},
-                    # {'value': '256', 'label': '256'},
+                    {'value': '128', 'label': '128'},
+                    {'value': '256', 'label': '256'},
                     {'value': '512', 'label': '512'},
                 ],
                 value='512',
@@ -134,9 +133,10 @@ def update_dropdown(pathname):
     Output({"type": "download-fit-btn", "page": page_id}, 'disabled'),
     Input({"type":"run-fit-btn","page":page_id}, 'n_clicks'),
     Input({'type': 'dataset-dropdown', 'page': page_id}, 'value'),
+    State('dn-model-size', 'value'),
     prevent_initial_call=True,
 )
-def run_fit(n_clicks, dataset_id):
+def run_fit(n_clicks, dataset_id,model_size):
     ctx = dash.callback_context
     triggered_id = ctx.triggered[0]['prop_id'].split('.')[0]
     
@@ -155,6 +155,9 @@ def run_fit(n_clicks, dataset_id):
     dataset = dataset.assign_coords(t=dataset.t.values )
     session.close()
 
+    model_size = int(model_size)
+    deernet_folder = os.path.join(get_DeerAnalysis_directory(), "deernet", 'deernet_models')
+
     if triggered_id == {"page":page_id,"type":"dataset-dropdown"}:
         # Just plot the data
 
@@ -165,7 +168,7 @@ def run_fit(n_clicks, dataset_id):
 
     elif triggered_id == {"type":"run-fit-btn","page":page_id}:
 
-        fit = deernet(dataset,providor='CoreMLExecutionProvider')
+        fit = deernet2(dataset,model_size, model_dir=deernet_folder, providor=['CPUExecutionProvider'])
 
         fig = plotly_deerlab(fitresult=fit)
         fig.update_layout(title=f"Fit Result: {dataset_entry.name}", showlegend=True)

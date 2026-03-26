@@ -8,7 +8,7 @@ from dataclasses import dataclass
 import scipy.constants as const
 import h5py as h5
 import onnxruntime as rt
-
+import os
 from deerlab import UQResult,FitResult,goodness_of_fit, noiselevel
 
 @dataclass
@@ -356,4 +356,238 @@ def deernet(dataset, providor=None) -> DEERnetResult:
         )
     return fitresult
 
+
+def deernet2(dataset, model_size, providor=None,model_dir=None) -> DEERnetResult:
+    """deernet2 [This is a placeholder for a future version of deernet that will be able to accomodate different model sizes. The current version of deernet only works with 512 data points. This function will be developed in the future to allow for more flexible input sizes.]
+
+    :param dataset: [description]
+    :type dataset: DEERnetResult
+    :param model_size: [description]
+    :type model_size: int
+    :param providor: [description], defaults to None
+    :type providor: [type], optional
+    :return: [description]
+    :rtype: DEERnetResult
+    """
+    if providor is None:
+        providor = ['CPUExecutionProvider']
+
+    if model_size not in [128,256,512]:
+        raise ValueError('model_size must be one of [128,256,512]')
+    dist_size = 512
     
+    if dataset.attrs['seq_name'] == '4pDEER':
+        exp_type = 'deer'
+    elif dataset.attrs['seq_name'] == 'RIDME':
+        exp_type = 'ridme'
+    else:
+        raise ValueError(f'Experiment type {dataset.exp_type} not supported for deernet2. Supported types are 4pDEER and RIDME.')
+
+
+    if 't' in dataset.coords:
+
+        time_axis = dataset.t.values
+    else:
+        time_axis = dataset.coords[list(dataset.coords)[0]].values
+    t_min = time_axis.min()
+    data_axis = dataset.values
+    
+    time_axis, data_axis, t_shift = deernet_prep(time_axis, data_axis)
+    noiselvl = noiselevel(data_axis)
+    # resample the input data to match input dimension
+    
+    new_axis = np.linspace(min(time_axis),max(time_axis),model_size) 
+    resamp_traces = pchip_interpolate(time_axis,data_axis,new_axis)
+
+    # Renormalize input trace to 0:1
+    new_trace = resamp_traces
+    scaling_factors = np.max(resamp_traces)
+    new_trace = new_trace - min(new_trace)
+    new_trace = new_trace / max(new_trace)
+
+    gamma = const.value(u'electron gyromag. ratio')
+    dt = new_axis[1]-new_axis[0]
+    def calc_rmin(dt):
+        return 1e10 * (4 * (const.mu_0 / (4 * np.pi)) * (gamma **2 *const.hbar / (2 * np.pi)) * dt) **(1/3)
+    def calc_rmax(tmax):
+        return 1e10 * (2* (const.mu_0 / (4*np.pi)) * (gamma **2 * const.hbar/(2*np.pi))*tmax)**(1/3)
+    new_rmin = calc_rmin(new_axis[1]-new_axis[0])
+    new_rmax = calc_rmax(new_axis.max())
+    input_rmin = calc_rmin(time_axis[1]-time_axis[0])
+    input_rmax = calc_rmax(np.max(time_axis))
+    new_dist = np.linspace(new_rmin,new_rmax,dist_size)
+
+    dist_keep_mask = (new_dist>input_rmin) & (new_dist<input_rmax)
+
+    n_traces = 1
+    n_nets = 32 
+    
+    backgs = np.zeros((model_size,n_traces,n_nets),dtype=float)
+    distds = np.zeros((dist_size,n_traces,n_nets),dtype=float)
+    retros = np.zeros((model_size,n_traces,n_nets),dtype=float)
+    mdpths= np.zeros((1,n_traces,n_nets),dtype=float)
+
+
+    if model_dir is None:
+        home = os.path.expanduser("~")
+        model_dir = os.path.join(home, "DeerAnalysis", 'deernet','deernet_models')
+    
+
+    model_dir = os.path.join(model_dir, 'nets',f"net_distan_dd",f"{exp_type}-({model_size})-{model_size}-512")
+    for n in range(0,n_nets):
+        onnx_path = os.path.join(model_dir, f"{n+1}.onnx")
+        kernel_path = os.path.join(model_dir, f"{n+1}_kernel.h5")
+
+        sess = rt.InferenceSession(onnx_path,providers=providor)
+
+        input_trace = new_trace.astype(np.float32)
+        input_trace = input_trace.reshape([1,model_size])
+
+
+        deer_trace = sess.run(None,{"input":input_trace})
+        deer_trace = np.transpose(np.squeeze(deer_trace))
+        deer_trace = deer_trace * len(deer_trace)
+
+        if np.isnan(deer_trace).any() == True:
+            raise RuntimeError('Neural net returns NaN, check your input data.')
+
+        # Extract the kernel
+        param_file = h5.File(kernel_path,mode='r')
+        kernel = param_file['kernel'][()]
+        kernel[:,0] = 0
+        ffs = np.matmul(np.transpose(kernel), (deer_trace / np.sum(deer_trace)))
+        ffs[0,] = 1
+        ffs = np.double(ffs)
+        
+        def finite_vals(array:np.ndarray) -> np.ndarray:
+            return array[np.logical_not(np.isnan(array))]
+
+        def signal_mode(x,ffs,ntraces):
+            alphas = np.transpose(x[0:ntraces])
+            mus = np.transpose(x[ntraces:2*ntraces])
+            k = x[2*ntraces]
+            bgd=x[2*ntraces+1]
+
+            scaled_time = np.linspace(0,1,np.size(ffs))
+            
+            sig = alphas * ((1 - mus) + mus *ffs) * np.exp(- (k * scaled_time) **(bgd / 3))
+            return sig
+
+        scaled_traces = resamp_traces / scaling_factors
+        lsq_err = lambda x: sum( finite_vals( scaled_traces - signal_mode(x,ffs,n_traces) )**2)
+
+        # Create initial conditions
+        amp_scale =     0.50 * (1.0 + rand()) * np.ones(n_traces)
+        mod_depths =    0.50 * (1.0 + rand()) * np.ones(n_traces)
+        bgd_rate =      0.50 * (1.0 + rand())
+        bgd_dim =       2.0  +  1.5 * rand()
+
+        guess = np.hstack((amp_scale,mod_depths,bgd_rate,bgd_dim)) # place in a single 1D array
+
+        bounds = [  (np.full([n_traces,1],-np.inf) , np.full([n_traces,1],+np.inf)    ),\
+                    (np.full([n_traces,1],-np.inf) , np.full([n_traces,1],+np.inf)    ),\
+                    (0                             , +np.inf                          ),\
+                    (2.0                           , 3.5                              )]
+
+        # This is one of the big difference between the MATLAB and Python versions. In the Python version 
+        # a different method is used to minimise this function.
+        result = minimize(lsq_err,guess,args=(),method = 'L-BFGS-B',bounds = bounds) 
+        x = result.x
+
+        retros[:,:,n] = scaling_factors * signal_mode(x,    ffs,    n_traces).reshape([model_size,n_traces])
+        backgs[:,:,n] = scaling_factors * signal_mode(x,    0*ffs,  n_traces).reshape([model_size,n_traces])
+
+        mdpths[0,:,n] = x[n_traces:(2*n_traces)]
+        distds[:,:,n] = mdpths[0,:,n] * deer_trace.reshape([dist_size,n_traces])
+    
+    ## Generating Data
+    dataset = DEERnetResult(
+        data_axis,
+        time_axis,
+        input_trace,
+        new_axis,
+        n_traces,
+    )
+
+    dataset.backgs_av = np.mean(backgs,2)
+    dataset.backgs_lb = np.mean(backgs,2) - 2 * np.std(backgs,2)
+    dataset.backgs_ub = np.mean(backgs,2) + 2 * np.std(backgs,2)
+
+    dataset.retros_av = np.mean(retros,2)
+    dataset.retros_lb = np.mean(retros,2) - 2 * np.std(retros,2)
+    dataset.retros_ub = np.mean(retros,2) + 2 * np.std(retros,2)
+    
+    dataset.model_t = new_axis *1e6 # convert back to microseconds for output
+    dataset.t = time_axis * 1e6 # convert back to microseconds for output
+    dataset.Vexp = data_axis
+
+
+    dataset.mdpths = mdpths
+    dataset.mdpths_av = np.mean(mdpths,2)
+    dataset.mdpths_std = np.mean(mdpths,2)
+
+    dist_av = np.mean(distds,2)
+    dist_lb = np.mean(distds,2) - 2 * np.std(distds,2)
+    dist_ub = np.mean(distds,2) + 2 * np.std(distds,2)
+    dist_lb[dist_lb<0] = 0
+
+    #Apply distance range truncation
+    dataset.dist_av = dist_av[dist_keep_mask]
+    dataset.dist_lb = dist_lb[dist_keep_mask]
+    dataset.dist_ub = dist_ub[dist_keep_mask]
+    dataset.dist_ax = new_dist[dist_keep_mask]
+
+    dataset.resamp_traces = resamp_traces
+
+    dataset = quality_control(dataset)
+
+    # resample the retos and background to match the input time axis for output
+    retros = pchip_interpolate(new_axis, retros.squeeze(), time_axis)
+    backgs = pchip_interpolate(new_axis, backgs.squeeze(), time_axis)
+
+
+    modelUncert = UQResult(
+        uqtype = 'bootstrap',
+        data = retros.T
+    )
+
+    PUncert = UQResult(
+        uqtype = 'bootstrap',
+        data = distds.squeeze()[dist_keep_mask,...].T
+    )
+
+    bgUncert = UQResult(
+        uqtype = 'bootstrap',
+        data = backgs.T
+    )
+
+    r = new_dist[dist_keep_mask] / 10 # convert to nm
+
+    residuals = data_axis - modelUncert.mean
+
+    stats = {}
+    stats['rmsd'] = np.sqrt(np.mean(residuals**2))
+    stats['r2'] = 1 - np.sum((residuals)**2)/np.sum((modelUncert.mean-np.mean(modelUncert.mean))**2)
+    MNR = dataset.mdpths_av[0][0] / noiselvl
+    stats['MNR'] = MNR
+    stats['SNR'] = 1/ noiselvl 
+    stats['mod_depth'] = dataset.mdpths_av[0][0]
+
+    fitresult = FitResult(
+        dataset = dataset,
+        t = (time_axis+t_shift) * 1e6, # convert back to microseconds for output
+        Vexp = data_axis,
+        # model_t = new_axis *1e6, # convert back to microseconds for output
+        modelUncert = modelUncert,
+        model = modelUncert.mean,
+        bg = bgUncert.mean,
+        bgUncert = bgUncert,
+        r = r,
+        P = PUncert.mean,
+        PUncert = PUncert,
+        noiselvl = noiselvl,
+        residuals = residuals,
+        stats=stats,
+        _summary = 'DEERnet Fit Result',
+        )
+    return fitresult
