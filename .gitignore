@@ -130,6 +130,7 @@ celerybeat.pid
 # Environments
 .env
 .venv
+.venv*
 env/
 venv/
 ENV/
@@ -182,6 +183,7 @@ cython_debug/
 
 deernet/
 
+.DS_Store
 */.DS_Store
 *.db
 *.dmg
