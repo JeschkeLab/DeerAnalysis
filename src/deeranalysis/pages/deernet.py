@@ -168,8 +168,12 @@ def run_fit(n_clicks, dataset_id,model_size):
 
     elif triggered_id == {"type":"run-fit-btn","page":page_id}:
 
-        fit = deernet2(dataset,model_size, model_dir=deernet_folder, providor=['CPUExecutionProvider'])
-
+        try:
+            fit = deernet2(dataset,model_size, model_dir=deernet_folder, providor=['CPUExecutionProvider'])
+        except Exception as e:
+            print(f"Error running DeerNet fit: {e}")
+            return dash.no_update, dash.no_update, False, dash.no_update, dash.no_update, True, True
+        
         fig = plotly_deerlab(fitresult=fit)
         fig.update_layout(title=f"Fit Result: {dataset_entry.name}", showlegend=True)
 

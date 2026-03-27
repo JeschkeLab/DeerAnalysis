@@ -15,6 +15,7 @@ import dash_ag_grid as dag
 import dash_mantine_components as dmc
 from sqlalchemy.orm import Session
 from dash_iconify import DashIconify
+import pyepr as pyepr
 
 from deeranalysis.components.metadata_table import build_metadata_section_datarray, metadata_long_values_model
 dash.register_page(__name__)
@@ -194,12 +195,22 @@ def handle_file_upload(contents_list, filenames_list):
 
             delays = get_delays_dict(dataarray)
             tmin = dataarray.attrs.get('deadtime', 0)
+
+        elif file_format == 'hdf5':
+            decoded = base64.b64decode(contents_list[0].split(',')[1])
+            dataarray = pyepr.eprload(io.BytesIO(decoded),type='HDF5')
+            metadata_children, long_values_store = build_metadata_section_datarray(dataarray)
+            delays = get_delays_dict(dataarray)
+            tmin = dataarray.t.values.min()*1e3 # Convert from microseconds to nanoseconds
             
         else:
             alert = _error_message("Currently only Bruker BES3T .DSC/.DTA file pairs are supported for upload. Support for .h5 and .csv files is coming soon!")
             return *no_update_7[:6], alert
     except Exception as e:
         alert = _error_message(f"Error processing files: {str(e)}")
+        import traceback
+        print(f"Error processing uploaded files: {e}")
+        print(traceback.format_exc())
         return *no_update_7[:6], alert
     
     
@@ -207,7 +218,7 @@ def handle_file_upload(contents_list, filenames_list):
     store_data = {}
     store_data['RealData'] = dataarray.real.values.tolist()
     store_data['ImagData'] = dataarray.imag.values.tolist()
-    store_data['t'] = dataarray.X.values.tolist()
+    store_data['t'] = dataarray.t.values.tolist() if hasattr(dataarray, 't') else dataarray.X.values.tolist()
     store_data['attrs'] = dataarray.attrs
     store_data['delays'] = delays
     store_data['tmin'] = tmin

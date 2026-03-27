@@ -381,7 +381,7 @@ def deernet2(dataset, model_size, providor=None,model_dir=None) -> DEERnetResult
     elif dataset.attrs['seq_name'] == 'RIDME':
         exp_type = 'ridme'
     else:
-        raise ValueError(f'Experiment type {dataset.exp_type} not supported for deernet2. Supported types are 4pDEER and RIDME.')
+        raise ValueError(f'Experiment type {dataset.attrs['seq_name']} not supported for deernet2. Supported types are 4pDEER and RIDME.')
 
 
     if 't' in dataset.coords:
