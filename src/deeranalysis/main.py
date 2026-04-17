@@ -2,6 +2,8 @@ import threading
 import time
 import webview
 import os
+import sys
+from pathlib import Path
 
 os.environ['PYWEBVIEW_GUI'] = 'cocoa'  # force macOS backend
 os.environ['DEERANALYSIS_PYWEBVIEW'] = '1'                         
@@ -17,62 +19,38 @@ except ImportError:
     pass
 
 
-SPLASH_HTML = """
-<!DOCTYPE html>
+def _splash_html():
+    if getattr(sys, 'frozen', False):
+        basedir = Path(sys._MEIPASS)
+    else:
+        basedir = Path(__file__).parent
+    img_path = (basedir / 'assets' / 'splash.png').as_uri()
+    return f"""<!DOCTYPE html>
 <html>
 <head>
     <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body {
-            background-color: #1a1a2e;
+        * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+        body {{
+            background-color: #000;
             display: flex;
-            flex-direction: column;
             justify-content: center;
             align-items: center;
             height: 100vh;
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-            color: #ffffff;
-        }
-        .logo {
-            font-size: 48px;
-            font-weight: 700;
-            letter-spacing: 2px;
-            margin-bottom: 8px;
-            color: #e0e0e0;
-        }
-        .subtitle {
-            font-size: 14px;
-            color: #888;
-            margin-bottom: 40px;
-            letter-spacing: 1px;
-        }
-        .spinner {
-            width: 40px;
-            height: 40px;
-            border: 3px solid rgba(255,255,255,0.1);
-            border-top-color: #4a90d9;
-            border-radius: 50%;
-            animation: spin 0.8s linear infinite;
-            margin-bottom: 16px;
-        }
-        .loading-text {
-            font-size: 12px;
-            color: #666;
-            letter-spacing: 1px;
-        }
-        @keyframes spin {
-            to { transform: rotate(360deg); }
-        }
+            overflow: hidden;
+        }}
+        img {{
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
+        }}
     </style>
 </head>
 <body>
-    <div class="logo">DeerAnalysis</div>
-    <div class="subtitle">EPR Data Analysis</div>
-    <div class="spinner"></div>
-    <div class="loading-text">Loading...</div>
+    <img src="{img_path}" />
 </body>
-</html>
-"""
+</html>"""
+
+SPLASH_HTML = _splash_html()
 
 def run_dash():
     app.run(port=PORT, debug=False, use_reloader=False)
@@ -80,7 +58,7 @@ def run_dash():
 def wait_for_dash(window):
     """Poll until Dash is ready, then load the app."""
     import urllib.request
-    time.sleep(1)  # initial delay to give Dash a moment to start
+    time.sleep(5)  # initial delay to give Dash a moment to start
     while True:
         try:
             urllib.request.urlopen(f"http://localhost:{PORT}", timeout=1)
