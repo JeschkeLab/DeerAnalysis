@@ -12,11 +12,12 @@ from deeranalysis.utils import  dataarray_from_database_entry
 from deeranalysis.components.dataset_search_model import create_dataset_modal
 from deeranalysis.components.download_modal import create_fit_download_modal
 from deeranalysis.components.fit_page_components import fit_results_tabs, DEFAULT_FIT_RESULTS_CODE,fit_results_tab, goodness_of_fit_tab, dist_stats_tab
-from deeranalysis.utils.deerlab_options import regparam_options,background_models, plotly_goodness_of_fit, plotly_deerlab,dists_stats_to_list, fit_to_dict,name_dataset_from_dict
+from deeranalysis.components.model_edit_modal import create_model_edit_modal
+from deeranalysis.utils.deerlab_options import regparam_options,background_models, plotly_goodness_of_fit, plotly_deerlab,dists_stats_to_list, fit_to_dict,name_dataset_from_dict, build_model_data
 
 import deeranalysis.components.fit_page_components as fpc
-dash.register_page(__name__)
 
+dash.register_page(__name__)
 page_id='non-parametric'
 
 
@@ -29,6 +30,7 @@ layout = html.Div([
         dbc.Col([
             create_dataset_modal(page_id=page_id),
             create_fit_download_modal(page_id=page_id),
+            create_model_edit_modal(page_id=page_id),
             html.Div([
                 dmc.Select(id={'type': 'dataset-dropdown', 'page': page_id}, label="Select a dataset", style={'flex': '1 1 0'}),
                 dmc.ActionIcon(DashIconify(icon='material-symbols:search', width=20),
@@ -62,6 +64,8 @@ layout = html.Div([
             dmc.Chip('Compactness', id='np-compactness-option', value=False, checked=False),
             dmc.Space(h=10),
             fpc.distance_slider(page_id),
+            dmc.Space(h=10),
+            dmc.Button("Edit Dipolar Model", id={'type': 'open-model-edit-btn', 'page': page_id}, color="blue", variant='outline', className="mb-2 ms-1", leftSection=DashIconify(icon='material-symbols:edit', width=20)),
             dmc.Space(h=10),
             # dmc.Paper([
                 dmc.Accordion(
@@ -131,6 +135,8 @@ layout = html.Div([
     
     # Hidden store for fit results
     dcc.Store(id={'type':'fit-results-store','page': page_id}),
+    # Hidden store for user-edited model parameter overrides
+    dcc.Store(id={'type': 'model-params-store', 'page': page_id}),
 ])
 clientside_callback(
         """
@@ -156,6 +162,34 @@ def update_dropdown(pathname):
 
 
 @callback(
+    Output({'type': 'model-edit-modal', 'page': page_id}, 'opened'),
+    Output({'type': 'model-store', 'page': page_id}, 'data'),
+    Input({'type': 'open-model-edit-btn', 'page': page_id}, 'n_clicks'),
+    State({'type': 'dataset-dropdown', 'page': page_id}, 'value'),
+    State('np-bg-model', 'value'),
+    State('np-pathways-options', 'value'),
+    State({"type": "distance-axis", "page": page_id}, 'value'),
+    State({'type': 'model-params-store', 'page': page_id}, 'data'),
+    prevent_initial_call=True,
+)
+def open_model_edit_modal(n_clicks, dataset_id, bg_model_name, pathways, distance_axis, existing_overrides):
+    if not n_clicks or not dataset_id:
+        return False, dash.no_update
+
+    session = get_session()
+    dataset_entry = session.query(Dataset).filter_by(id=dataset_id).first()
+    dataset = dataarray_from_database_entry(dataset_entry)
+    dataset = dataset.assign_coords(t=dataset.t.values)
+    session.close()
+
+    pathways_int = [int(p) for p in pathways] if pathways else [1]
+    model_data = build_model_data(dataset, bg_model_name, pathways_int, distance_axis, existing_overrides)
+    return True, model_data
+
+
+
+
+@callback(
     Output({'type':'fit-results-store','page': page_id}, 'data'),
     Output('np-fit-plot', 'figure',allow_duplicate=True),
     Output('np-run-fit-btn', 'loading', allow_duplicate=True),
@@ -172,9 +206,10 @@ def update_dropdown(pathname):
     State({"type": "distance-axis", "page": page_id}, 'value'),
     State('np-pathways-options', 'value'),
     State('np-regparam-method', 'value'),
+    State({'type': 'model-params-store', 'page': page_id}, 'data'),
     prevent_initial_call=True,
 )
-def run_fit(n_clicks, dataset_id, bg_model_option,compactness,distance_axis,pathways_options,regparam_method):
+def run_fit(n_clicks, dataset_id, bg_model_option, compactness, distance_axis, pathways_options, regparam_method, model_params):
     ctx = dash.callback_context
     triggered_id = ctx.triggered[0]['prop_id'].split('.')[0]
     
@@ -218,7 +253,8 @@ def run_fit(n_clicks, dataset_id, bg_model_option,compactness,distance_axis,path
                 bg_model=bg_model,
                 r=r,
                 pathways=pathways,
-                regparam=regparam_method)
+                regparam=regparam_method,
+                model_overrides=model_params)
         except Exception as e:
             print(f"Error during fitting: {e}")
             return dash.no_update, dash.no_update, False, f"Error during fitting: {e}", dash.no_update, dash.no_update, True, True

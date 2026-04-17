@@ -571,7 +571,11 @@ def _fits_and_dataset_to_dict(dataset, fit=None):
     output['P'] = np.array(fit.P_model, dtype=float)
     if isinstance(fit.PUncert,dict):
         PUncert = UQResult.from_dict(_convert_lists_in_dicts_to_arrays(fit.PUncert))
-        output['PUncert'] = PUncert.ci(95)
+        try:
+            output['PUncert'] = PUncert.ci(95)
+        except Exception as exc:
+            print(f"Error extracting P uncertainty: {exc}")
+            output['PUncert'] = None
     else:
         output['PUncert'] = None
 

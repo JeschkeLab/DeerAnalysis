@@ -6,6 +6,7 @@ import io
 import traceback
 from deeranalysis.utils.io import datasetSQL_to_file,fitSQL_to_file
 from deeranalysis.utils.database import get_session, Dataset,Fit
+from deerlab import save, json_loads
 import sys
 import os
 
@@ -27,7 +28,8 @@ EXTENSIONS = {
 }
 
 FIT_DOWNLOAD_FORMAT_OPTIONS = [
-    # {"value": "hdf5",   "label": "HDF5 (.h5)"},
+    {"value": "dl-hdf5",   "label": "DeerLab - HDF5 (.h5)"},
+    {"value": "hdf5",   "label": "HDF5 (.h5)"},
     {"value": "matlab", "label": "Matlab (.mat)"},
     {"value": "csv",    "label": "CSV (.csv)"},
 ]
@@ -38,6 +40,37 @@ FILE_TYPE_FILTERS = {
     ".zip": ("ZIP archives (*.zip)",),
     ".DTA": ("Bruker files (*.DTA)",),
 }
+
+
+FitDownload_Context = """
+The fit result can be downloaded in the following formats:
+
+1. **DeerLab - HDF5 (.h5)**: Complete fit data including DeerLab-specific metadata and uncertainty information. 
+This format is ideal for users who wish to preserve all details of the fit and may want to re-import it into DeerLab later, and investigate different uncertainty values. 
+Import into DeerLab using the `dl.load` function (DeerLab v1.2.0 or later is required).
+
+2. **HDF5 (.h5)**: Standard HDF5 format compatible with multiple software packages.
+This option provides a more generic export that can be read by various tools, but may not include all DeerLab-specific metadata or uncertainty details. 
+The output includes:
+
+* Time axis, 
+* Fitted model,
+* Distance axis,
+* Distance distribution,
+* 95% CI Uncertainty estimates for the distance distribution (if available).
+
+3. **Matlab (.mat)**: MATLAB-compatible format for use in MATLAB environments.
+This is the same as for the HDF5 option but in a .mat file. It can be imported into MATLAB using the `load` function, and is suitable for users who primarily work in MATLAB.
+
+4. **CSV (.csv)**: Comma-separated values format for easy import into spreadsheet applications.
+This option exports the fit data into CSV files, which can be easily opened in Excel or other spreadsheet software. 
+However, it is not possible to export as a single CSV file, so the output will be a ZIP archive containing multiple CSVs.
+
+* `[file]_t.csv`: Contains the time axis and fitted model values.
+* `[file]_dd.csv`: Contains the distance axis and distance distribution values.
+    
+If a DeerNet fit is to be exported, the exported time axis and fitted model will be resampled to match the original dataset's time axis.
+"""
 
 # ---------------------------------------------------------------------------
 # Component factories
@@ -134,6 +167,7 @@ def create_fit_download_modal(page_id="fit-download-modal"):
     """
     return html.Div([
         dcc.Store(id={"type": "fit-dl-store", "page": page_id}, data=None),
+        
         dmc.Modal(
             id={"type": "fit-dl-modal", "page": page_id},
             title=dmc.Text("Download Fit", fw=600, size="lg"),
@@ -142,15 +176,27 @@ def create_fit_download_modal(page_id="fit-download-modal"):
             children=[
                 dmc.Stack([
                     html.Div(id={"type": "fit-dl-alert", "page": page_id}),
-                    dmc.Select(
-                        id={"type": "fit-dl-format", "page": page_id},
-                        label="File format",
-                        description="Choose the format for the exported fit result.",
-                        data=FIT_DOWNLOAD_FORMAT_OPTIONS,
-                        value="hdf5",
-                        allowDeselect=False,
-                        w="100%",
-                    ),
+                    dmc.Group([
+                        dmc.Select(
+                            id={"type": "fit-dl-format", "page": page_id},
+                            label="File format",
+                            description="Choose the format for the exported fit result.",
+                            data=FIT_DOWNLOAD_FORMAT_OPTIONS,
+                            value="hdf5",
+                            allowDeselect=False,
+                            w="100%",
+                            style={"flex": 1},
+                        ),
+                        dmc.Button(
+                            DashIconify(icon="mdi:information-outline",width=20,height=20,),
+                            id={"type": "fit-dl-info-btn", "page": page_id},
+                            variant="subtle",
+                            color="blue",
+                            # title="Format information",
+                            mt=2,
+                            p=0,
+                        ),
+                    ], w="100%", align="flex-end",gap="xs"),
                     dmc.TextInput(
                         id={"type": "fit-dl-filename", "page": page_id},
                         label="Filename",
@@ -189,6 +235,17 @@ def create_fit_download_modal(page_id="fit-download-modal"):
                         mt="md",
                     ),
                 ], gap="sm"),
+            ],
+        ),
+        dmc.Modal(
+            id={"type": "fit-dl-info-modal", "page": page_id},
+            title=dmc.Text("Download Format Information", fw=600, size="lg"),
+            size="50%",
+            opened=False,
+            children=[
+                dmc.TypographyStylesProvider(
+                    dcc.Markdown(FitDownload_Context, dangerously_allow_html=False, id="default"),
+                ),
             ],
         ),
     ])
@@ -236,6 +293,14 @@ def _close_dataset_download_modal(n_clicks):
 )
 def _close_fit_download_modal(n_clicks):
     return False if n_clicks else dash.no_update
+
+@callback(
+    Output({"type": "fit-dl-info-modal", "page": MATCH}, "opened", allow_duplicate=True),
+    Input({"type": "fit-dl-info-btn", "page": MATCH}, "n_clicks"),
+    prevent_initial_call=True,
+)
+def _open_fit_info_modal(n_clicks):
+    return True if n_clicks else dash.no_update
 
 
 @callback(
@@ -348,7 +413,40 @@ def _download_fit(n_clicks, fit_id, fmt, filename):
     dataset_entry = session.query(Dataset).filter_by(id=fit_entry.dataset_id).first()
     session.close()
 
-    if fmt == "hdf5":
+    if fmt == "dl-hdf5":
+        # Check that the data entry in the fit_entry is not None
+        if fit_entry.data is None:
+            alert = dmc.Alert(
+                "No data available for this fit result. Cannot export to DeerLab HDF5 format.",
+                color="red",
+                variant="filled",
+            )
+            return dash.no_update, True, alert
+        
+        full_name = filename + ext
+        buf = io.BytesIO()
+        try: 
+            fitResult = json_loads(fit_entry.data)
+        except Exception as e:
+            alert = dmc.Alert(
+                f"Failed to parse fit data for DeerLab HDF5 export: {str(e)}",
+                color="red",
+                variant="filled",
+            )
+            return dash.no_update, True, alert
+
+        try:
+            save(buf, fitResult, format='hdf5')
+        except Exception as e:
+            alert = dmc.Alert(
+                f"DeerLab HDF5 export failed: {str(e)}",
+                color="red",
+                variant="filled",
+            )
+            return dash.no_update, True, alert
+
+    
+    elif fmt == "hdf5":
         full_name = filename + ext
         buf = io.BytesIO()
         try:

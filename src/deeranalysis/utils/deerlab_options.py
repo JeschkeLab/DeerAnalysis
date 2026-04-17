@@ -306,6 +306,7 @@ def fit_to_dict(fit):
     output['r'] = fit.r.tolist() if fit.r is not None else None
     output['PUncert'] = fit.PUncert.to_dict() if fit.PUncert is not None else None
     output['model_description'] = fit.__str__() if fit is not None else None
+    output['data'] = dl.json_dumps(fit) if fit is not None else None
     return output
     
     
@@ -351,7 +352,7 @@ def dists_stats_to_list(dist_stats, dist_uncert, ci=95):
 
 def name_dataset_from_dict(dataset_dict):
     """Creates a name for the fit based on the dataset and fit parameters."""
-    
+
     if dataset_dict['fit_type'] == 'Neural Network':
         el1 = f"DeerNet"
     elif dataset_dict['fit_type'] == 'parametric':
@@ -367,4 +368,118 @@ def name_dataset_from_dict(dataset_dict):
         el2 = ""
 
     return f"{el1}-{el2}"
+
+
+def _safe_float(val):
+    """Convert a possibly-array / possibly-inf value to a Python float, or None."""
+    if val is None:
+        return None
+    try:
+        v = float(np.atleast_1d(val)[0])
+        return v if np.isfinite(v) else None
+    except Exception:
+        return None
+
+
+def build_model_data(dataset, bg_model_name, pathways, r_range,
+                     p_model_name=None, existing_overrides=None):
+    """
+    Build a serialisable dict of the dipolar model parameters for the modal.
+
+    Parameters
+    ----------
+    dataset : xarray.DataArray
+        Loaded dataset (must have .t coords and .attrs with tau values).
+    bg_model_name : str or None
+        DeerLab background model name (e.g. ``'bg_hom3d'``) or ``'none'``.
+    pathways : list of int
+        Pathway indices to include.
+    r_range : list of float
+        [r_min, r_max] in nm.
+    p_model_name : str or None
+        DeerLab distance-distribution model name (e.g. ``'dd_gauss'``).
+        ``None`` → non-parametric (model-free) fit.
+    existing_overrides : dict or None
+        Previously saved parameter overrides (``model-params-store`` data).
+        Values for params that still exist in the new model are preserved so
+        that changing background model or pathways does not reset unaffected
+        parameters.
+
+    Returns
+    -------
+    dict with keys ``'params'``, ``'exp_type'``, ``'bg_model'``,
+    ``'p_model'``, ``'pathways'``.
+    """
+    t = dataset.t.values
+    if t.max() > 500:
+        t = t / 1e3  # ns → µs
+
+    r = np.linspace(r_range[0], r_range[1], 100)
+    attrs = dataset.attrs
+    seq_name = attrs.get('seq_name', '')
+
+    if seq_name == '5pDEER' or ('tau3' in attrs and seq_name != '4pDEER'):
+        exp_type = '5pDEER'
+        tau1 = attrs['tau1'] / 1e3
+        tau2 = attrs['tau2'] / 1e3
+        tau3 = attrs['tau3'] / 1e3
+        pathways = [p for p in pathways if p <= 5]
+        exp_info = dl.ex_fwd5pdeer(tau1, tau2, tau3, pathways=pathways)
+    elif seq_name == '3pDEER':
+        exp_type = '3pDEER'
+        tau1 = attrs['tau1'] / 1e3
+        pathways = [p for p in pathways if p <= 2]
+        exp_info = dl.ex_3pdeer(tau=tau1, pathways=pathways)
+    else:
+        # Default / 4pDEER
+        exp_type = '4pDEER'
+        tau1 = attrs.get('tau1', 400) / 1e3
+        tau2 = attrs.get('tau2', 2400) / 1e3
+        pathways = [p for p in pathways if p <= 4]
+        exp_info = dl.ex_4pdeer(tau1, tau2, pathways=pathways)
+
+    bg_model = (
+        getattr(dl, bg_model_name, None)
+        if bg_model_name and bg_model_name != 'none'
+        else None
+    )
+    p_model = getattr(dl, p_model_name, None) if p_model_name else None
+
+    Vmodel = dl.dipolarmodel(t, r, experiment=exp_info,
+                             Bmodel=bg_model, Pmodel=p_model)
+
+    params_dict = {}
+    for name in Vmodel.signature:
+        if name in ('t', 'P'):
+            continue
+        try:
+            param = getattr(Vmodel, name)
+            if not hasattr(param, 'par0'):
+                continue
+            params_dict[name] = {
+                'par0': _safe_float(param.par0),
+                'lb': _safe_float(param.lb),
+                'ub': _safe_float(param.ub),
+                'frozen': bool(param.frozen),
+                'description': str(param.description) if param.description else '',
+                'unit': str(param.unit) if param.unit else '',
+            }
+        except Exception as e:
+            print(f"Warning: could not serialise param {name}: {e}")
+
+    # Preserve user overrides for parameters that still exist in the new model
+    if existing_overrides:
+        for name, override in existing_overrides.items():
+            if name in params_dict:
+                for key in ('par0', 'lb', 'ub', 'frozen'):
+                    if key in override and override[key] is not None:
+                        params_dict[name][key] = override[key]
+
+    return {
+        'params': params_dict,
+        'exp_type': exp_type,
+        'bg_model': bg_model_name,
+        'p_model': p_model_name,
+        'pathways': pathways,
+    }
 

@@ -343,6 +343,32 @@ def deerlab_fitting(dataset, compactness=True, model=None, exp_type='5pDEER', ve
         for key in bounds:
             if hasattr(Vmodel, key):
                 getattr(Vmodel, key).set(lb=bounds[key][0], ub=bounds[key][1])
+
+    if 'model_overrides' in kwargs:
+        overrides = kwargs.pop('model_overrides')
+        if overrides:
+            for param_name, param_data in overrides.items():
+                if not hasattr(Vmodel, param_name):
+                    continue
+                param = getattr(Vmodel, param_name)
+                if not hasattr(param, 'set'):
+                    continue
+                lb = param_data.get('lb')
+                ub = param_data.get('ub')
+                par0 = param_data.get('par0')
+                frozen = param_data.get('frozen', False)
+                if lb is not None and ub is not None:
+                    param.set(lb=lb, ub=ub)
+                elif lb is not None:
+                    param.set(lb=lb)
+                elif ub is not None:
+                    param.set(ub=ub)
+                if par0 is not None:
+                    param.set(par0=par0)
+                if frozen:
+                    param.freeze(par0 if par0 is not None else param.par0)
+                else:
+                    param.unfreeze()
             
 
     if compactness:
