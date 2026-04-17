@@ -38,7 +38,7 @@ layout = html.Div([
             dmc.Space(h=10),     
             dmc.Select(
                 label='Distance Model',
-                id='p-dist-model',
+                id={'type': 'dist_model', 'page': page_id},
                 data=parametric_models,
                 value='dd_gauss'
             ),
@@ -46,13 +46,13 @@ layout = html.Div([
             dmc.Space(h=10),     
             dmc.Select(
                 label='Background Model',
-                id='p-bg-model',
+                id={'type': 'bg_model', 'page': page_id},
                 data=background_models,
                 value='bg_hom3d'
             ),
             dmc.Space(h=10),     
             dmc.CheckboxGroup(
-                id='p-pathways-options',
+                id={'type': 'pathways-options', 'page': page_id},
                 label="Pathways to include:",
                 description="These pathways will be applied to all datasets, if they are fesiable for the corresponding experiment.",
                 children=dmc.Group([
@@ -65,8 +65,15 @@ layout = html.Div([
                 value=['1'], # Default selected pathways
             ),
             dmc.Space(h=10),
+            dmc.NumberInput(
+                id={"type": "multi-start", "page": page_id},
+                label="Number of Multi-Starts",
+                value=1,
+                min=1,
+                step=1,
+                description="Number of multi-starts to perform during fitting. This can help avoid local minima, but will increase fitting time.",
+            ),
             fpc.distance_slider(page_id),
-            html.Label("Distance Axis:"),
             dmc.Space(h=10),
             
             fit_save_download_buttons(page_id),
@@ -86,7 +93,8 @@ layout = html.Div([
         
     ]),
     
-    dcc.Store(id='p-fit-results-store')
+    dcc.Store(id='p-fit-results-store'),
+    dcc.Store(id={'type': 'fit-options', 'page': page_id}),
 ])
 clientside_callback(
         """
@@ -112,6 +120,26 @@ def update_dropdown(pathname):
     session.close()
     return options
 
+@callback(
+    Output({'type': 'fit-options', 'page': page_id}, 'data'),
+    Input({'type': 'bg_model', 'page': page_id}, 'value'),
+    Input({'type': 'dist_model', 'page': page_id}, 'value'),
+    Input({'type': 'pathways-options', 'page': page_id}, 'value'),
+    Input({"type": "distance-axis", "page": page_id}, 'value'),
+    Input({"type": "multi-start", "page": page_id}, 'value'),
+
+    prevent_initial_call=True
+)
+def update_fit_options(bg_model_option, dist_model_name, pathways_options, distance_axis, multi_start):
+    options = {
+        'bg_model': bg_model_option,
+        'dist_model': dist_model_name,
+        'pathways_options': pathways_options,
+        'distance_axis': distance_axis,
+        'multistart': multi_start,
+    }
+    return options
+
 
 @callback(
     Output('p-fit-results-store', 'data'),
@@ -124,13 +152,10 @@ def update_dropdown(pathname):
 
     Input({"type":"run-fit-btn","page":page_id}, 'n_clicks'),
     Input({'type': 'dataset-dropdown', 'page': page_id}, 'value'),
-    State('p-dist-model', 'value'),
-    State('p-bg-model', 'value'),
-    State({"type": "distance-axis", "page": page_id}, 'value'),
-    State('p-pathways-options', 'value'),
+    State({'type': 'fit-options', 'page': page_id}, 'data'),
     prevent_initial_call=True
 )
-def run_fit(n_clicks, dataset_id, dist_model_name, bg_model_option,distance_axis,pathways_options):
+def run_fit(n_clicks, dataset_id,fit_options):
     ctx = dash.callback_context
     triggered_id = ctx.triggered[0]['prop_id'].split('.')[0]
     
@@ -159,21 +184,34 @@ def run_fit(n_clicks, dataset_id, dist_model_name, bg_model_option,distance_axis
         return None, fig, False, default_fit_results_code, plotly_goodness_of_fit(),dist_stats_output, True
         
     if triggered_id == {"type":"run-fit-btn","page":page_id}:
+
+        distance_axis = fit_options.get('distance_axis', [2,6])
         r = np.linspace(distance_axis[0], distance_axis[1], 100) # Default range
+        
+        bg_model_option = fit_options.get('bg_model', 'bg_hom3d')
+        dist_model_name = fit_options.get('dist_model', 'dd_gauss')
         
         Bmodel = getattr(dl, bg_model_option, dl.bg_hom3d)
         # Select models
         Pmodel = getattr(dl,dist_model_name,dl.dd_gauss)
+        pathways_options = fit_options.get('pathways_options', ['1'])
             
         pathways = [int(p) for p in pathways_options]
-        fit = deerlab_fitting(dataset,
-            compactness=False,
-            model=Pmodel,
-            ROI=False,
-            bg_model=Bmodel,
-            r=r,
-            pathways=pathways,)
+        try:
+            fit = deerlab_fitting(dataset,
+                compactness=False,
+                model=Pmodel,
+                ROI=False,
+                bg_model=Bmodel,
+                r=r,
+                pathways=pathways,
+                multistart=fit_options.get('multistart',1)
+                )
             
+        except Exception as e:
+            print(f"Error during fitting: {e}")
+            return dash.no_update, dash.no_update, False, f"Error during fitting: {e}", dash.no_update, dash.no_update, True
+        
         V = fit.Vexp
         r = fit.r
 
