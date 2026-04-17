@@ -97,7 +97,7 @@ sidebar_content = dmc.Stack(
         dmc.Divider(my="sm"),
 
         dmc.Text("About", size="sm", c="dimmed", fw=500),
-        create_nav_link("About DeerAnalysis", "/about", "mdi:information"),
+        create_nav_link("About", "/about", "mdi:information"),
         create_nav_link("Citation", "/citation", "mdi:format-quote-close"),
         dmc.NavLink(
             label="Github",
@@ -114,13 +114,13 @@ sidebar_content = dmc.Stack(
             rightSection=get_icon("mdi:open-in-new"),
         ),
         dmc.Space(style={"flex": 1}),
-        dmc.SimpleGrid(
-            [
-                create_nav_link("", "/config", "mdi:cog"),
-                create_nav_link("", "/system_monitor", "mdi:monitor")
-            ],
-            cols=4
-        )
+        # dmc.SimpleGrid(
+        #     [
+        #         create_nav_link("", "/config", "mdi:cog"),
+        #         create_nav_link("", "/system_monitor", "mdi:monitor")
+        #     ],
+        #     cols=4
+        # )
     ],
     h="100%",
     gap="xs",
@@ -138,20 +138,22 @@ app.layout = dmc.MantineProvider(
         dmc.AppShell(
             [
                 dmc.AppShellHeader(
-                    dmc.Group(
-                        [
+                    dmc.Group([
+                        dmc.Group([
                             dmc.Burger(id="burger", hiddenFrom="sm", size="sm"),
-                            dmc.Image(src="/assets/header.svg", h=50, w="auto", fit="contain"),
+                            dmc.Image(src="/assets/header.svg", h=50, w="auto", id="header-logo", fit="contain"),
                             # dmc.Title("DeerAnalysis", order=3),
-                        ],
-                        h="100%",
-                        px="md",
-                    )
+                            ],),
+                        dmc.Group([
+                            create_nav_link("", "/config", "mdi:cog"),
+                        ], gap="xs"),
+                ],h="100%",px="md",justify="space-between"),
                 ),
                 dmc.AppShellNavbar(
                     children=sidebar_content,
-                    p="md",
+                    p="sm",
                     id="navbar",
+                    style={"overflowY": "auto"},
                 ),
                 dmc.AppShellMain(children=dash.page_container),
                 dmc.AppShellFooter(
@@ -191,7 +193,7 @@ def update_color_scheme(color_scheme):
     return color_scheme or "light"
 
 
-_BASE_FONT_SIZES = {"xs": 10, "sm": 11, "md": 12, "lg": 14, "xl": 16}
+_BASE_FONT_SIZES = {"xs": 12, "sm": 14, "md": 16, "lg": 18, "xl": 20}
 _BASE_SPACING = {"xs": 4, "sm": 6, "md": 10, "lg": 14, "xl": 18}
 _BASE_HEADING_SIZES = {"h1": 2.5, "h2": 2.0, "h3": 1.5, "h4": 1.2, "h5": 1.0, "h6": 0.8}
 
@@ -226,10 +228,18 @@ def open_setup_modal(is_first_time):
 )
 def toggle_navbar(opened, scale, navbar):
     s = scale if scale is not None else 1.0
-    navbar["width"] = round(200 * s)
+    navbar["width"] = round(250 * s)
     if opened is not None:
         navbar["collapsed"]["mobile"] = not opened
     return navbar
+
+@callback(
+    Output("header-logo", "h"),
+    Input("ui-scale-store", "data"),
+)
+def update_logo_size(scale):
+    s = scale if scale is not None else 1.0
+    return round(50 * s)
 
 @callback(
     Output({"type": "nav-link", "index": ALL}, "active"),
