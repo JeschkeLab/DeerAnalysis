@@ -3,7 +3,7 @@ import dash
 from dash import html, dcc, callback, Input, Output, State,clientside_callback
 from dash_iconify import DashIconify
 import os
-from deeranalysis.utils.database import init_db, get_session,Settings
+from deeranalysis.utils.database import init_db, get_session, Settings, save_appearance_settings
 
 def default_directory():
     """
@@ -72,19 +72,23 @@ def set_logs_api_key(URL, api_key):
 
 
 def create_setup_modal(id="setup-modal"):
-    n_steps = 3
+    n_steps = 4
 
     @callback(
         Output(f"{id}-stepper", "active",allow_duplicate=True),
         Output(id, "opened",allow_duplicate=True),
+        Output("color-scheme-store", "data", allow_duplicate=True),
+        Output("ui-scale-store", "data", allow_duplicate=True),
         Input("next-basic-usage", "n_clicks"),
         State(f"{id}-stepper", "active"),
         State(f"{id}-database-path","value"),
+        State(f"{id}-color-scheme", "checked"),
+        State(f"{id}-ui-scale", "value"),
         prevent_initial_call=True
     )
-    def next_step(n_clicks, active,directory):
+    def next_step(n_clicks, active, directory, dark_mode, ui_scale):
         if not n_clicks:
-            return dash.no_update
+            return dash.no_update, dash.no_update, dash.no_update, dash.no_update
         if active == 0:
             # Store the directory and create it if it does not exist
             store_DeerAnalysis_directory(directory)
@@ -97,12 +101,15 @@ def create_setup_modal(id="setup-modal"):
                 set_logs_api_key(logs_url, logs_api_key)
 
         if active < n_steps - 1:
-            return active + 1, dash.no_update
+            return active + 1, dash.no_update, dash.no_update, dash.no_update
         elif active == n_steps - 1:
-            # Close the modal
-            return active, False
+            # Save appearance settings and close the modal
+            color_scheme = "dark" if dark_mode else "light"
+            scale = ui_scale if ui_scale is not None else 1.0
+            save_appearance_settings(color_scheme, scale)
+            return active, False, color_scheme, scale
 
-        return dash.no_update
+        return dash.no_update, dash.no_update, dash.no_update, dash.no_update
         
 
     
@@ -175,6 +182,43 @@ def create_setup_modal(id="setup-modal"):
                         dmc.Text("If you want to use the LOGS plugin, please enter your API key and server URL below. This can also be done later in the settings page."),
                         dmc.TextInput(id=f"{id}-logs-server-url", label="LOGS Server URL", placeholder="https://my-logs-server.com/groupname", className="mb-3"),
                         dmc.TextInput(id=f"{id}-logs-api-key", label="LOGS API Key", placeholder="my-api-key", className="mb-3"),
+                    ]),
+                dmc.StepperStep(
+                    label="Step 4:",
+                    description="Appearance",
+                    children=[
+                        dmc.Text("Customize the appearance of DeerAnalysis. These settings can be changed at any time in the configuration page."),
+                        dmc.Stack([
+                            dmc.Switch(
+                                id=f"{id}-color-scheme",
+                                label="Dark Mode",
+                                description="Enable dark color scheme",
+                                checked=False,
+                                size="md",
+                                mt="md",
+                                onLabel=DashIconify(icon="tabler:moon", width=16),
+                                offLabel=DashIconify(icon="tabler:sun", width=16),
+                            ),
+                            dmc.Stack([
+                                dmc.Text("UI Scale", size="sm", fw=500, mt="md"),
+                                dmc.Text("Adjust the size of all interface elements", size="xs", c="dimmed"),
+                                dmc.Slider(
+                                    id=f"{id}-ui-scale",
+                                    value=1.0,
+                                    min=0.75,
+                                    max=1.5,
+                                    step=0.05,
+                                    marks=[
+                                        {"value": 0.75, "label": "XS"},
+                                        {"value": 1.0, "label": "Normal"},
+                                        {"value": 1.25, "label": "Large"},
+                                        {"value": 1.5, "label": "XL"},
+                                    ],
+                                    mt="xs",
+                                    mb="xl",
+                                ),
+                            ], gap=0),
+                        ], gap="xs"),
                     ]),
                     ]),
             dmc.Group(

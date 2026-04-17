@@ -11,6 +11,7 @@ from pathlib import Path
 from deeranalysis.components.setup_modal_desktop import create_setup_modal,default_directory
 from deeranalysis.components.dmc_theme import da_dmctheme
 from deeranalysis.utils.logs_plugin import initialize_logs_api,check_logs_api_key
+from deeranalysis.utils.database import get_appearance_settings
 
 import plotly.io as pio
 
@@ -66,7 +67,6 @@ def create_nav_link(label, href, icon):
         href=href,
         leftSection=get_icon(icon) if icon else None,
         id={"type": "nav-link", "index": href},
-        h=32,
     )
 
 
@@ -123,7 +123,7 @@ sidebar_content = dmc.Stack(
         )
     ],
     h="100%",
-    gap=5,
+    gap="xs",
     justify="space-between"
 )
 
@@ -133,6 +133,8 @@ app.layout = dmc.MantineProvider(
         dcc.Location(id="url"),
         dcc.Store(id="first-time-setup", data=first_time_setup()), # TODO: Change so only for desktop mode
         dcc.Store(id="desktop-mode", data=desktop_mode),
+        dcc.Store(id="color-scheme-store", data=get_appearance_settings()[0] if not first_time_setup() else "light"),
+        dcc.Store(id="ui-scale-store", data=get_appearance_settings()[1] if not first_time_setup() else 1.0),
         dmc.AppShell(
             [
                 dmc.AppShellHeader(
@@ -176,8 +178,37 @@ app.layout = dmc.MantineProvider(
         create_setup_modal()
     ],
     theme=da_dmctheme,
-
+    id="mantine-provider",
+    forceColorScheme="light",
 )
+
+
+@callback(
+    Output("mantine-provider", "forceColorScheme"),
+    Input("color-scheme-store", "data"),
+)
+def update_color_scheme(color_scheme):
+    return color_scheme or "light"
+
+
+_BASE_FONT_SIZES = {"xs": 10, "sm": 11, "md": 12, "lg": 14, "xl": 16}
+_BASE_SPACING = {"xs": 4, "sm": 6, "md": 10, "lg": 14, "xl": 18}
+_BASE_HEADING_SIZES = {"h1": 2.5, "h2": 2.0, "h3": 1.5, "h4": 1.2, "h5": 1.0, "h6": 0.8}
+
+@callback(
+    Output("mantine-provider", "theme"),
+    Input("ui-scale-store", "data"),
+)
+def update_ui_scale(scale):
+    s = scale if scale is not None else 1.0
+    theme = dict(da_dmctheme)
+    theme["fontSizes"] = {k: f"{v * s:.1f}px" for k, v in _BASE_FONT_SIZES.items()}
+    theme["spacing"] = {k: f"{v * s:.1f}px" for k, v in _BASE_SPACING.items()}
+    theme["headings"] = {
+        "fontWeight": "700",
+        "sizes": {k: {"fontSize": f"{v * s:.3f}rem", "lineHeight": "1.2"} for k, v in _BASE_HEADING_SIZES.items()},
+    }
+    return theme
 
 @callback(
     Output("setup-modal", "opened"),
@@ -190,10 +221,14 @@ def open_setup_modal(is_first_time):
 @callback(
     Output("app-shell", "navbar"),
     Input("burger", "opened"),
+    Input("ui-scale-store", "data"),
     State("app-shell", "navbar"),
 )
-def toggle_navbar(opened, navbar):
-    navbar["collapsed"]["mobile"] = not opened
+def toggle_navbar(opened, scale, navbar):
+    s = scale if scale is not None else 1.0
+    navbar["width"] = round(200 * s)
+    if opened is not None:
+        navbar["collapsed"]["mobile"] = not opened
     return navbar
 
 @callback(

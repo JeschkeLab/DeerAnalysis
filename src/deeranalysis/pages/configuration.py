@@ -5,6 +5,7 @@ import dash_mantine_components as dmc
 from dash_iconify import DashIconify
 
 from deeranalysis.utils.logs_plugin import get_logs_api_db, set_logs_api_key
+from deeranalysis.utils.database import get_appearance_settings, save_appearance_settings
 
 dash.register_page(__name__, path='/config')
 
@@ -32,8 +33,29 @@ layout = dmc.Container([
                                 label="Dark Mode",
                                 description="Enable dark mode theme",
                                 size="md",
-                                mb="sm"
+                                mb="sm",
+                                onLabel=DashIconify(icon="tabler:moon", width=16),
+                                offLabel=DashIconify(icon="tabler:sun", width=16),
                             ),
+                            dmc.Stack([
+                                dmc.Text("UI Scale", size="sm", fw=500),
+                                dmc.Text("Adjust the size of all interface elements", size="xs", c="dimmed"),
+                                dmc.Slider(
+                                    id="config-ui-scale",
+                                    value=1.0,
+                                    min=0.75,
+                                    max=1.5,
+                                    step=0.05,
+                                    marks=[
+                                        {"value": 0.75, "label": "XS"},
+                                        {"value": 1.0, "label": "Normal"},
+                                        {"value": 1.25, "label": "Large"},
+                                        {"value": 1.5, "label": "XL"},
+                                    ],
+                                    mt="xs",
+                                    mb="xl",
+                                ),
+                            ], gap=0, mb="sm"),
                             dmc.Switch(
                                 id="config-auto-save",
                                 label="Auto-save Results",
@@ -345,8 +367,11 @@ clientside_callback(
     Output("config-notification", "title"),
     Output("config-notification", "message"),
     Output("config-notification", "color"),
+    Output("color-scheme-store", "data", allow_duplicate=True),
+    Output("ui-scale-store", "data", allow_duplicate=True),
     Input("config-save-btn", "n_clicks"),
     State("config-dark-mode", "checked"),
+    State("config-ui-scale", "value"),
     State("config-auto-save", "checked"),
     State("config-max-datasets", "value"),
     State("config-default-path", "value"),
@@ -355,19 +380,28 @@ clientside_callback(
     State("config-logs-api-key", "value"),
     prevent_initial_call=True
 )
-def save_configuration(n_clicks, dark_mode, auto_save, max_datasets, default_path, plot_theme, logs_url, logs_api_key):
+def save_configuration(n_clicks, dark_mode, ui_scale, auto_save, max_datasets, default_path, plot_theme, logs_url, logs_api_key):
     if n_clicks:
         try:
-            # Save LOGS API credentials if provided
             if logs_url and logs_api_key:
                 set_logs_api_key(logs_url, logs_api_key)
-            
-            # Here you would save other configuration settings
-            # For now, just show a success notification
-            return "show", "Success", "Configuration saved successfully", "green"
+            color_scheme = "dark" if dark_mode else "light"
+            scale = ui_scale if ui_scale is not None else 1.0
+            save_appearance_settings(color_scheme, scale)
+            return "show", "Success", "Configuration saved successfully", "green", color_scheme, scale
         except Exception as e:
-            return "show", "Error", f"Failed to save configuration: {str(e)}", "red"
-    return "hide", "", "", "blue"
+            return "show", "Error", f"Failed to save configuration: {str(e)}", "red", dash.no_update, dash.no_update
+    return "hide", "", "", "blue", dash.no_update, dash.no_update
+
+
+@callback(
+    Output("config-dark-mode", "checked"),
+    Output("config-ui-scale", "value"),
+    Input("config-dark-mode", "id"),
+)
+def load_appearance_on_page_load(_):
+    color_scheme, scale = get_appearance_settings()
+    return color_scheme == "dark", scale
 
 
 @callback(

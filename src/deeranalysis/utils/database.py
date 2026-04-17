@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine, Column, Integer, String, DateTime, ForeignKey, JSON, LargeBinary, inspect, text, Table
+from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, ForeignKey, JSON, LargeBinary, inspect, text, Table
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship
 from datetime import datetime, timezone
@@ -69,6 +69,7 @@ class Fit(Base):
     parameters = Column(JSON, nullable=True)
     fit_results = Column(JSON, nullable=True) # Fitted model, residuals, stats
     created_at = Column(DateTime, default=datetime.now(timezone.utc))
+    data = Column(JSON,nullable=True, default=None) # JSONified data of the FitResult object, including model, uncertainties, regparam, etc.
     
     dataset = relationship("Dataset", back_populates="fits")
 
@@ -82,6 +83,8 @@ class Settings(Base):
     logs_api_key = Column(String, nullable=True,default=None)
     DeerLab_fit_options = Column(JSON, nullable=True, default={})
     DeerNet_model_path = Column(String, nullable=True, default=None)
+    color_scheme = Column(String, nullable=True, default="light")
+    ui_scale = Column(Float, nullable=True, default=1.0)
     
 # Database setup
 # db_path = 'sqlite:///deeranalysis.db'
@@ -144,6 +147,28 @@ def get_session():
     if Session is None:
         return None
     return Session()
+
+def get_appearance_settings():
+    """Returns (color_scheme, ui_scale) from Settings, with defaults."""
+    session = get_session()
+    if session is None:
+        return "light", 1.0
+    settings = session.query(Settings).first()
+    if not settings:
+        return "light", 1.0
+    return (settings.color_scheme or "light"), (settings.ui_scale if settings.ui_scale is not None else 1.0)
+
+def save_appearance_settings(color_scheme, ui_scale):
+    session = get_session()
+    if session is None:
+        return
+    settings = session.query(Settings).first()
+    if not settings:
+        settings = Settings()
+    settings.color_scheme = color_scheme
+    settings.ui_scale = ui_scale
+    session.add(settings)
+    session.commit()
 
 def check_delays(dataset):
     """Checks that for a given dataset, the entries in the delay column cover 
