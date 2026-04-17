@@ -1,3 +1,10 @@
+import tomllib
+import os
+
+with open(os.path.join(SPECPATH, 'pyproject.toml'), 'rb') as f:
+    _pyproject = tomllib.load(f)
+version = _pyproject['project']['version']
+
 from PyInstaller.utils.hooks import collect_data_files,collect_submodules
 
 datas = [('src/deeranalysis/assets', 'deeranalysis/assets')]
@@ -8,8 +15,6 @@ datas += collect_data_files('dash_iconify')
 datas += collect_data_files('dash_mantine_components')
 datas += collect_data_files('dash_ag_grid')
 datas += collect_data_files('deerlab')  # Collect deerlab data files
-
-
 
 # Collect all submodules from deeranalysis package
 hiddenimports = ['dash_iconify', 'deerlab','pyepr-esr', 'dash_ag_grid']
@@ -84,4 +89,10 @@ app = BUNDLE(
     name='DeerAnalysis.app',
     icon='src/deeranalysis/assets/favicon.ico',
     bundle_identifier='com.deeranalysis.app',
+    version=version,
+    info_plist={
+        'CFBundleShortVersionString': version,
+        'CFBundleVersion': version,
+        'NSHumanReadableCopyright': 'Copyright © 2026 ETH Zürich, UNIGE, Hugo Karas. All rights reserved.',
+    },
 )
