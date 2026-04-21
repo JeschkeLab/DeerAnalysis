@@ -8,7 +8,8 @@ import sys
 import os
 from pathlib import Path
 
-from deeranalysis.components.setup_modal_desktop import create_setup_modal,default_directory
+from deeranalysis.components.setup_modal_desktop import create_setup_modal, default_directory
+from deeranalysis.components.new_version_modal import new_version_modal, update_button
 from deeranalysis.components.dmc_theme import da_dmctheme
 from deeranalysis.utils.logs_plugin import initialize_logs_api,check_logs_api_key
 from deeranalysis.utils.database import get_appearance_settings
@@ -145,7 +146,17 @@ app.layout = dmc.MantineProvider(
                             # dmc.Title("DeerAnalysis", order=3),
                             ],),
                         dmc.Group([
-                            create_nav_link("", "/config", "mdi:cog"),
+                            update_button(),
+                            html.A(
+                                dmc.ActionIcon(
+                                    DashIconify(icon="mdi:cog", width=20),
+                                    color="gray",
+                                    variant="subtle",
+                                    size="lg",
+                                ),
+                                href="/config",
+                                style={"lineHeight": 0},
+                            ),
                         ], gap="xs"),
                 ],h="100%",px="md",justify="space-between"),
                 ),
@@ -177,7 +188,8 @@ app.layout = dmc.MantineProvider(
             padding="md",
             id="app-shell",
         ),
-        create_setup_modal()
+        create_setup_modal(),
+        new_version_modal(),
     ],
     theme=da_dmctheme,
     id="mantine-provider",

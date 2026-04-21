@@ -1,13 +1,31 @@
 import dash
-from dash import html, dcc, callback, Input, Output, State,clientside_callback
+from dash import html, dcc, callback, Input, Output, State, clientside_callback
 import dash_bootstrap_components as dbc
 import dash_mantine_components as dmc
 from dash_iconify import DashIconify
-
+from importlib.metadata import version as get_version
+import sys
 from deeranalysis.utils.logs_plugin import get_logs_api_db, set_logs_api_key
 from deeranalysis.utils.database import get_appearance_settings, save_appearance_settings
 
 dash.register_page(__name__, path='/config')
+
+
+try:
+    _current_version = get_version("DeerAnalysis")
+except Exception:
+    _current_version = "unknown"
+
+try:
+    _current_python_version = ".".join(map(str, sys.version_info[:3]))
+except Exception:
+    _current_python_version = "unknown"
+
+try:
+    _current_deerlab_version = get_version("deerlab")
+except Exception:
+    _current_deerlab_version = "unknown"
+
 
 
 layout = dmc.Container([
@@ -18,6 +36,48 @@ layout = dmc.Container([
         multiple=True,
         value=["general"],
         children=[
+            # About / Version
+            dmc.AccordionItem(
+                value="about",
+                children=[
+                    dmc.AccordionControl(
+                        "About",
+                        icon=DashIconify(icon="mdi:information-outline", width=20),
+                    ),
+                    dmc.AccordionPanel([
+                        dmc.Stack([
+                            dmc.Group([
+                                dmc.Text("Installed version", size="sm", w=160, c="dimmed"),
+                                dmc.Badge(_current_version, color="blue", variant="light"),
+                            ], gap="xs"),
+                            dmc.Group([
+                                dmc.Text("Latest version", size="sm", w=160, c="dimmed"),
+                                dmc.Badge(
+                                    id="config-latest-version-badge",
+                                    children="Checking...",
+                                    color="gray",
+                                    variant="light",
+                                ),
+                                dmc.Badge(
+                                    id="config-version-status-badge",
+                                    children="",
+                                    variant="dot",
+                                    style={"display": "none"},
+                                ),
+                            ], gap="xs"),
+                            dmc.Group([
+                                dmc.Text("Python version", size="sm", w=160, c="dimmed"),
+                                dmc.Badge(_current_python_version, color="blue", variant="light"),
+                            ], gap="xs"),
+                            dmc.Group([
+                                dmc.Text("DeerLab version", size="sm", w=160, c="dimmed"),
+                                dmc.Badge(_current_deerlab_version, color="blue", variant="light"),
+                            ], gap="xs"),
+                        ], gap="sm"),
+                    ]),
+                ],
+            ),
+
             # General Settings
             dmc.AccordionItem(
                 value="general",
@@ -484,11 +544,30 @@ def reset_db(n_clicks):
     return False
 
 @callback(
+    Output("config-latest-version-badge", "children"),
+    Output("config-latest-version-badge", "color"),
+    Output("config-version-status-badge", "children"),
+    Output("config-version-status-badge", "color"),
+    Output("config-version-status-badge", "style"),
+    Input("version-check-store", "data"),
+)
+def _update_version_badges(data):
+    if not data:
+        return "Checking...", "gray", "", "gray", {"display": "none"}
+    if data.get("error"):
+        return "Unavailable", "red", "Check failed", "red", {"display": "inline-flex"}
+    latest = data.get("latest_version", "unknown")
+    if data.get("update_available"):
+        return latest, "green", "Update available", "green", {"display": "inline-flex"}
+    return latest, "blue", "Up to date", "teal", {"display": "inline-flex"}
+
+
+@callback(
     Output("db-reset-modal", "opened", allow_duplicate=True),
     Input("db-reset-cancel-btn", "n_clicks"),
     Input("db-reset-confirm-btn", "n_clicks"),
     prevent_initial_call=True
-)  
+)
 def close_db_reset_modal(n_clicks_cancel, n_clicks_confirm):
     ctx = dash.callback_context
     if not ctx.triggered:
