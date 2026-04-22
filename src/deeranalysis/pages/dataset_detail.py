@@ -173,7 +173,7 @@ def layout(dataset_id=None):
                                 value=dataset.created_at or "",
                                 readOnly=True,
                                 variant="default",
-                                styles={"input": {"backgroundColor": "#fff", "color": "#212529", "opacity": 1, "cursor": "default"}},
+                                # styles={"input": {"backgroundColor": "#fff", "color": "#212529", "opacity": 1, "cursor": "default"}},
                             ),
                             span=6,
                         ),

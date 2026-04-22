@@ -85,6 +85,7 @@ class Settings(Base):
     DeerNet_model_path = Column(String, nullable=True, default=None)
     color_scheme = Column(String, nullable=True, default="light")
     ui_scale = Column(Float, nullable=True, default=1.0)
+    plot_theme = Column(String, nullable=True, default="auto")
     
 # Database setup
 # db_path = 'sqlite:///deeranalysis.db'
@@ -149,16 +150,20 @@ def get_session():
     return Session()
 
 def get_appearance_settings():
-    """Returns (color_scheme, ui_scale) from Settings, with defaults."""
+    """Returns (color_scheme, ui_scale, plot_theme) from Settings, with defaults."""
     session = get_session()
     if session is None:
-        return "light", 1.0
+        return "light", 1.0, "auto"
     settings = session.query(Settings).first()
     if not settings:
-        return "light", 1.0
-    return (settings.color_scheme or "light"), (settings.ui_scale if settings.ui_scale is not None else 1.0)
+        return "light", 1.0, "auto"
+    return (
+        (settings.color_scheme or "light"),
+        (settings.ui_scale if settings.ui_scale is not None else 1.0),
+        (settings.plot_theme or "auto"),
+    )
 
-def save_appearance_settings(color_scheme, ui_scale):
+def save_appearance_settings(color_scheme, ui_scale, plot_theme="auto"):
     session = get_session()
     if session is None:
         return
@@ -167,6 +172,7 @@ def save_appearance_settings(color_scheme, ui_scale):
         settings = Settings()
     settings.color_scheme = color_scheme
     settings.ui_scale = ui_scale
+    settings.plot_theme = plot_theme or "auto"
     session.add(settings)
     session.commit()
 

@@ -163,7 +163,7 @@ def _build_signal_figure(dataset_store):
             title=title_text,
             xaxis_title='Time (us)',
             yaxis_title='Signal (a.u.)',
-            template='plotly_white'
+            template=None
         )
     }
 
@@ -261,7 +261,6 @@ def save_dataset(n_clicks, project_name, sample_name, dataset_name, dataset_stor
         title='Select a dataset from LOGs to view',
         xaxis_title='Time (us)',
         yaxis_title='Signal (a.u.)',
-        template='plotly_white'
     )
 
     return notification, '', '', '', None, [], empty_figure, 0, None, {}

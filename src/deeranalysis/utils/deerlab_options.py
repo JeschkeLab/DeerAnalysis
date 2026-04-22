@@ -42,6 +42,20 @@ parametric_models = [
 colour_scheme_dark = ['#7C37DB','#DB7C17','#166122']
 colour_scheme_light = ['#A787D6',"#EDA659",'#67B875']
 
+def resolve_plot_template(color_scheme=None, plot_theme=None):
+    """
+    Returns the Plotly template string to use based on the UI color scheme
+    and the user's explicit plot theme preference.
+
+    If plot_theme is "auto" or None, the template follows the UI color scheme
+    (plotly_dark for dark mode, plotly_white for light mode).
+    Otherwise, the user-chosen theme is used as-is, combined with the compact
+    layout adjustments defined at app startup.
+    """
+    if plot_theme and plot_theme != "auto":
+        return f"{plot_theme}+compact"
+    return "plotly_dark+compact" if color_scheme == "dark" else "plotly_white+compact"
+
 def plotly_goodness_of_fit(results=None):
     """
     Returns a plotly version of the goodness of fit plot for a DeerLab fit result object `dl.plot(gof=True)`.
@@ -483,3 +497,66 @@ def build_model_data(dataset, bg_model_name, pathways, r_range,
         'pathways': pathways,
     }
 
+
+def plotly_lcurve(fitresult=None, orientation='h'):
+    """Returns a plotly figure with the L-curve data and the selected regularization parameter."""
+    import plotly.graph_objects as go
+    from plotly.subplots import make_subplots
+
+
+
+    if orientation == 'h':
+        fig = make_subplots(rows=1, cols=2, subplot_titles=[r"α selection functional", "L-Curve"], horizontal_spacing=0.1)
+        fig.update_xaxes(title_text="α Regularisation Parameter", type='log', row=1, col=1)
+        fig.update_yaxes(title_text="Functional Value", row=1, col=1)
+        fig.update_xaxes(title_text=r"||Kx - y||₂ (Residual Norm)", type='log', row=1, col=2)
+        fig.update_yaxes(title_text=r"||Lx||₂ (Solution Norm)", type='log', row=1, col=2)
+    else:
+        fig = make_subplots(rows=2, cols=1, subplot_titles=[r"α selection functional", "L-Curve"], vertical_spacing=0.1)
+        fig.update_xaxes(title_text="α Regularisation Parameter", type='log', row=1, col=1)
+        fig.update_yaxes(title_text="Functional Value", row=1, col=1)
+        fig.update_xaxes(title_text=r"||Kx - y||₂ (Residual Norm)", type='log', row=2, col=1)
+        fig.update_yaxes(title_text=r"||Lx||₂ (Solution Norm)", type='log', row=2, col=1)
+
+    if fitresult is None or not hasattr(fitresult, 'regparam_stats'):
+        return fig
+    
+    alphas = fitresult.regparam_stats['alphas_evaled'][1:]
+    funcs = fitresult.regparam_stats['functional'][1:]
+
+    res = fitresult.regparam_stats['residuals']
+    pens = fitresult.regparam_stats['penalties']
+
+    # Sort functional by alphas
+    sort_idx_func = np.argsort(alphas)
+    alphas = alphas[sort_idx_func]
+    funcs = funcs[sort_idx_func]
+
+    # Sort L-curve by residuals
+    sort_idx_lcurve = np.argsort(res)
+    res = res[sort_idx_lcurve]
+    pens = pens[sort_idx_lcurve]
+    alphas_lcurve = fitresult.regparam_stats['alphas_evaled'][sort_idx_lcurve]
+
+
+    r1, c1 = (1, 1)
+    r2, c2 = (1, 2) if orientation == 'h' else (2, 1)
+
+    fig.add_trace(go.Scatter(x=alphas, y=funcs, mode='lines+markers', name='Functional', line={'color':colour_scheme_dark[0]}), row=r1, col=c1)
+    fig.add_trace(
+        go.Scatter(x=res, y=pens, mode='lines+markers', name='L-Curve', line={'color':colour_scheme_dark[1]},
+                    customdata=alphas_lcurve,hovertemplate='||Kx - y||₂: %{x:.3e}   ||Lx||₂: %{y:.3e}. α: %{customdata:.3e}')
+                , row=r2, col=c2)
+    # Highlight the selected regularisation parameter on both plots
+    selected_alpha = fitresult.regparam
+    selected_idx = np.argmin(np.abs(alphas - selected_alpha))
+    selected_idx_lcurve = np.argmin(np.abs(alphas_lcurve - selected_alpha))
+
+    fig.add_trace(go.Scatter(x=[alphas[selected_idx]], y=[funcs[selected_idx]], mode='markers', name='Selected α', marker=dict(color=colour_scheme_light[0], size=10, symbol='x')), row=r1, col=c1)
+    fig.add_trace(go.Scatter(
+            x=[res[selected_idx_lcurve]], y=[pens[selected_idx_lcurve]], mode='markers', name='Selected α',
+            marker=dict(color=colour_scheme_light[1], size=10, symbol='x'),
+            customdata=[alphas_lcurve[selected_idx_lcurve]],
+            hovertemplate='Residual Norm: %{x:.3e}<br>Solution Norm: %{y:.3e}<br>α: %{customdata:.3e}<extra></extra>'
+        ), row=r2, col=c2)
+    return fig

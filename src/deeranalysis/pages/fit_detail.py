@@ -174,6 +174,7 @@ def deletion_modal():
 
 def _basic_fit_info(fit):
     input_styles = {"input": {"backgroundColor": "#fff", "color": "#212529", "opacity": 1, "cursor": "default"}}
+    input_styles = {"input": {"opacity": 1, "cursor": "default"}}
     return dmc.Paper([
         dmc.Group([
             dmc.Title("Basic Fit Information", order=4, mb="sm"),

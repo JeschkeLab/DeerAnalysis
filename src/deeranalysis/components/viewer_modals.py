@@ -37,7 +37,7 @@ def create_viewer_modal(id="viewer-modal", title="Dataset Viewer"):
                               "title": "Dataset Primary Data",
                               "xaxis": {"title": "Time (ns)"},
                               "yaxis": {"title": "Intensity (a.u.)"},
-                              "template": "plotly_white"
+                              "template": None
                           }
                       },
                       style={"height": "70vh", "overflowY": "auto"}),

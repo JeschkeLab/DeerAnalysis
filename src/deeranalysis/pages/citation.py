@@ -35,7 +35,7 @@ def paper_card(title: str, authors: list, journal, year, doi, image=None):
         children=[
             dmc.CardSection(
                 dmc.Text(title, size="md", fw=700, p="md", lh=1.4),
-                bg="blue.0",
+                style={"backgroundColor": "var(--mantine-color-blue-light)"},
                 withBorder=True,
             ),
             dmc.Stack(

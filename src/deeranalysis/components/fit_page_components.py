@@ -1,6 +1,6 @@
 import dash_mantine_components as dmc
 from dash_iconify import DashIconify
-from deeranalysis.utils.deerlab_options import regparam_options, plotly_deerlab, plotly_goodness_of_fit
+from deeranalysis.utils.deerlab_options import regparam_options, plotly_deerlab, plotly_goodness_of_fit,plotly_lcurve
 
 from dash import dcc,html
 
@@ -157,6 +157,17 @@ def dist_stats_tab(page_id):
     ], style={'flex': '1', 'minHeight': 0, 'overflow': 'auto'})
     return tabstab, panel
 
+def L_curve_tab(page_id):
+    tabstab = dmc.TabsTab("L-Curve", value="l-curve")
+    panel = dmc.TabsPanel(value="l-curve", children=[
+        dcc.Graph(
+            id={"type": "l-curve-plot", "page": page_id},
+            figure=plotly_lcurve(),
+            style={'height': '100%'},
+            config={'responsive': True},
+        )
+    ], style={'flex': '1', 'display': 'flex', 'flexDirection': 'column', 'minHeight': 0})
+    return tabstab, panel
 
 # def fit_results_tabs(page_id):
 #     return dmc.Paper([
@@ -196,6 +207,7 @@ def fit_results_tabs(*tabs):
                     style={'flex': '1', 'display': 'flex', 'flexDirection': 'column', 'minHeight': 0}, value=tab0_value)
                     ], variant="outline",
                     style={'flex': '1', 'display': 'flex', 'flexDirection': 'column', 'minHeight': 0, 'overflow': 'hidden'})
+
 
 
 

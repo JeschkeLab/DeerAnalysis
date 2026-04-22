@@ -144,15 +144,16 @@ layout = dmc.Container([
                             dmc.Select(
                                 id="config-plot-theme",
                                 label="Plot Theme",
-                                description="Default theme for plotly figures",
+                                description="Default theme for plotly figures (Auto follows dark/light mode)",
                                 data=[
+                                    {"value": "auto", "label": "Auto (follows dark mode)"},
                                     {"value": "plotly", "label": "Plotly"},
                                     {"value": "plotly_white", "label": "Plotly White"},
                                     {"value": "plotly_dark", "label": "Plotly Dark"},
                                     {"value": "ggplot2", "label": "ggplot2"},
                                     {"value": "seaborn", "label": "Seaborn"},
                                 ],
-                                value="plotly_white",
+                                value="auto",
                                 mb="sm"
                             ),
                             dmc.Button(
@@ -429,6 +430,7 @@ clientside_callback(
     Output("config-notification", "color"),
     Output("color-scheme-store", "data", allow_duplicate=True),
     Output("ui-scale-store", "data", allow_duplicate=True),
+    Output("plot-theme-store", "data", allow_duplicate=True),
     Input("config-save-btn", "n_clicks"),
     State("config-dark-mode", "checked"),
     State("config-ui-scale", "value"),
@@ -447,21 +449,23 @@ def save_configuration(n_clicks, dark_mode, ui_scale, auto_save, max_datasets, d
                 set_logs_api_key(logs_url, logs_api_key)
             color_scheme = "dark" if dark_mode else "light"
             scale = ui_scale if ui_scale is not None else 1.0
-            save_appearance_settings(color_scheme, scale)
-            return "show", "Success", "Configuration saved successfully", "green", color_scheme, scale
+            theme = plot_theme or "auto"
+            save_appearance_settings(color_scheme, scale, theme)
+            return "show", "Success", "Configuration saved successfully", "green", color_scheme, scale, theme
         except Exception as e:
-            return "show", "Error", f"Failed to save configuration: {str(e)}", "red", dash.no_update, dash.no_update
-    return "hide", "", "", "blue", dash.no_update, dash.no_update
+            return "show", "Error", f"Failed to save configuration: {str(e)}", "red", dash.no_update, dash.no_update, dash.no_update
+    return "hide", "", "", "blue", dash.no_update, dash.no_update, dash.no_update
 
 
 @callback(
     Output("config-dark-mode", "checked"),
     Output("config-ui-scale", "value"),
+    Output("config-plot-theme", "value"),
     Input("config-dark-mode", "id"),
 )
 def load_appearance_on_page_load(_):
-    color_scheme, scale = get_appearance_settings()
-    return color_scheme == "dark", scale
+    color_scheme, scale, plot_theme = get_appearance_settings()
+    return color_scheme == "dark", scale, plot_theme or "auto"
 
 
 @callback(

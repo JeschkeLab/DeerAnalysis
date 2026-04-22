@@ -11,9 +11,9 @@ from deeranalysis.utils.database import get_session, Dataset, Fit
 from deeranalysis.utils import  dataarray_from_database_entry
 from deeranalysis.components.dataset_search_model import create_dataset_modal
 from deeranalysis.components.download_modal import create_fit_download_modal
-from deeranalysis.components.fit_page_components import fit_results_tabs, DEFAULT_FIT_RESULTS_CODE,fit_results_tab, goodness_of_fit_tab, dist_stats_tab
+from deeranalysis.components.fit_page_components import fit_results_tabs, DEFAULT_FIT_RESULTS_CODE,fit_results_tab, goodness_of_fit_tab, dist_stats_tab, L_curve_tab
 from deeranalysis.components.model_edit_modal import create_model_edit_modal
-from deeranalysis.utils.deerlab_options import regparam_options,background_models, plotly_goodness_of_fit, plotly_deerlab,dists_stats_to_list, fit_to_dict,name_dataset_from_dict, build_model_data
+from deeranalysis.utils.deerlab_options import regparam_options,background_models, plotly_goodness_of_fit, plotly_deerlab,dists_stats_to_list, fit_to_dict,name_dataset_from_dict, build_model_data, plotly_lcurve
 
 import deeranalysis.components.fit_page_components as fpc
 
@@ -90,14 +90,7 @@ layout = html.Div([
                                         step=0.001,
                                         allowNegative=False,
                                         className="mb-2"
-                                    ),
-                                    html.Label("Maximum Iterations:"),
-                                    dcc.Input(
-                                        id='np-max-iter',
-                                        type='number',
-                                        value=1000,
-                                        className="form-control mb-2"
-                                    ),
+                                    )
                                 ])
                             ],
                             value="adv-options"
@@ -127,6 +120,7 @@ layout = html.Div([
                     fit_results_tab(page_id),
                     goodness_of_fit_tab(page_id),
                     dist_stats_tab(page_id),
+                    L_curve_tab(page_id),
                 )
                 ], style={'display': 'flex', 'flexDirection': 'column', 'height': 'calc(100vh - 160px)', 'gap': '12px'})
                     
@@ -195,6 +189,7 @@ def open_model_edit_modal(n_clicks, dataset_id, bg_model_name, pathways, distanc
     Output('np-run-fit-btn', 'loading', allow_duplicate=True),
     Output({"type": "fit-results-code", "page": page_id}, 'code', allow_duplicate=True),
     Output({"type": "gof-plot", "page": page_id}, 'figure', allow_duplicate=True),
+    Output({"type": "l-curve-plot", "page": page_id}, 'figure', allow_duplicate=True),
     Output({"type": "dist-stats-table", "page": page_id}, 'data', allow_duplicate=True),
     Output('np-save-fit-btn', 'disabled'),
     Output('np-download-fit-btn', 'disabled'),
@@ -219,7 +214,7 @@ def run_fit(n_clicks, dataset_id, bg_model_option, compactness, distance_axis, p
         pass
 
     if not dataset_id:
-        return dash.no_update,dash.no_update, False, dash.no_update, dash.no_update, dash.no_update, True,True
+        return dash.no_update,dash.no_update, False, dash.no_update, dash.no_update,dash.no_update, dash.no_update, True,True
 
         
     session = get_session()
@@ -233,7 +228,7 @@ def run_fit(n_clicks, dataset_id, bg_model_option, compactness, distance_axis, p
         fig = plotly_deerlab(fitresult=dataset)
         fig.update_layout(title=f"Dataset: {dataset_entry.name}", showlegend=True)
         dist_stats_output = {"head": ["Statistic", "Value", "Confidence Interval (95%)"]}
-        return None, fig, False, DEFAULT_FIT_RESULTS_CODE, plotly_goodness_of_fit(),dist_stats_output, True, True
+        return None, fig, False, DEFAULT_FIT_RESULTS_CODE, plotly_goodness_of_fit(),plotly_lcurve(None),dist_stats_output, True, True
         
     if triggered_id == 'np-run-fit-btn':
         # Perform Fit using DeerLab
@@ -257,13 +252,14 @@ def run_fit(n_clicks, dataset_id, bg_model_option, compactness, distance_axis, p
                 model_overrides=model_params)
         except Exception as e:
             print(f"Error during fitting: {e}")
-            return dash.no_update, dash.no_update, False, f"Error during fitting: {e}", dash.no_update, dash.no_update, True, True
+            return dash.no_update, dash.no_update, False, f"Error during fitting: {e}", dash.no_update, dash.no_update, dash.no_update, True, True
 
         # Create plots
         fig = plotly_deerlab(fitresult=fit)
         fig.update_layout(title=f"Fit Result: {dataset_entry.name}", showlegend=True)
 
         gof_fig = plotly_goodness_of_fit(fit)
+        l_curve_fig = plotly_lcurve(fit)
 
         dist_stats = dl.diststats(r,fit.P,fit.PUncert)
         dist_stats_dict = dists_stats_to_list(*dist_stats)
@@ -278,7 +274,7 @@ def run_fit(n_clicks, dataset_id, bg_model_option, compactness, distance_axis, p
         fit_dict = fit_to_dict(fit)
         fit_dict['dist_stats'] = dist_stats_dict
         fit_dict['gof'] = fit.stats
-        return fit_dict, fig, False, fit.__str__(), gof_fig,dist_stats_output, False, False
+        return fit_dict, fig, False, fit.__str__(), gof_fig,l_curve_fig,dist_stats_output, False, False
 
     return dash.no_update
 

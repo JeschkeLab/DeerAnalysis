@@ -1,6 +1,6 @@
 import dash
 import dash_bootstrap_components as dbc
-from dash import html, dcc, Input, Output, State, ALL, callback
+from dash import html, dcc, Input, Output, State, ALL, callback, clientside_callback
 from deeranalysis.utils.database import init_db
 from dash_iconify import DashIconify
 import dash_mantine_components as dmc
@@ -13,6 +13,7 @@ from deeranalysis.components.new_version_modal import new_version_modal, update_
 from deeranalysis.components.dmc_theme import da_dmctheme
 from deeranalysis.utils.logs_plugin import initialize_logs_api,check_logs_api_key
 from deeranalysis.utils.database import get_appearance_settings
+from deeranalysis.utils.deerlab_options import resolve_plot_template
 
 import plotly.io as pio
 
@@ -25,7 +26,7 @@ pio.templates["compact"] = dict(
         legend=dict(font=dict(size=10)),
     )
 )
-pio.templates.default = "plotly+compact"
+pio.templates.default = "plotly_white+compact"
 
 def first_time_setup():
     """
@@ -49,6 +50,8 @@ if not first_time_setup():
     # print("Initializing database connection...")
     init_db(default_directory())
     initialize_logs_api()
+    _appearance = get_appearance_settings()
+    pio.templates.default = resolve_plot_template(_appearance[0], _appearance[2])
 
 
 
@@ -136,6 +139,9 @@ app.layout = dmc.MantineProvider(
         dcc.Store(id="desktop-mode", data=desktop_mode),
         dcc.Store(id="color-scheme-store", data=get_appearance_settings()[0] if not first_time_setup() else "light"),
         dcc.Store(id="ui-scale-store", data=get_appearance_settings()[1] if not first_time_setup() else 1.0),
+        dcc.Store(id="plot-theme-store", data=get_appearance_settings()[2] if not first_time_setup() else "auto"),
+        dcc.Store(id="_plot-template-sync", data=None),
+        dcc.Store(id="_color-scheme-html-sync", data=None),
         dmc.AppShell(
             [
                 dmc.AppShellHeader(
@@ -203,6 +209,34 @@ app.layout = dmc.MantineProvider(
 )
 def update_color_scheme(color_scheme):
     return color_scheme or "light"
+
+
+@callback(
+    Output("_plot-template-sync", "data"),
+    Input("color-scheme-store", "data"),
+    Input("plot-theme-store", "data"),
+)
+def sync_plot_template(color_scheme, plot_theme):
+    """Keep pio.templates.default in sync with the user's theme preferences."""
+    pio.templates.default = resolve_plot_template(color_scheme, plot_theme)
+    return dash.no_update
+
+
+# Mirror the color scheme to document.documentElement so that Mantine's CSS
+# variable rules (keyed on html[data-mantine-color-scheme="…"]) and our own
+# CSS overrides take effect globally — including the body background that
+# Bootstrap otherwise hard-codes to #fff.
+clientside_callback(
+    """
+    function(colorScheme) {
+        var scheme = colorScheme || 'light';
+        document.documentElement.setAttribute('data-mantine-color-scheme', scheme);
+        return scheme;
+    }
+    """,
+    Output("_color-scheme-html-sync", "data"),
+    Input("color-scheme-store", "data"),
+)
 
 
 _BASE_FONT_SIZES = {"xs": 12, "sm": 14, "md": 16, "lg": 18, "xl": 20}
