@@ -575,7 +575,7 @@ def deernet2(dataset, model_size, providor=None,model_dir=None) -> DEERnetResult
     stats['MNR'] = MNR
     stats['SNR'] = 1/ noiselvl 
     stats['mod_depth'] = dataset.mdpths_av[0][0]
-
+    stats['lam'] = dataset.mdpths_av[0][0]
     fitresult = FitResult(
         dataset = dataset,
         t = (time_axis+t_shift) * 1e6, # convert back to microseconds for output

@@ -117,6 +117,7 @@ layout = html.Div([
                             ],
                             style={'flex': '1', 'display': 'flex', 'flexDirection': 'column', 'minHeight': 300}),
                 fit_results_tabs(
+                    fpc.overview_tab(page_id),
                     fit_results_tab(page_id),
                     goodness_of_fit_tab(page_id),
                     dist_stats_tab(page_id),

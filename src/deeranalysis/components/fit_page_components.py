@@ -2,7 +2,7 @@ import dash_mantine_components as dmc
 from dash_iconify import DashIconify
 from deeranalysis.utils.deerlab_options import regparam_options, plotly_deerlab, plotly_goodness_of_fit,plotly_lcurve
 
-from dash import dcc,html
+from dash import dcc, html, callback, Input, Output, State, ALL, MATCH
 
 DEFAULT_FIT_RESULTS_CODE = """Fit Resuls will be displayed here after running the fit. \nThis can include parameters like mean distance, width, and any other relevant metrics."""
 
@@ -269,3 +269,256 @@ def plotly_deerlab_pagation(*datasets, page_id):
     ], style={'flex': '1', 'display': 'flex', 'flexDirection': 'column', 'minHeight': 300})
 
 
+# ---------------------------------------------------------------------------
+# Overview Tab Components, Cards and Callbacks
+# ---------------------------------------------------------------------------
+
+
+METRIC_CONFIG = {
+    "mnr":       {"title": "MNR",  "description": "Mean Noise Ratio",           "thresholds": {"direction": "higher_better", "good": 50,   "moderate": 20}},
+    "chi2":      {"title": "Chi²", "description": "Reduced Chi-squared",         "thresholds": {"direction": "lower_better",  "good": 1.5,  "moderate": 3}},
+    "rmsd":      {"title": "RMSD", "description": "Root Mean Square Deviation",  "thresholds": {"direction": "lower_better",  "good": 0.01, "moderate": 0.02}},
+    "lambda":    {"title": "λ",    "description": "Modulation Depth",            "thresholds": None},
+    "mean_dist": {"title": "⟨r⟩",  "description": "Mean Distance (nm)",          "thresholds": None},
+    "std_dist":  {"title": "σᵣ",   "description": "Std. Deviation (nm)",         "thresholds": None},
+}
+
+
+def _make_card_children(title, value, uncertainty=None, description=None, thresholds=None):
+    """Builds the dmc.Stack children for an overview card. Used by overview_card and the update callback."""
+    color = "gray"
+    if value is not None and thresholds is not None:
+        direction = thresholds.get("direction", "lower_better")
+        good = thresholds.get("good")
+        moderate = thresholds.get("moderate")
+        if direction == "higher_better":
+            color = "green" if value > good else "orange" if value > moderate else "red"
+        else:
+            color = "green" if value < good else "orange" if value < moderate else "red"
+
+    value_str = "N/A" if value is None else f"{value:.4g}" if isinstance(value, float) else str(value)
+
+    children = [
+        dmc.Text(title, size="lg", fw=700),
+        dmc.Text(value_str, size="xl", fw=700, c=color),
+    ]
+    if uncertainty is not None:
+        unc_str = f"± {uncertainty:.4g}" if isinstance(uncertainty, float) else f"± {uncertainty}"
+        children.append(dmc.Text(unc_str, size="sm", c="dimmed"))
+    if description is not None:
+        children.append(dmc.Text(description, size="xs", c="dimmed"))
+
+    return dmc.Stack(children, gap=2, align="center")
+
+
+def overview_card(metric_id, page_id, value=None, uncertainty=None):
+    """
+    Creates a rectangular card component for displaying a fit metric.
+
+    Parameters:
+    -----------
+    metric_id: string key from METRIC_CONFIG (e.g. "mnr", "chi2")
+    page_id: string, the id of the parent page — included in the component id for pattern-matching callbacks
+    value: numeric or None; None renders "N/A"
+    uncertainty: numeric or None; if provided shown as "± uncertainty"
+
+    Returns:
+    -----------
+    dmc.Paper with id {"type": "overview-card", "metric": metric_id, "page": page_id}
+    """
+    config = METRIC_CONFIG.get(metric_id, {"title": metric_id, "description": None, "thresholds": None})
+    return dmc.Paper(
+        _make_card_children(config["title"], value, uncertainty, config["description"], config["thresholds"]),
+        id={"type": "overview-card", "metric": metric_id, "page": page_id},
+        withBorder=True,
+        p="md",
+        style={"textAlign": "center", "minWidth": 120},
+    )
+
+
+
+
+
+def overview_tab(page_id):
+    """
+    Creates an overview tab panel for the fit_results. This will display a number of key metrics about the fit in a simple format.
+    The key metrics are displayed as a number of cards created by the function overview_card.
+    The MNR, and chi2 and RMSD cards, change colour based on the value of the metric, with thresholds for good, moderate, and poor fit quality. 
+    The thresholds are defined in the function overview_card.
+    
+    Displayed Cards:
+    - MNR: Mean Noise Ratio, with thresholds for good (>50), moderate (20-50), and poor (<20) fit quality
+    - Chi2: reduced Chi-squared statistic, with thresholds for good (<1.5), moderate (1.5-3), and poor (>3) fit quality
+    - RMSD: Root Mean Square Deviation, with thresholds for good (<0.05), moderate (0.05-0.1), and poor (>0.1) fit quality
+    - Modulation Depth, lambda: no specific thresholds, just displays the value and uncertainty if available
+
+    - The cards are arranged in a responsive grid layout that adjusts based on the screen size, with a gap between the cards.
+
+        Returns:
+    -----------
+    tuple: (dmc.TabsTab, dmc.TabsPanel) for the overview tab.
+
+
+    """
+    tabstab = dmc.TabsTab("Overview", value="overview")
+    panel = dmc.TabsPanel(value="overview", children=[
+        *_overview_card_grids(page_id),
+    ], style={'flex': '1', 'display': 'flex', 'flexDirection': 'column', 'minHeight': 0})
+    return tabstab, panel
+
+
+def overview_tab_global(page_id, n_datasets=1):
+    """
+    Creates an overview tab panel for globally fitted datasets, where each dataset's
+    metrics are displayed on a separate page navigated by a dmc.Pagination component.
+    The layout is identical to overview_tab but repeated over multiple pages.
+
+    A dcc.Store with id {"type": "overview-global-data-store", "page": page_id} holds
+    the metric data for all datasets as a list of dicts (one per dataset). A callback
+    should update the cards when the pagination value changes.
+
+    Parameters:
+    -----------
+    page_id: string, the id of the page
+    n_datasets: int, the initial number of pages (datasets); defaults to 1
+
+    Returns:
+    -----------
+    tuple: (dmc.TabsTab, dmc.TabsPanel) for the overview tab.
+    """
+    tabstab = dmc.TabsTab("Overview", value="overview")
+    panel = dmc.TabsPanel(value="overview", children=[
+        dcc.Store(id={"type": "overview-global-data-store", "page": page_id}, data=[]),
+        dmc.Stack([
+            *_overview_card_grids(page_id),
+            dmc.Center(
+                dmc.Pagination(
+                    id={"type": "overview-pagination", "page": page_id},
+                    total=n_datasets,
+                    value=1,
+                    withEdges=True,
+                ),
+                mb="md",
+            ),
+        ], gap="md")
+    ], style={'flex': '1', 'display': 'flex', 'flexDirection': 'column', 'minHeight': 0})
+    return tabstab, panel
+
+
+def _overview_card_grids(page_id):
+    """Returns the two SimpleGrid rows of overview cards (shared between overview_tab and overview_tab_global)."""
+    return [
+        dmc.SimpleGrid(
+            cols={"base": 1, "sm": 2, "lg": 4},
+            mt="md",
+            spacing="md",
+            children=[
+                overview_card("mnr",    page_id),
+                overview_card("lambda", page_id),
+                overview_card("chi2",   page_id),
+                overview_card("rmsd",   page_id),
+            ],
+        ),
+        dmc.SimpleGrid(
+            cols={"base": 1, "sm": 2},
+            mb="md",
+            spacing="md",
+            children=[
+                overview_card("mean_dist", page_id),
+                overview_card("std_dist",  page_id),
+            ],
+        ),
+    ]
+
+
+# ---------------------------------------------------------------------------
+# Overview card callbacks — registered once, work for every page via MATCH
+# ---------------------------------------------------------------------------
+
+def _extract_overview_metrics(store_data):
+    """
+    Extracts overview card metrics from a fit-results-store dict.
+
+    Reads from:
+    - store_data['gof']        → MNR, chi2red (chi²), RMSD, lam (λ)
+    - store_data['dist_stats'] → mean (⟨r⟩), std (σᵣ) with confidence intervals
+
+    Returns a dict keyed by metric_id matching METRIC_CONFIG.
+    """
+    if not store_data:
+        return {}
+
+    gof = store_data.get('gof') or {}
+    dist_stats = store_data.get('dist_stats') or {}
+
+    def _gof(key, *aliases):
+        for k in (key,) + aliases:
+            v = gof.get(k)
+            if v is not None:
+                return float(v)
+        return None
+
+    def _dist(key):
+        entry = dist_stats.get(key) or {}
+        val = entry.get('value')
+        ci = entry.get('ci')
+        unc = (ci[1] - ci[0]) / 2 if ci else None
+        return (float(val) if val is not None else None), (float(unc) if unc is not None else None)
+
+    mean_val, mean_unc = _dist('mean')
+    std_val, std_unc = _dist('std')
+
+    return {
+        'mnr':       {'value': _gof('MNR', 'mnr'),           'uncertainty': None},
+        'chi2':      {'value': _gof('chi2red', 'chi2'),       'uncertainty': None},
+        'rmsd':      {'value': _gof('RMSD', 'rmsd'),          'uncertainty': None},
+        'lambda':    {'value': _gof('lam', 'lambda', 'LAM'),  'uncertainty': None},
+        'mean_dist': {'value': mean_val,                       'uncertainty': mean_unc},
+        'std_dist':  {'value': std_val,                        'uncertainty': std_unc},
+    }
+
+
+def _render_cards(outputs, metrics):
+    """Renders card children for each output id using a metrics dict from _extract_overview_metrics."""
+    result = []
+    for out in outputs:
+        metric = out["id"]["metric"]
+        config = METRIC_CONFIG.get(metric, {"title": metric, "description": None, "thresholds": None})
+        metric_data = metrics.get(metric, {})
+        result.append(_make_card_children(
+            title=config["title"],
+            value=metric_data.get("value"),
+            uncertainty=metric_data.get("uncertainty"),
+            description=config["description"],
+            thresholds=config["thresholds"],
+        ))
+    return result
+
+
+@callback(
+    Output({"type": "overview-card", "metric": ALL, "page": MATCH}, "children"),
+    Input({"type": "fit-results-store", "page": MATCH}, "data"),
+)
+def update_overview_cards(store_data):
+    """Updates all overview cards on a page whenever fit-results-store changes."""
+    import dash
+    outputs = dash.callback_context.outputs_list
+    return _render_cards(outputs, _extract_overview_metrics(store_data))
+
+
+@callback(
+    Output({"type": "overview-card", "metric": ALL, "page": MATCH}, "children", allow_duplicate=True),
+    Input({"type": "overview-pagination", "page": MATCH}, "value"),
+    State({"type": "overview-global-data-store", "page": MATCH}, "data"),
+    prevent_initial_call=True,
+)
+def update_overview_cards_global(page_value, all_store_data):
+    """Updates overview cards when the pagination changes on a global-fit overview tab."""
+    import dash
+    outputs = dash.callback_context.outputs_list
+    per_dataset_store = {}
+    if all_store_data and page_value is not None:
+        idx = page_value - 1
+        if 0 <= idx < len(all_store_data):
+            per_dataset_store = all_store_data[idx]
+    return _render_cards(outputs, _extract_overview_metrics(per_dataset_store))

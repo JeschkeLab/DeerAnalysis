@@ -74,6 +74,7 @@ layout = html.Div([
             html.Div([
                 fpc.fit_plot(page_id),
                 fpc.fit_results_tabs(
+                    fpc.overview_tab(page_id),
                     fpc.goodness_of_fit_tab(page_id),
                     fpc.dist_stats_tab(page_id),
                 ),
@@ -81,7 +82,7 @@ layout = html.Div([
         ], width=9), # dbc.col
     ]), # dbc.row
     # Hidden store for fit results
-    dcc.Store(id='dn-fit-results-store'),
+    dcc.Store(id={'type':'fit-results-store','page': page_id}),
     dmc.Modal(id="dn-missing-models",
             title="DeerNet Models Not Found",
             opened=False,
@@ -124,7 +125,7 @@ def update_dropdown(pathname):
 
 
 @callback(
-    Output('dn-fit-results-store', 'data'),
+    Output({'type':'fit-results-store','page': page_id}, 'data'),
     Output({"type": "fit-plot", "page": page_id}, 'figure'),
     Output({"type":"run-fit-btn","page":page_id}, 'loading', allow_duplicate=True),
     Output({"type": "gof-plot", "page": page_id}, 'figure', allow_duplicate=True),
@@ -198,7 +199,7 @@ def run_fit(n_clicks, dataset_id,model_size):
     Output('dn-fit-status', 'children'),
     Input({"type":"save-fit-btn","page":page_id}, 'n_clicks'),
     State({'type': 'dataset-dropdown', 'page': page_id}, 'value'), 
-    State('dn-fit-results-store', 'data'),
+    State({'type':'fit-results-store','page': page_id}, 'data'),
     prevent_initial_call=True
 )
 def save_fit(n_clicks, dataset_id,dataset_store):

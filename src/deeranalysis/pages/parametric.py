@@ -99,6 +99,7 @@ layout = html.Div([
             html.Div([
                 fit_plot(page_id),
                 fpc.fit_results_tabs(
+                    fpc.overview_tab(page_id),
                     fpc.fit_results_tab(page_id),
                     fpc.goodness_of_fit_tab(page_id),
                     fpc.dist_stats_tab(page_id),
@@ -108,7 +109,7 @@ layout = html.Div([
 
     ]),
 
-    dcc.Store(id='p-fit-results-store'),
+    dcc.Store(id={'type':'fit-results-store','page': page_id}),
     dcc.Store(id={'type': 'fit-options', 'page': page_id}),
     dcc.Store(id={'type': 'model-params-store', 'page': page_id}),
 ])
@@ -189,7 +190,7 @@ def open_model_edit_modal(n_clicks, dataset_id, bg_model_name, dist_model_name,
 
 
 @callback(
-    Output('p-fit-results-store', 'data'),
+    Output({'type':'fit-results-store','page': page_id}, 'data'),
     Output({"type": "fit-plot", "page": page_id}, 'figure'),
     Output({"type": "run-fit-btn", "page": page_id}, 'loading', allow_duplicate=True),
     Output({"type": "fit-results-code", "page": page_id}, 'code', allow_duplicate=True),
@@ -273,6 +274,7 @@ def run_fit(n_clicks, dataset_id, fit_options, model_params):
         }
         fit_dict = fit_to_dict(fit)
         fit_dict['dist_stats'] = dist_stats_dict
+        fit_dict['gof'] = fit.stats
         return fit_dict, fig, False, fit.__str__(), gof_fig, dist_stats_output, False
 
 
@@ -280,7 +282,7 @@ def run_fit(n_clicks, dataset_id, fit_options, model_params):
     Output('p-fit-status', 'children'),
     Input({"type": "save-fit-btn", "page": page_id}, 'n_clicks'),
     State({'type': 'dataset-dropdown', 'page': page_id}, 'value'),
-    State('p-fit-results-store', 'data'),
+    State({'type':'fit-results-store','page': page_id}, 'data'),
     prevent_initial_call=True
 )
 def save_fit(n_clicks, dataset_id, dataset_store):
