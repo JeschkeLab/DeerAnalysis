@@ -1,0 +1,81 @@
+.dmc {
+    --Dash-Stroke-Strong: var(--mantine-color-default-border);
+    --Dash-Stroke-Weak: var(--mantine-color-disabled);
+    --Dash-Fill-Interactive-Strong: var(--mantine-primary-color-filled);
+    --Dash-Fill-Inverse-Strong: var(--mantine-color-body);
+    --Dash-Text-Primary: var(--mantine-color-text);
+    --Dash-Text-Strong: var(--mantine-color-text);
+    --Dash-Text-Disabled: var(--mantine-color-dimmed);
+    --Dash-Text-Weak: var(--mantine-color-dimmed);
+}
+
+:root[data-mantine-color-scheme="dark"] .dmc {
+    --Dash-Fill-Inverse-Strong: var(--mantine-color-dark-6);
+    --Dash-Fill-Weak: rgba(255, 255, 255, 0.06);
+    --Dash-Fill-Primary-Hover: rgba(255, 255, 255, 0.08);
+    --Dash-Fill-Primary-Active: rgba(255, 255, 255, 0.12);
+    --Dash-Fill-Disabled: rgba(255, 255, 255, 0.15);
+}
+
+/* ── Dark mode: override Bootstrap's hard-coded body background ────────────
+   Bootstrap sets body { background-color: #fff } which beats Mantine's
+   CSS-variable rule at equal specificity.  Adding html[] as an ancestor
+   raises specificity enough to win without resorting to !important on
+   Mantine's own rules. */
+html[data-mantine-color-scheme="dark"] body {
+    background-color: var(--mantine-color-dark-7) !important;
+    color: var(--mantine-color-text) !important;
+}
+
+/* ── Dark mode: header logo ─────────────────────────────────────────────────
+   The SVG has black fills for the deer icon and wordmark text.
+   invert(1) turns black → white; hue-rotate(180deg) then rotates all hues
+   by 180° so that the complemented hue is rotated back — leaving coloured
+   parts (the orange "2026") approximately at their original hue while
+   achromatic black/white stay white/black. */
+html[data-mantine-color-scheme="dark"] #header-logo {
+    filter: invert(1) hue-rotate(180deg);
+}
+
+/* ── Dark mode: AG Grid Alpine theme ────────────────────────────────────────
+   AG Grid's Alpine theme uses CSS custom properties throughout.  Overriding
+   them here is enough to get a dark grid without changing any classNames or
+   adding callbacks — Mantine palette values are reused for consistency. */
+html[data-mantine-color-scheme="dark"] .ag-theme-alpine {
+    --ag-background-color:               var(--mantine-color-dark-7);
+    --ag-header-background-color:        var(--mantine-color-dark-6);
+    --ag-odd-row-background-color:       var(--mantine-color-dark-6);
+    --ag-row-hover-color:                var(--mantine-color-dark-5);
+    --ag-selected-row-background-color:  var(--mantine-color-dark-5);
+    --ag-border-color:                   var(--mantine-color-dark-4);
+    --ag-secondary-border-color:         var(--mantine-color-dark-4);
+    --ag-foreground-color:               var(--mantine-color-dark-0);
+    --ag-header-foreground-color:        var(--mantine-color-dark-0);
+    --ag-disabled-foreground-color:      var(--mantine-color-dark-3);
+    --ag-input-border-color:             var(--mantine-color-dark-4);
+    --ag-input-focus-border-color:       var(--mantine-primary-color-filled);
+    --ag-range-selection-background-color: color-mix(in srgb, var(--mantine-primary-color-filled) 20%, transparent);
+    --ag-modal-overlay-background-color: rgba(0, 0, 0, 0.6);
+    --ag-chip-background-color:          var(--mantine-color-dark-5);
+    --ag-control-panel-background-color: var(--mantine-color-dark-6);
+    --ag-subheader-background-color:     var(--mantine-color-dark-6);
+    --ag-tooltip-background-color:       var(--mantine-color-dark-5);
+}
+
+.mantine-Notification-root {
+    min-width: 480px;
+    max-width: 720px;
+}
+
+.mantine-Notification-title {
+    font-size: var(--mantine-font-size-lg);
+}
+
+.mantine-Notification-description {
+    font-size: var(--mantine-font-size-md);
+}
+
+.mantine-Notification-icon {
+    width: 28px;
+    height: 28px;
+}

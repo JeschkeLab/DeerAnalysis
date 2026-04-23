@@ -1,0 +1,45 @@
+html {
+    font-size: 12px; /* default is 16px */
+}
+
+/* Shrink AG Grid - override CSS custom properties */
+.ag-theme-alpine, .ag-theme-balham, .ag-theme-material,
+.ag-theme-quartz, .ag-root-wrapper {
+    --ag-font-size: 12px !important;
+    --ag-header-height: 32px !important;
+    --ag-row-height: 28px !important;
+    --ag-cell-horizontal-padding: 8px !important;
+    --ag-grid-size: 4px !important;
+    --ag-list-item-height: 28px !important;
+    --ag-header-column-resize-handle-height: 50% !important;
+    font-size: 12px !important;
+}
+.ag-header-cell-label {
+    font-size: 12px !important;
+}
+.ag-cell {
+    font-size: 12px !important;
+    line-height: 28px !important;
+}
+.ag-header-cell-text {
+    font-size: 12px !important;
+}
+/* AG Grid filter/menu popups */
+.ag-popup, .ag-menu, .ag-filter {
+    font-size: 12px !important;
+}
+
+/* Shrink Dash core components */
+.Select-control, .dash-dropdown, .rc-slider {
+    font-size: 12px !important;
+}
+
+/* Shrink general inputs/buttons */
+input, button, select, textarea, label {
+    font-size: 12px !important;
+}
+
+/* Reduce overall padding/margins */
+.dash-graph {
+    padding: 0 !important;
+}

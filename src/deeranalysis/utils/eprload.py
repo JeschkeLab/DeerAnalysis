@@ -23,12 +23,20 @@ def eprload(*filenames, file_format=None, **kwargs):
     
     if not isinstance(filenames, (list, tuple)):
         filenames = [filenames]
+        
+    if isinstance(filenames[0],dict):
+        # If a dict of filename: filebuffer is provided, extract the buffers and filenames
+        filebuffers = list(filenames[0].values())
+        filenames = list(filenames[0].keys())
+    else:
+        filebuffers = None
     
-    file_endings = [os.path.splitext(fname)[1].upper() for fname in filenames]
+    
 
     # check if 'DSC' or 'DTA' in file endings
     if file_format is None:
-        if 'DSC' in file_endings or 'DTA' in file_endings:
+        file_endings = [os.path.splitext(fname)[1].upper() for fname in filenames]
+        if '.DSC' in file_endings or '.DTA' in file_endings:
             file_format = 'BES3T'
         else:
             raise ValueError("Could not infer file format from extensions. Please specify 'file_format' parameter.")
@@ -44,19 +52,33 @@ def eprload(*filenames, file_format=None, **kwargs):
         ygf_file = None
         zgf_file = None
         
-        for fname in filenames:
-            ext = os.path.splitext(fname)[1].upper()
-            with open(fname, 'rb') as f:
+        if filebuffers is None:
+            for fname in filenames:
+                ext = os.path.splitext(fname)[1].upper()
+                with open(fname, 'rb') as f:
+                    if ext == '.DSC':
+                        dsc_file = f.read()
+                    elif ext == '.DTA':
+                        dta_file = f.read()
+                    elif ext == '.XGF':
+                        xgf_file = f.read()
+                    elif ext == '.YGF':
+                        ygf_file = f.read()
+                    elif ext == '.ZGF':
+                        zgf_file = f.read()
+        else:
+            for fname, fbuffer in zip(filenames, filebuffers):
+                ext = os.path.splitext(fname)[1].upper()
                 if ext == '.DSC':
-                    dsc_file = f.read()
+                    dsc_file = fbuffer.read()
                 elif ext == '.DTA':
-                    dta_file = f.read()
+                    dta_file = fbuffer.read()
                 elif ext == '.XGF':
-                    xgf_file = f.read()
+                    xgf_file = fbuffer.read()
                 elif ext == '.YGF':
-                    ygf_file = f.read()
+                    ygf_file = fbuffer.read()
                 elif ext == '.ZGF':
-                    zgf_file = f.read()
+                    zgf_file = fbuffer.read()
         
         if dsc_file is None or dta_file is None:
             raise ValueError("Both .DSC and .DTA files must be provided for Bruker BES3T format.")
@@ -287,6 +309,7 @@ def bes3t_eprload(DSC, DTA,XGF=None,YGF=None,ZGF=None, **kwargs):
     attrs = kwargs.get('attrs', {}) # Get any existing attrs from kwargs
     attrs['title'] = parDESC.get('TITL','')
     attrs.update(extract_key_parameters(parameters))
+    attrs.update(extract_PulseSpel_files(parameters))
 
     return xr.DataArray(data, coords=coords, dims=['X','Y','Z'][:data.ndim], **kwargs,attrs=attrs)
 
@@ -299,11 +322,13 @@ def _read_des3t_dsc_file(DSC_file):
         Content of the .DSC file as bytes.
     """
     # check encoding is utf-8
-    try:
-        DSC_file = DSC_file.decode('utf-8',errors='ignore')
-    except UnicodeDecodeError:
-        raise ValueError("The .DSC file is not encoded in UTF-8 format.")
-    
+    if isinstance(DSC_file, bytes):
+        try:
+            DSC_file = DSC_file.decode('utf-8', errors='ignore')
+        except (UnicodeDecodeError, AttributeError):
+            raise ValueError("The .DSC file is not encoded in UTF-8 format.")
+    elif not isinstance(DSC_file, str):
+        raise TypeError("DSC_file must be bytes or str")
 
     allLines = DSC_file.splitlines(keepends=True)
     
@@ -426,6 +451,23 @@ def extract_key_parameters(parameters):
 
     return params
     
+def extract_PulseSpel_files(parameters):
+    """
+    Extracts the pulse spel file, both the .exp and .def parts, from the parameters dictionary.
+    """
+
+    params = {}
+    try:
+        params['PlsSPELPrgTxt'] = parameters['DSL']['ftEpr']['PlsSPELPrgTxt']
+        params['PlsSPELPrgTxt'] = params['PlsSPELPrgTxt'].replace('\\n', '\n')
+        params['PlsSPELGlbTxt'] = parameters['DSL']['ftEpr']['PlsSPELGlbTxt']
+        params['PlsSPELGlbTxt'] = params['PlsSPELGlbTxt'].replace('\\n', '\n')
+    except KeyError:
+        warn(r"Pulsespel files not found in DSC parameters.")
+    except Exception as e:
+        warn(f"Error extracting Pulsespel files: {str(e)}")
+
+    return params
 
 
 def _string_to_G(str):
@@ -502,3 +544,72 @@ def _string_to_us(str):
     else:
         raise ValueError(f"Invalid time string: {str}")
 
+
+
+def dataarray_from_database_entry(db_entry):
+
+    t= np.array(db_entry.t)
+    V = np.array(db_entry.V) + 1j * np.array(db_entry.V_im)
+    attrs = {
+        'name': db_entry.name,
+        'project': db_entry.project,
+        'sample': db_entry.sample,
+        'seq_name': db_entry.exp,}
+    attrs.update(db_entry.meta)
+    attrs.update(db_entry.delays)
+    
+
+    return xr.DataArray(V, coords={'t': ('t', t, {'units':'µs'})}, dims=['t'], attrs=attrs)
+
+
+def search_variable(var_dict, search_terms, variable_type,one_item=False):
+    """
+    
+    Search for variables in var_dict based on search_terms and variable_type.
+
+    Parameters:
+    -----------
+    var_dict : dict
+        Dictionary containing variable information.
+    search_terms : str or list
+        Terms to search for in the variable comments.
+    variable_type : str
+        Type of variable to filter ('delay', 'pulse', 'counter') or None.
+    one_item : bool
+        If True, only return one matching item.
+    """
+    # search_terms = 'tau1'
+# variable_type='delay'
+    if isinstance(search_terms, str):
+        search_terms = [search_terms]
+    found_items = {key: val for key, val in var_dict.items() if any(term in val[1] for term in search_terms)}
+    if variable_type=='delay':
+        # Only keep keys that start with 'd'
+        found_items = {key: val for key, val in found_items.items() if key.startswith('d')}
+    elif variable_type=='pulse':
+        # Only keep keys that start with 'p'
+        found_items = {key: val for key, val in found_items.items() if key.startswith('p')}
+    elif variable_type=='counter':
+        # Only keep keys that contain no numbers
+        found_items = {key: val for key, val in found_items.items() if not re.search(r'\d', key)}
+
+    if len(found_items) == 0:
+        warn(f"No matching variable found for search terms: {search_terms} and variable_type: {variable_type}.")
+    elif len(found_items) > 1 and one_item:
+        warn(f"Multiple matching variables found for search terms: {search_terms} and variable_type: {variable_type}: {list(found_items.keys())}. Using the first one: {list(found_items.keys())[0]}")
+        found_items = {list(found_items.keys())[0]: found_items[list(found_items.keys())[0]]}
+    return found_items
+
+
+def extract_value_ns(var_dict):
+
+    keys = list(var_dict.keys())
+    if len(keys) == 0:
+        raise ValueError("No matching variable found in var_dict.")
+    elif len(keys)  == 1:
+        key = keys[0]
+    else:
+        warn(f"Multiple matching variables found: {keys}. Using the first one: {keys[0]}")
+        key = keys[0]
+    value_ns = var_dict[key][0] # Convert to seconds
+    return value_ns
