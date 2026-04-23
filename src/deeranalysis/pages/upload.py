@@ -24,6 +24,52 @@ page_id = 'upload'
 layout = html.Div([
     metadata_long_values_model(page_id),
     dcc.Store(id={"type":"metadata-modal-store","page":page_id}, data=""),
+    dcc.Store(id='csv-raw-store'),
+
+    # ---- CSV import modal --------------------------------------------------
+    dmc.Modal(
+        id='csv-import-modal',
+        title=dmc.Title("Import CSV File", order=3),
+        size='xl',
+        opened=False,
+        children=dmc.Stack([
+            html.Div(id='csv-preview'),
+            dmc.Group([
+                dmc.NumberInput(
+                    id='csv-skiprows', label='Skip rows', value=0, min=0, step=1, w=140,
+                ),
+                dmc.Select(
+                    id='csv-separator', label='Separator', value=',', w=180,
+                    data=[
+                        {'label': 'Comma  ( , )', 'value': ','},
+                        {'label': 'Semicolon  ( ; )', 'value': ';'},
+                        {'label': 'Tab', 'value': '\t'},
+                        {'label': 'Space', 'value': ' '},
+                    ],
+                ),
+                dmc.Select(
+                    id='csv-time-unit', label='Time unit', value='us', w=140,
+                    data=[
+                        {'label': 'ns',  'value': 'ns'},
+                        {'label': 'µs',  'value': 'us'},
+                        {'label': 'ms',  'value': 'ms'},
+                        {'label': 's',   'value': 's'},
+                    ],
+                ),
+            ]),
+            dmc.Group([
+                dmc.Select(id='csv-t-col',   label='Time column (t)',                placeholder='Select column…', style={'flex': 1}),
+                dmc.Select(id='csv-vre-col', label='Real signal (V_re)',             placeholder='Select column…', style={'flex': 1}),
+                dmc.Select(id='csv-vim-col', label='Imaginary signal (V_im)',        placeholder='None',           style={'flex': 1}, clearable=True),
+            ], grow=True),
+            dmc.Group([
+                dmc.Button('Cancel', id='csv-cancel-btn', color='gray', variant='subtle'),
+                dmc.Button('Import', id='csv-import-btn', color='blue',
+                           leftSection=DashIconify(icon='mdi:file-import-outline', width=16)),
+            ], justify='flex-end'),
+        ], gap='md'),
+    ),
+
     dmc.Title("Upload Dataset from File", order=1, mb="md"),
     dmc.Divider(mb="lg"),
     
@@ -109,6 +155,25 @@ layout = html.Div([
             dmc.Title("Data Viewer", order=2, mb="sm"),
             dcc.Graph(id='data-viewer-plot',
                       style={'height': '500px'}),
+            dmc.Group([
+                dmc.Text("Box/lasso select points, then:", size="sm", c="dimmed"),
+                dmc.Button(
+                    "Mask Selected",
+                    id="mask-selected-btn",
+                    color="orange",
+                    size="sm",
+                    variant="light",
+                    leftSection=DashIconify(icon="mdi:eye-off-outline", width=16),
+                ),
+                dmc.Button(
+                    "Clear Masks",
+                    id="clear-masks-btn",
+                    color="gray",
+                    size="sm",
+                    variant="subtle",
+                ),
+                dmc.Badge(id="masked-count-badge", color="orange", variant="light", size="sm"),
+            ], mt="xs", mb="md"),
             dmc.Button("Add Dataset to Libary", id="save-dataset-btn", color="blue", mb="lg",size="lg"),
         ], span=8),
     ]),
@@ -133,6 +198,8 @@ def _error_message(message):
     Output('dataset-name', 'value'),
     Output({"type": "tmin", 'page': page_id}, 'value'),
     Output('notification-container', 'sendNotifications'),
+    Output('csv-raw-store', 'data'),
+    Output('csv-import-modal', 'opened'),
     Input('upload-data', 'contents'),
     State('upload-data', 'filename'),
     prevent_initial_call=True)
@@ -142,36 +209,37 @@ def handle_file_upload(contents_list, filenames_list):
     Suported file types: .DSC (Bruker BES3t), 'h5' (HDF5), '.csv' (Comma-separated values)
     """
 
-    no_update_7 = (dash.no_update,) * 7
+    no_update_9 = (dash.no_update,) * 9
     if contents_list is None:
-        return no_update_7
+        return no_update_9
     alert = dash.no_update
     # Ensure we're working with lists
     if not isinstance(contents_list, list):
         contents_list = [contents_list]
         filenames_list = [filenames_list]
-    
+
     # Only permit multiple files for .DSC + .DTA
     if len(contents_list) > 2:
         alert = _error_message("Please upload only one dataset at a time. For Bruker BES3T files, upload both the .DSC and .DTA files together.")
-        return *no_update_7[:6], alert
+        return *no_update_9[:6], alert, dash.no_update, dash.no_update
     elif len(contents_list) == 2:
         if not (filenames_list[0].endswith('.DSC') and filenames_list[1].endswith('.DTA')) and not (filenames_list[1].endswith('.DSC') and filenames_list[0].endswith('.DTA')):
             alert = _error_message("When uploading two files, please ensure they are the .DSC and .DTA files from Bruker BES3T.")
-            return *no_update_7[:6], alert
+            return *no_update_9[:6], alert, dash.no_update, dash.no_update
         file_format= 'BES3T'
     else:
         if filenames_list[0].endswith('.DSC'):
             alert = _error_message("Please upload both the .DSC and .DTA files from Bruker BES3T together.")
-            return *no_update_7[:6], alert
+            return *no_update_9[:6], alert, dash.no_update, dash.no_update
         elif filenames_list[0].endswith('.h5'):
             file_format = 'hdf5'
         elif filenames_list[0].endswith('.csv'):
-            file_format = 'csv'
+            # Hand off to the CSV import modal
+            return *no_update_9[:7], contents_list[0], True
         else:
             alert = _error_message("Unsupported file type. Please upload .DSC/.DTA (Bruker BES3T), .h5 (HDF5), or .csv files.")
-            return *no_update_7[:6], alert
-        
+            return *no_update_9[:6], alert, dash.no_update, dash.no_update
+
     try:
         if file_format == 'BES3T':
             # Identify which content is which
@@ -181,12 +249,12 @@ def handle_file_upload(contents_list, filenames_list):
             else:
                 dsc_content = contents_list[1]
                 dta_content = contents_list[0]
-            
+
             # Decode and parse the files
             dsc_decoded = base64.b64decode(dsc_content.split(',')[1])
             dta_decoded = base64.b64decode(dta_content.split(',')[1])
             dataarray = bes3t_eprload(DSC=dsc_decoded,DTA=dta_decoded)
-            
+
             metadata_children, long_values_store = build_metadata_section_datarray(dataarray)
 
             # Extract delays from pulsespel
@@ -202,16 +270,13 @@ def handle_file_upload(contents_list, filenames_list):
             metadata_children, long_values_store = build_metadata_section_datarray(dataarray)
             delays = get_delays_dict(dataarray)
             tmin = dataarray.t.values.min()*1e3 # Convert from microseconds to nanoseconds
-            
-        else:
-            alert = _error_message("Currently only Bruker BES3T .DSC/.DTA file pairs are supported for upload. Support for .h5 and .csv files is coming soon!")
-            return *no_update_7[:6], alert
+
     except Exception as e:
         alert = _error_message(f"Error processing files: {str(e)}")
         import traceback
         print(f"Error processing uploaded files: {e}")
         print(traceback.format_exc())
-        return *no_update_7[:6], alert
+        return *no_update_9[:6], alert, dash.no_update, dash.no_update
     
     
     # save dataarray to dcc.Store for later use
@@ -222,11 +287,12 @@ def handle_file_upload(contents_list, filenames_list):
     store_data['attrs'] = dataarray.attrs
     store_data['delays'] = delays
     store_data['tmin'] = tmin
+    store_data['masked_indices'] = []
 
 
     delays_data = [{'parameter': k, 'value': v} for k, v in delays.items()]
     
-    return store_data, metadata_children, long_values_store, delays_data, dataarray.attrs.get('title', ''), tmin, alert
+    return store_data, metadata_children, long_values_store, delays_data, dataarray.attrs.get('title', ''), tmin, alert, dash.no_update, dash.no_update
 
 
 @callback(
@@ -238,24 +304,53 @@ def _build_signal_figure(dataset_store):
     """ Updates the plot when tmin is changed """
     if dataset_store is None:
         return dash.no_update
-    
+
     t_min = dataset_store.get('tmin', 0)
     t = np.array(dataset_store['t']) + t_min
     V = np.array(dataset_store['RealData']) + 1j * np.array(dataset_store['ImagData'])
     V = V / np.max(np.abs(V))
+    masked_indices = np.array(dataset_store.get('masked_indices', []), dtype=int)
 
     title_text = dataset_store['attrs'].get('title', 'Uploaded Data')
-    
+
+    traces = [
+        # Invisible markers on Real trace so box/lasso select captures points
+        go.Scatter(
+            x=t, y=V.real,
+            mode='lines+markers',
+            name='Real',
+            marker=dict(size=8, opacity=0),
+        ),
+        go.Scatter(x=t, y=V.imag, mode='lines', name='Imag'),
+    ]
+
+    if len(masked_indices) > 0:
+        traces.append(go.Scatter(
+            x=t[masked_indices],
+            y=V.real[masked_indices],
+            mode='markers',
+            name='Masked (Real)',
+            marker=dict(size=8, color='rgba(180, 180, 180, 0.4)'),
+            hovertemplate='<b>Masked (Real)</b><br>t=%{x:.3f}<br>V=%{y:.4f}<extra></extra>',
+        ))
+        traces.append(go.Scatter(
+            x=t[masked_indices],
+            y=V.imag[masked_indices],
+            mode='markers',
+            name='Masked (Imag)',
+            marker=dict(size=8, color='rgba(180, 180, 180, 0.4)'),
+            hovertemplate='<b>Masked (Imag)</b><br>t=%{x:.3f}<br>V=%{y:.4f}<extra></extra>',
+        ))
+
     figure = {
-        'data': [
-            go.Scatter(x=t, y=V.real, mode='lines', name='Real'),
-            go.Scatter(x=t, y=V.imag, mode='lines', name='Imag'),
-        ],
+        'data': traces,
         'layout': go.Layout(
             title=title_text,
             xaxis_title='Time (us)',
             yaxis_title='Signal (a.u.)',
-            template=None
+            template=None,
+            dragmode='select',
+            clickmode='event+select',
         )
     }
     return figure
@@ -276,6 +371,53 @@ def open_metadata_modal(n_clicks_list, store_data):
     key = json.loads(triggered_id)["key"]
     full_value = (store_data or {}).get(key, "Value not found.")
     return True, full_value
+
+@callback(
+    Output('dataset-store', 'data', allow_duplicate=True),
+    Input('mask-selected-btn', 'n_clicks'),
+    State('data-viewer-plot', 'selectedData'),
+    State('dataset-store', 'data'),
+    prevent_initial_call=True,
+)
+def mask_selected_points(n_clicks, selected_data, dataset_store):
+    """ Adds box/lasso-selected points to the masked set """
+    if dataset_store is None or not selected_data:
+        return dash.no_update
+
+    current_masked = set(dataset_store.get('masked_indices', []))
+    for point in selected_data.get('points', []):
+        # curveNumber 0 is the Real trace (with invisible markers)
+        if point.get('curveNumber') == 0:
+            current_masked.add(point['pointIndex'])
+
+    dataset_store['masked_indices'] = sorted(current_masked)
+    return dataset_store
+
+
+@callback(
+    Output('dataset-store', 'data', allow_duplicate=True),
+    Input('clear-masks-btn', 'n_clicks'),
+    State('dataset-store', 'data'),
+    prevent_initial_call=True,
+)
+def clear_masks(n_clicks, dataset_store):
+    """ Removes all masked points """
+    if dataset_store is None:
+        return dash.no_update
+    dataset_store['masked_indices'] = []
+    return dataset_store
+
+
+@callback(
+    Output('masked-count-badge', 'children'),
+    Input('dataset-store', 'data'),
+)
+def update_masked_badge(dataset_store):
+    if dataset_store is None:
+        return ""
+    count = len(dataset_store.get('masked_indices', []))
+    return f"{count} masked" if count > 0 else ""
+
 
 @callback(
         Output('notification-container', 'sendNotifications', allow_duplicate=True),
@@ -337,19 +479,28 @@ def save_dataset(n_clicks, project_name, sample_name, dataset_name, dataset_stor
     delays = dataset_store.get('delays', {})
 
     t = np.array(dataset_store['t'])
-    t=t-t[0]
+    t = t - t[0]
     tmin = dataset_store.get('tmin', 0) # ns
     print(f"Saving dataset with tmin={tmin} microseconds and delays={delays}")
-    # Shift the time axis by tmin_shift
     t = t + tmin
+
+    V_real = np.array(dataset_store['RealData'])
+    V_imag = np.array(dataset_store['ImagData'])
+
+    masked_indices = dataset_store.get('masked_indices', []) or []
+    mask = np.ones(len(t), dtype=bool)
+    if masked_indices:
+        mask[np.array(masked_indices, dtype=int)] = False
+    mask = mask.tolist()
 
     new_dataset = Dataset(
         name=dataset_name,
         project=project_name,
         sample=sample_name,
         t=t.tolist(),
-        V=dataset_store['RealData'],
-        V_im=dataset_store['ImagData'],
+        V=V_real.tolist(),
+        V_im=V_imag.tolist(),
+        mask=mask,
         exp=experiment_type,
         delays=delays,
         meta=dataset_store['attrs']
@@ -487,4 +638,117 @@ def get_delays_dict(dataarray: xr.DataArray):
         if key in dataarray.attrs:
             delays[key] = dataarray.attrs[key]
     return delays
+
+
+# ---------------------------------------------------------------------------
+# CSV import modal callbacks
+# ---------------------------------------------------------------------------
+
+def _parse_csv_raw(raw_content, skiprows, separator):
+    """ Decode base64 CSV content and return a DataFrame """
+    decoded = base64.b64decode(raw_content.split(',')[1])
+    text = decoded.decode('utf-8', errors='replace')
+    return pd.read_csv(io.StringIO(text), skiprows=int(skiprows or 0), sep=separator)
+
+
+@callback(
+    Output('csv-preview', 'children'),
+    Output('csv-t-col',   'data'),
+    Output('csv-vre-col', 'data'),
+    Output('csv-vim-col', 'data'),
+    Input('csv-raw-store',  'data'),
+    Input('csv-skiprows',   'value'),
+    Input('csv-separator',  'value'),
+    prevent_initial_call=True,
+)
+def update_csv_preview(raw_content, skiprows, separator):
+    """ Re-parses CSV and updates the preview table and column selectors """
+    if raw_content is None:
+        return dash.no_update, [], [], []
+
+    try:
+        df = _parse_csv_raw(raw_content, skiprows, separator or ',')
+    except Exception as e:
+        return dmc.Alert(f"Could not parse file: {e}", color='red'), [], [], []
+
+    col_options = [{'label': str(c), 'value': str(c)} for c in df.columns]
+
+    preview = dag.AgGrid(
+        rowData=df.head(8).astype(str).to_dict('records'),
+        columnDefs=[{'field': str(c), 'flex': 1} for c in df.columns],
+        className="ag-theme-alpine",
+        style={'height': '180px', 'width': '100%'},
+        dashGridOptions={'suppressMovableColumns': True},
+    )
+
+    return preview, col_options, col_options, col_options
+
+
+@callback(
+    Output('csv-import-modal', 'opened', allow_duplicate=True),
+    Input('csv-cancel-btn', 'n_clicks'),
+    prevent_initial_call=True,
+)
+def cancel_csv_import(_):
+    return False
+
+
+_TIME_UNIT_TO_US = {'ns': 1e-3, 'us': 1.0, 'ms': 1e3, 's': 1e6}
+
+@callback(
+    Output('dataset-store', 'data', allow_duplicate=True),
+    Output({'type': "metadata-content",    'page': page_id}, 'children', allow_duplicate=True),
+    Output({"type": "metadata-modal-store",'page': page_id}, 'data',     allow_duplicate=True),
+    Output('delays-grid', 'rowData', allow_duplicate=True),
+    Output('dataset-name', 'value',  allow_duplicate=True),
+    Output({"type": "tmin", 'page': page_id}, 'value', allow_duplicate=True),
+    Output('notification-container', 'sendNotifications', allow_duplicate=True),
+    Output('csv-import-modal', 'opened', allow_duplicate=True),
+    Input('csv-import-btn', 'n_clicks'),
+    State('csv-raw-store',  'data'),
+    State('csv-skiprows',   'value'),
+    State('csv-separator',  'value'),
+    State('csv-t-col',      'value'),
+    State('csv-vre-col',    'value'),
+    State('csv-vim-col',    'value'),
+    State('csv-time-unit',  'value'),
+    prevent_initial_call=True,
+)
+def import_csv_data(_, raw_content, skiprows, separator, t_col, vre_col, vim_col, time_unit):
+    no_update_8 = (dash.no_update,) * 8
+
+    if raw_content is None:
+        return no_update_8
+
+    if not t_col or not vre_col:
+        alert = _error_message("Please select at least the Time and Real signal columns.")
+        return *no_update_8[:6], alert, dash.no_update
+
+    try:
+        df = _parse_csv_raw(raw_content, skiprows, separator or ',')
+    except Exception as e:
+        return *no_update_8[:6], _error_message(f"CSV parse error: {e}"), dash.no_update
+
+    try:
+        scale = _TIME_UNIT_TO_US.get(time_unit or 'us', 1.0)
+        t_us  = pd.to_numeric(df[t_col],   errors='raise').to_numpy() * scale
+        V_re  = pd.to_numeric(df[vre_col], errors='raise').to_numpy()
+        V_im  = pd.to_numeric(df[vim_col], errors='raise').to_numpy() if vim_col else np.zeros_like(V_re)
+    except Exception as e:
+        return *no_update_8[:6], _error_message(f"Column conversion error: {e}"), dash.no_update
+
+    tmin_ns = float(t_us[0]) * 1e3   # first point = deadtime, shown in ns in the UI
+    t_rel   = t_us - t_us[0]         # zero-based time for the store
+
+    store_data = {
+        'RealData':       V_re.tolist(),
+        'ImagData':       V_im.tolist(),
+        't':              t_rel.tolist(),
+        'attrs':          {'title': 'Imported CSV', 'file_format': 'csv'},
+        'delays':         {},
+        'tmin':           float(t_us[0]),
+        'masked_indices': [],
+    }
+
+    return store_data, None, {}, [], '', tmin_ns, dash.no_update, False
 

@@ -222,6 +222,7 @@ def run_fit(n_clicks, dataset_id, bg_model_option, compactness, distance_axis, p
     dataset_entry = session.query(Dataset).filter_by(id=dataset_id).first()
     dataset = dataarray_from_database_entry(dataset_entry)
     dataset = dataset.assign_coords(t=dataset.t.values)
+    mask = np.array(dataset_entry.mask) if dataset_entry.mask else None
     session.close()
     
     if triggered_id == {"page":page_id,"type":"dataset-dropdown"}:
@@ -250,7 +251,8 @@ def run_fit(n_clicks, dataset_id, bg_model_option, compactness, distance_axis, p
                 r=r,
                 pathways=pathways,
                 regparam=regparam_method,
-                model_overrides=model_params)
+                model_overrides=model_params,
+                mask=mask)
         except Exception as e:
             print(f"Error during fitting: {e}")
             return dash.no_update, dash.no_update, False, f"Error during fitting: {e}", dash.no_update, dash.no_update, dash.no_update, True, True

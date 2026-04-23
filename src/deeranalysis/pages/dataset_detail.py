@@ -75,12 +75,19 @@ def layout(dataset_id=None):
     delays_children = build_delays_AGgrid(dataset,page_id,False) if dataset.delays else html.P("No delays available.", className="text-muted")
     tmin = np.min(dataset.t)*1e3 if dataset.t else 0
 
+    # Convert stored boolean mask → list of masked indices for the store
+    if dataset.mask and len(dataset.mask) == len(dataset.t):
+        initial_masked = [i for i, keep in enumerate(dataset.mask) if not keep]
+    else:
+        initial_masked = []
+
     # ---- time-domain signal preview ----------------------------------------
-    signal_fig = _build_signal_figure(dataset,tmin)
+    signal_fig = _build_signal_figure(dataset, tmin, initial_masked)
 
     # ---- layout -------------------------------------------------------------
     return html.Div([
         dcc.Store(id="dd-dataset-id", data=int(dataset_id)),
+        dcc.Store(id="dd-mask-store", data=initial_masked),
         metadata_long_values_model(page_id),
         create_dataset_download_modal(page_id=page_id),
         create_fit_download_modal(page_id=page_id),
@@ -226,8 +233,34 @@ def layout(dataset_id=None):
                         id={"type": "signal-graph", 'page': page_id},
                         figure=signal_fig,
                         style={"height": "340px"},
-                        config={"displayModeBar": False},
+                        config={"displayModeBar": True},
                     ),
+                    dmc.Group([
+                        dmc.Text("Box/lasso select points, then:", size="sm", c="dimmed"),
+                        dmc.Button(
+                            "Mask Selected",
+                            id="dd-mask-selected-btn",
+                            color="orange",
+                            size="sm",
+                            variant="light",
+                            leftSection=DashIconify(icon="mdi:eye-off-outline", width=16),
+                        ),
+                        dmc.Button(
+                            "Clear Masks",
+                            id="dd-clear-masks-btn",
+                            color="gray",
+                            size="sm",
+                            variant="subtle",
+                        ),
+                        dmc.Badge(id="dd-masked-count-badge", color="orange", variant="light", size="sm"),
+                        dmc.Button(
+                            "Save Mask",
+                            id="dd-save-mask-btn",
+                            color="blue",
+                            size="sm",
+                            leftSection=DashIconify(icon="mdi:content-save-outline", width=16),
+                        ),
+                    ], mt="xs"),
                 ], p="md", mb="md", withBorder=True, radius="md"),
 
                 # Fits table
@@ -289,24 +322,49 @@ def _build_fits_rows(dataset):
     return rows
 
 
-def _build_signal_figure(dataset,tmin=0):
+def _build_signal_figure(dataset, tmin=0, masked_indices=None):
     try:
-        print(f"Building signal figure for dataset {dataset.id} with tmin={tmin} ns")
         t = np.array(dataset.t)
-        t = t-t[0]+(tmin/1e3)  # Shift time axis by tmin
+        t = t - t[0] + (tmin / 1e3)
         V = np.array(dataset.V) + 1j * np.array(dataset.V_im)
         V = V / np.max(np.abs(V))
+        masked = np.array(masked_indices or [], dtype=int)
 
         fig = go.Figure()
-        fig.add_trace(go.Scatter(x=t, y=V.real, mode="lines", name="Real"))
-        fig.add_trace(go.Scatter(x=t, y=V.imag, mode="lines", name="Imag",
-                                 line=dict(dash="dash")))
+        # Invisible markers on Real so box/lasso selection captures points
+        fig.add_trace(go.Scatter(
+            x=t, y=V.real,
+            mode="lines+markers",
+            name="Real",
+            marker=dict(size=8, opacity=0),
+        ))
+        fig.add_trace(go.Scatter(
+            x=t, y=V.imag,
+            mode="lines",
+            name="Imag",
+            line=dict(dash="dash"),
+        ))
+        if len(masked) > 0:
+            fig.add_trace(go.Scatter(
+                x=t[masked], y=V.real[masked],
+                mode="markers", name="Masked (Real)",
+                marker=dict(size=8, color="rgba(180,180,180,0.4)"),
+                hovertemplate="<b>Masked (Real)</b><br>t=%{x:.3f}<br>V=%{y:.4f}<extra></extra>",
+            ))
+            fig.add_trace(go.Scatter(
+                x=t[masked], y=V.imag[masked],
+                mode="markers", name="Masked (Imag)",
+                marker=dict(size=8, color="rgba(180,180,180,0.4)"),
+                hovertemplate="<b>Masked (Imag)</b><br>t=%{x:.3f}<br>V=%{y:.4f}<extra></extra>",
+            ))
         fig.update_layout(
             xaxis_title="Time (µs)",
             yaxis_title="Signal (a.u.)",
             margin=dict(l=50, r=20, t=20, b=40),
             legend=dict(orientation="h", y=-0.2),
             height=300,
+            dragmode="select",
+            clickmode="event+select",
         )
         return fig
     except Exception:
@@ -504,19 +562,19 @@ def open_metadata_modal(n_clicks_list, store_data):
 
 
 @callback(
-    Output({"type": "signal-graph", 'page': page_id},"figure",allow_duplicate=True),
+    Output({"type": "signal-graph", 'page': page_id}, "figure", allow_duplicate=True),
     Input({"type": "tmin", 'page': page_id}, "value"),
     State("dd-dataset-id", "data"),
+    State("dd-mask-store", "data"),
     prevent_initial_call=True,
 )
-def update_graph(tmin,dataset_id, ):
+def update_graph(tmin, dataset_id, masked_indices):
     session = get_session()
     dataset = session.query(Dataset).filter_by(id=dataset_id).first()
     session.close()
     if dataset is None:
         return dash.no_update
-    fig = _build_signal_figure(dataset,tmin)
-    return fig
+    return _build_signal_figure(dataset, tmin, masked_indices or [])
 
 @callback(
     Output("dd-redirect", "pathname"),
@@ -539,3 +597,82 @@ def fit_buttons(cellRendererData, rowData):
     if action != 'left':  # right button -> download
         return dash.no_update, True, fit_id
     return f'/fit/{fit_id}', dash.no_update, dash.no_update
+
+
+@callback(
+    Output("dd-mask-store", "data"),
+    Output({"type": "signal-graph", 'page': page_id}, "figure", allow_duplicate=True),
+    Input("dd-mask-selected-btn", "n_clicks"),
+    State({"type": "signal-graph", 'page': page_id}, "selectedData"),
+    State("dd-mask-store", "data"),
+    State("dd-dataset-id", "data"),
+    State({"type": "tmin", 'page': page_id}, "value"),
+    prevent_initial_call=True,
+)
+def dd_mask_selected(_, selected_data, masked_indices, dataset_id, tmin):
+    if not selected_data:
+        return dash.no_update, dash.no_update
+
+    current = set(masked_indices or [])
+    for point in selected_data.get('points', []):
+        if point.get('curveNumber') == 0:  # Real trace with invisible markers
+            current.add(point['pointIndex'])
+
+    new_masked = sorted(current)
+    session = get_session()
+    dataset = session.query(Dataset).filter_by(id=dataset_id).first()
+    session.close()
+    return new_masked, _build_signal_figure(dataset, tmin or 0, new_masked)
+
+
+@callback(
+    Output("dd-mask-store", "data", allow_duplicate=True),
+    Output({"type": "signal-graph", 'page': page_id}, "figure", allow_duplicate=True),
+    Input("dd-clear-masks-btn", "n_clicks"),
+    State("dd-dataset-id", "data"),
+    State({"type": "tmin", 'page': page_id}, "value"),
+    prevent_initial_call=True,
+)
+def dd_clear_masks(_, dataset_id, tmin):
+    session = get_session()
+    dataset = session.query(Dataset).filter_by(id=dataset_id).first()
+    session.close()
+    return [], _build_signal_figure(dataset, tmin or 0, [])
+
+
+@callback(
+    Output("dd-masked-count-badge", "children"),
+    Input("dd-mask-store", "data"),
+)
+def dd_update_badge(masked_indices):
+    count = len(masked_indices or [])
+    return f"{count} masked" if count > 0 else ""
+
+
+@callback(
+    Output("dd-notification", "children", allow_duplicate=True),
+    Input("dd-save-mask-btn", "n_clicks"),
+    State("dd-mask-store", "data"),
+    State("dd-dataset-id", "data"),
+    prevent_initial_call=True,
+)
+def dd_save_mask(_, masked_indices, dataset_id):
+    try:
+        session = get_session()
+        dataset = session.query(Dataset).filter_by(id=dataset_id).first()
+        if dataset is None:
+            session.close()
+            return _alert("Dataset not found.", "red", "Save Error")
+
+        n = len(dataset.t)
+        mask = [True] * n
+        for i in (masked_indices or []):
+            if 0 <= i < n:
+                mask[i] = False
+        dataset.mask = mask
+        session.commit()
+        session.close()
+        masked_count = sum(1 for v in mask if not v)
+        return _alert(f"Mask saved — {masked_count} point(s) masked.", "green", "Saved")
+    except Exception as exc:
+        return _alert(f"Error saving mask: {exc}", "red", "Save Error")

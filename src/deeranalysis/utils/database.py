@@ -27,6 +27,7 @@ class Dataset(Base):
     t = Column(JSON, nullable=False) # Time axis
     V = Column(JSON, nullable=False) # Signal
     V_im = Column(JSON, nullable=False,default={}) # Signal
+    mask = Column(JSON, nullable=True, default=None) # Boolean array, same length as t: True = keep, False = masked
     exp = Column(String, default='Unknown') # 4pDEER, 5pDEER, etc.
     delays = Column(JSON, default={})
     meta = Column(JSON, default={})
