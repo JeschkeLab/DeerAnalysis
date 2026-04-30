@@ -154,8 +154,10 @@ def deerlab_global_fitting(datasets,linked_params,bg_model=dl.bg_hom3d, verbosit
     fit.Vexp = Vs
     fit.t = ts
     fit.pathways = pathways
-
-    fit.stats['SNR'] = 1/fit.noiselvl
+    
+    for i in range(len(fit.stats)):
+        fit.stats[i]['SNR'] = 1/fit.noiselvl[i]
+    # fit.stats['SNR'] = 1/fit.noiselvl
 
     return fit
 

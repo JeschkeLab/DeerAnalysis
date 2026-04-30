@@ -1,8 +1,9 @@
 import json
 import dash
-from dash import html, dcc, callback, Input, Output, State,clientside_callback
+from dash import html, dcc, callback, Input, Output, State
 import dash_bootstrap_components as dbc
 import numpy as np
+import xarray as xr
 import deerlab as dl
 import dash_mantine_components as dmc
 from dash_iconify import DashIconify
@@ -11,9 +12,9 @@ from deeranalysis.utils.database import get_session, Dataset, Fit
 from deeranalysis.utils import  dataarray_from_database_entry
 from deeranalysis.components.dataset_search_model import create_dataset_modal
 from deeranalysis.components.download_modal import create_fit_download_modal
-from deeranalysis.components.fit_page_components import fit_results_tabs, DEFAULT_FIT_RESULTS_CODE,fit_results_tab, goodness_of_fit_tab, dist_stats_tab, L_curve_tab
+from deeranalysis.components.fit_page_components import fit_results_tabs, fit_results_tab, goodness_of_fit_tab, dist_stats_tab, L_curve_tab
 from deeranalysis.components.model_edit_modal import create_model_edit_modal
-from deeranalysis.utils.deerlab_options import regparam_options,background_models, plotly_goodness_of_fit, plotly_deerlab,dists_stats_to_list, fit_to_dict,name_dataset_from_dict, build_model_data, plotly_lcurve
+from deeranalysis.utils.deerlab_options import regparam_options,background_models, plotly_goodness_of_fit, dists_stats_to_list, fit_to_dict,name_dataset_from_dict, build_model_data, plotly_lcurve
 
 import deeranalysis.components.fit_page_components as fpc
 
@@ -46,19 +47,7 @@ layout = html.Div([
                 allowDeselect=False,
             ),
             dmc.Space(h=10),     
-            dmc.CheckboxGroup(
-                id='np-pathways-options',
-                label="Pathways to include:",
-                description="These pathways will be applied to all datasets, if they are fesiable for the corresponding experiment.",
-                children=dmc.Group([
-                    dmc.Checkbox(value='1', label='1'),
-                    dmc.Checkbox(value='2', label='2'),
-                    dmc.Checkbox(value='3', label='3'),
-                    dmc.Checkbox(value='4', label='4'),
-                    dmc.Checkbox(value='5', label='5'),
-                ]),
-                value=['1'], # Default selected pathways
-            ),
+            fpc.pathway_input(page_id),
             # Small vertical space
             dmc.Space(h=10),        
             dmc.Chip('Compactness', id='np-compactness-option', value=False, checked=False),
@@ -109,13 +98,7 @@ layout = html.Div([
         
         dbc.Col([
             html.Div([
-                dmc.Paper([
-                    dcc.Graph(id='np-fit-plot',
-                            figure=plotly_deerlab(None),
-                            style={'height': '100%'},
-                            config={'responsive': True})
-                            ],
-                            style={'flex': '1', 'display': 'flex', 'flexDirection': 'column', 'minHeight': 300}),
+                fpc.fit_plot(page_id),
                 fit_results_tabs(
                     fpc.overview_tab(page_id),
                     fit_results_tab(page_id),
@@ -133,16 +116,6 @@ layout = html.Div([
     # Hidden store for user-edited model parameter overrides
     dcc.Store(id={'type': 'model-params-store', 'page': page_id}),
 ])
-clientside_callback(
-        """
-        function updateLoadingState(n_clicks) {
-            return true
-        }
-        """,
-        Output("np-run-fit-btn", "loading", allow_duplicate=True),
-        Input("np-run-fit-btn", "n_clicks"),
-        prevent_initial_call=True,
-    )
 
 @callback(
     Output({'type': 'dataset-dropdown', 'page': page_id}, 'data'),
@@ -162,7 +135,7 @@ def update_dropdown(pathname):
     Input({'type': 'open-model-edit-btn', 'page': page_id}, 'n_clicks'),
     State({'type': 'dataset-dropdown', 'page': page_id}, 'value'),
     State('np-bg-model', 'value'),
-    State('np-pathways-options', 'value'),
+    State({'type': 'pathways-options', 'page': page_id}, 'value'),
     State({"type": "distance-axis", "page": page_id}, 'value'),
     State({'type': 'model-params-store', 'page': page_id}, 'data'),
     prevent_initial_call=True,
@@ -185,37 +158,28 @@ def open_model_edit_modal(n_clicks, dataset_id, bg_model_name, pathways, distanc
 
 
 @callback(
-    Output({'type':'fit-results-store','page': page_id}, 'data'),
-    Output('np-fit-plot', 'figure',allow_duplicate=True),
-    Output('np-run-fit-btn', 'loading', allow_duplicate=True),
+    Output({'type':'fit-results-store','page': page_id}, 'data', allow_duplicate=True),
     Output({"type": "fit-results-code", "page": page_id}, 'code', allow_duplicate=True),
-    Output({"type": "gof-plot", "page": page_id}, 'figure', allow_duplicate=True),
-    Output({"type": "l-curve-plot", "page": page_id}, 'figure', allow_duplicate=True),
-    Output({"type": "dist-stats-table", "page": page_id}, 'data', allow_duplicate=True),
     Output('np-save-fit-btn', 'disabled'),
     Output('np-download-fit-btn', 'disabled'),
+    Output({'type': 'fit-plot-showpathways', 'page': page_id}, 'checked', allow_duplicate=True),
 
     Input('np-run-fit-btn', 'n_clicks'),
-    Input({'type': 'dataset-dropdown', 'page': page_id}, 'value'),
+    State({'type': 'dataset-dropdown', 'page': page_id}, 'value'),
     State('np-bg-model', 'value'),
     State('np-compactness-option', 'checked'),
     State({"type": "distance-axis", "page": page_id}, 'value'),
-    State('np-pathways-options', 'value'),
+    State({'type': 'pathways-options', 'page': page_id}, 'value'),
     State('np-regparam-method', 'value'),
     State({'type': 'model-params-store', 'page': page_id}, 'data'),
+    running=[(Output('np-run-fit-btn', 'loading'), True, False)],
     prevent_initial_call=True,
 )
 def run_fit(n_clicks, dataset_id, bg_model_option, compactness, distance_axis, pathways_options, regparam_method, model_params):
-    ctx = dash.callback_context
-    triggered_id = ctx.triggered[0]['prop_id'].split('.')[0]
-    
-    try:
-        triggered_id = json.loads(triggered_id)
-    except (json.JSONDecodeError, TypeError):
-        pass
+
 
     if not dataset_id:
-        return dash.no_update,dash.no_update, False, dash.no_update, dash.no_update,dash.no_update, dash.no_update, True,True
+        return dash.no_update, dash.no_update, dash.no_update, True, True
 
         
     session = get_session()
@@ -225,23 +189,21 @@ def run_fit(n_clicks, dataset_id, bg_model_option, compactness, distance_axis, p
     mask = np.array(dataset_entry.mask) if dataset_entry.mask else None
     session.close()
     
-    if triggered_id == {"page":page_id,"type":"dataset-dropdown"}:
-        # Just plot the data
-        fig = plotly_deerlab(fitresult=dataset)
-        fig.update_layout(title=f"Dataset: {dataset_entry.name}", showlegend=True)
-        dist_stats_output = {"head": ["Statistic", "Value", "Confidence Interval (95%)"]}
-        return None, fig, False, DEFAULT_FIT_RESULTS_CODE, plotly_goodness_of_fit(),plotly_lcurve(None),dist_stats_output, True, True
-        
-    if triggered_id == 'np-run-fit-btn':
-        # Perform Fit using DeerLab
-        
-        # Distance vector
-        r = np.linspace(distance_axis[0], distance_axis[1], 100) # Default range
-
+    
+    # Distance vector
+    r = np.linspace(distance_axis[0], distance_axis[1], 100) # Default range
+    if bg_model_option != 'none':
         bg_model = getattr(dl, bg_model_option, dl.bg_hom3d)
-        # Get pathways options from checklist
-        pathways = [int(p) for p in pathways_options]
-        print(f"Selected pathways: {pathways_options}")
+    else:
+        bg_model = None
+    # Get pathways options from checklist
+    pathways = [int(p) for p in pathways_options]
+    print(f"Selected pathways: {pathways_options}")
+    if len(pathways) == 0:
+        if bg_model is None:
+            return dash.no_update, "Please select at least one pathway or a background model.", True, True, False
+        print("No pathways selected, defaulting to background-only fit.")
+    else:
         try:
             fit = deerlab_fitting(dataset,
                 compactness=compactness,
@@ -255,31 +217,18 @@ def run_fit(n_clicks, dataset_id, bg_model_option, compactness, distance_axis, p
                 mask=mask)
         except Exception as e:
             print(f"Error during fitting: {e}")
-            return dash.no_update, dash.no_update, False, f"Error during fitting: {e}", dash.no_update, dash.no_update, dash.no_update, True, True
+            return dash.no_update, f"Error during fitting: {e}", True, True, False
 
-        # Create plots
-        fig = plotly_deerlab(fitresult=fit)
-        fig.update_layout(title=f"Fit Result: {dataset_entry.name}", showlegend=True)
 
-        gof_fig = plotly_goodness_of_fit(fit)
-        l_curve_fig = plotly_lcurve(fit)
+    dist_stats = dl.diststats(r,fit.P,fit.PUncert)
+    dist_stats_dict = dists_stats_to_list(*dist_stats)
 
-        dist_stats = dl.diststats(r,fit.P,fit.PUncert)
-        dist_stats_dict = dists_stats_to_list(*dist_stats)
-        dist_stats_output = {
-            "head": ["Statistic", "Value", "Confidence Interval (95%)"],
-            "body": [
-                [k, f"{v['value']:.3f}", f"[{v['ci'][0]:.3f}, {v['ci'][1]:.3f}]" if v['ci'] else "N/A"]
-                for k, v in dist_stats_dict.items()
-            ]
-        }
+    fit_dict = fit_to_dict(fit)
+    fit_dict['dist_stats'] = dist_stats_dict
+    fit_dict['gof'] = fit.stats
+    # fit_dict['dataset'] = dataset.to_dict()
+    return fit_dict, fit.__str__(), False, False, False
 
-        fit_dict = fit_to_dict(fit)
-        fit_dict['dist_stats'] = dist_stats_dict
-        fit_dict['gof'] = fit.stats
-        return fit_dict, fig, False, fit.__str__(), gof_fig,l_curve_fig,dist_stats_output, False, False
-
-    return dash.no_update
 
 @callback(
     Output('np-fit-status', 'children'),
@@ -320,5 +269,32 @@ def download_fit(n_clicks, fit_store):
         return False, dash.no_update
     
     return True, fit_store
+
+@callback(
+    Output({"type": "gof-plot", "page": page_id}, 'figure', allow_duplicate=True),
+    Output({"type": "l-curve-plot", "page": page_id}, 'figure', allow_duplicate=True),
+    Output({"type": "dist-stats-table", "page": page_id}, 'data', allow_duplicate=True),
+    Input({'type': 'fit-results-store', 'page': page_id}, 'data'),
+     prevent_initial_call=True
+)
+def update_plots_tables(fit_dict):
+
+    if not fit_dict or 'data' not in fit_dict:
+        return dash.no_update
+    fit = dl.json_loads(fit_dict['data'])
+    gof_fig = plotly_goodness_of_fit(fit)
+    l_curve_fig = plotly_lcurve(fit)
+
+    dist_stats_dict = fit_dict['dist_stats']
+    dist_stats_output = {
+        "head": ["Statistic", "Value", "Confidence Interval (95%)"],
+        "body": [
+            [k, f"{v['value']:.3f}", f"[{v['ci'][0]:.3f}, {v['ci'][1]:.3f}]" if v['ci'] else "N/A"]
+            for k, v in dist_stats_dict.items()
+        ]
+    }
+    return gof_fig, l_curve_fig, dist_stats_output
+    
+
     
 

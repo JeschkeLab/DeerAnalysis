@@ -1,7 +1,7 @@
 import json
 
 import dash
-from dash import html, dcc, callback, Input, Output, State,clientside_callback
+from dash import html, dcc, callback, Input, Output, State
 import dash_bootstrap_components as dbc
 from plotly.subplots import make_subplots
 import dash_mantine_components as dmc
@@ -92,17 +92,6 @@ layout = html.Div([
         )
 ])
 
-clientside_callback(
-        """
-        function updateLoadingState(n_clicks) {
-            return true
-        }
-        """,
-        Output({"type":"run-fit-btn","page":page_id}, "loading", allow_duplicate=True),
-        Input({"type":"run-fit-btn","page":page_id}, "n_clicks"),
-        prevent_initial_call=True,
-    )
-
 @callback(
         Output('dn-missing-models', 'opened'),
         Input('url', 'pathname'),     
@@ -126,8 +115,6 @@ def update_dropdown(pathname):
 
 @callback(
     Output({'type':'fit-results-store','page': page_id}, 'data'),
-    Output({"type": "fit-plot", "page": page_id}, 'figure'),
-    Output({"type":"run-fit-btn","page":page_id}, 'loading', allow_duplicate=True),
     Output({"type": "gof-plot", "page": page_id}, 'figure', allow_duplicate=True),
     Output({"type": "dist-stats-table", "page": page_id}, 'data', allow_duplicate=True),
     Output({"type":"save-fit-btn","page":page_id}, 'disabled'),
@@ -135,6 +122,7 @@ def update_dropdown(pathname):
     Input({"type":"run-fit-btn","page":page_id}, 'n_clicks'),
     Input({'type': 'dataset-dropdown', 'page': page_id}, 'value'),
     State('dn-model-size', 'value'),
+    running=[(Output({"type":"run-fit-btn","page":page_id}, 'loading'), True, False)],
     prevent_initial_call=True,
 )
 def run_fit(n_clicks, dataset_id,model_size):
@@ -147,40 +135,33 @@ def run_fit(n_clicks, dataset_id,model_size):
         pass
 
     if not dataset_id:
-        return dash.no_update,dash.no_update, False,dash.no_update,dash.no_update,True,True,
-        
+        return dash.no_update, dash.no_update, dash.no_update, True, True
+
     session = get_session()
     dataset_entry = session.query(Dataset).filter_by(id=dataset_id).first()
     dataset = dataarray_from_database_entry(dataset_entry)
-    tmin = dataset.t.values.min()
-    dataset = dataset.assign_coords(t=dataset.t.values )
+    dataset = dataset.assign_coords(t=dataset.t.values)
     session.close()
 
     model_size = int(model_size)
     deernet_folder = os.path.join(get_DeerAnalysis_directory(), "deernet", 'deernet_models')
 
     if triggered_id == {"page":page_id,"type":"dataset-dropdown"}:
-        # Just plot the data
-
-        fig = plotly_deerlab(fitresult=dataset)
-        fig.update_layout(title=f"Dataset: {dataset_entry.name}", showlegend=True)
         dist_stats_output = {"head": ["Statistic", "Value", "Confidence Interval (95%)"]}
-        return None, fig, False, plotly_goodness_of_fit(),dist_stats_output, True, True
+        raw = {'t': dataset.t.values.tolist(), 'V': dataset.values.real.tolist()}
+        return raw, plotly_goodness_of_fit(), dist_stats_output, True, True
 
     elif triggered_id == {"type":"run-fit-btn","page":page_id}:
 
         try:
-            fit = deernet2(dataset,model_size, model_dir=deernet_folder, providor=['CPUExecutionProvider'])
+            fit = deernet2(dataset, model_size, model_dir=deernet_folder, providor=['CPUExecutionProvider'])
         except Exception as e:
             print(f"Error running DeerNet fit: {e}")
-            return dash.no_update, dash.no_update, False, dash.no_update, dash.no_update, True, True
-        
-        fig = plotly_deerlab(fitresult=fit)
-        fig.update_layout(title=f"Fit Result: {dataset_entry.name}", showlegend=True)
+            return dash.no_update, dash.no_update, dash.no_update, True, True
 
         gof_fig = plotly_goodness_of_fit(fit)
 
-        dist_stats = dl.diststats(fit.r,fit.P,fit.PUncert)
+        dist_stats = dl.diststats(fit.r, fit.P, fit.PUncert)
         dist_stats_dict = dists_stats_to_list(*dist_stats)
         dist_stats_output = {
             "head": ["Statistic", "Value", "Confidence Interval (95%)"],
@@ -192,7 +173,7 @@ def run_fit(n_clicks, dataset_id,model_size):
         fit_dict = fit_to_dict(fit)
         fit_dict['dist_stats'] = dist_stats_dict
         fit_dict['gof'] = fit.stats
-        return fit_dict, fig, False,  gof_fig, dist_stats_output, False, False
+        return fit_dict, gof_fig, dist_stats_output, False, False
 
 
 @callback(

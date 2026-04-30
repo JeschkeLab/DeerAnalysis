@@ -1,5 +1,5 @@
 import dash
-from dash import html, dcc, callback, Input, Output, State, clientside_callback, MATCH, ctx
+from dash import html, dcc, callback, Input, Output, State, MATCH, ctx
 from dash_iconify import DashIconify
 
 import dash_bootstrap_components as dbc
@@ -19,7 +19,7 @@ from deeranalysis.utils.deerlab_options import (
 )
 from deeranalysis.components.fit_page_components import (
     fit_save_download_buttons, distance_slider, adv_fit_options_parametric,
-    fit_plot, DEFAULT_FIT_RESULTS_CODE, fit_results_tab, goodness_of_fit_tab,
+    fit_plot,
     dist_stats_tab,
 )
 import deeranalysis.components.fit_page_components as fpc
@@ -97,7 +97,7 @@ layout = html.Div([
 
         dbc.Col([
             html.Div([
-                fit_plot(page_id),
+                fpc.fit_plot(page_id),
                 fpc.fit_results_tabs(
                     fpc.overview_tab(page_id),
                     fpc.fit_results_tab(page_id),
@@ -113,18 +113,6 @@ layout = html.Div([
     dcc.Store(id={'type': 'fit-options', 'page': page_id}),
     dcc.Store(id={'type': 'model-params-store', 'page': page_id}),
 ])
-
-clientside_callback(
-    """
-    function updateLoadingState(n_clicks) {
-        return true
-    }
-    """,
-    Output({"type": "run-fit-btn", "page": page_id}, "loading", allow_duplicate=True),
-    Input({"type": "run-fit-btn", "page": page_id}, "n_clicks"),
-    prevent_initial_call=True,
-)
-
 
 @callback(
     Output({'type': 'dataset-dropdown', 'page': page_id}, 'data'),
@@ -191,17 +179,16 @@ def open_model_edit_modal(n_clicks, dataset_id, bg_model_name, dist_model_name,
 
 @callback(
     Output({'type':'fit-results-store','page': page_id}, 'data'),
-    Output({"type": "fit-plot", "page": page_id}, 'figure'),
-    Output({"type": "run-fit-btn", "page": page_id}, 'loading', allow_duplicate=True),
     Output({"type": "fit-results-code", "page": page_id}, 'code', allow_duplicate=True),
-    Output({"type": "gof-plot", "page": page_id}, 'figure', allow_duplicate=True),
-    Output({"type": "dist-stats-table", "page": page_id}, 'data', allow_duplicate=True),
     Output({"type": "save-fit-btn", "page": page_id}, 'disabled'),
+    Output({"type": "download-fit-btn", "page": page_id}, 'disabled'),
+    Output({'type': 'fit-plot-showpathways', 'page': page_id}, 'checked', allow_duplicate=True),
 
     Input({"type": "run-fit-btn", "page": page_id}, 'n_clicks'),
     Input({'type': 'dataset-dropdown', 'page': page_id}, 'value'),
     State({'type': 'fit-options', 'page': page_id}, 'data'),
     State({'type': 'model-params-store', 'page': page_id}, 'data'),
+    running=[(Output({"type": "run-fit-btn", "page": page_id}, 'loading'), True, False)],
     prevent_initial_call=True
 )
 def run_fit(n_clicks, dataset_id, fit_options, model_params):
@@ -214,7 +201,7 @@ def run_fit(n_clicks, dataset_id, fit_options, model_params):
         pass
 
     if not dataset_id:
-        return dash.no_update, dash.no_update, False, dash.no_update, dash.no_update, dash.no_update, True
+        return dash.no_update, dash.no_update, dash.no_update, True, True
 
     session = get_session()
     dataset_entry = session.query(Dataset).filter_by(id=dataset_id).first()
@@ -222,12 +209,6 @@ def run_fit(n_clicks, dataset_id, fit_options, model_params):
     dataset = dataset.assign_coords(t=dataset.t.values)
     mask = np.array(dataset_entry.mask) if dataset_entry.mask else None
     session.close()
-
-    if triggered_id == {"page": page_id, "type": "dataset-dropdown"}:
-        fig = plotly_deerlab(fitresult=dataset)
-        fig.update_layout(title=f"Dataset: {dataset_entry.name}", showlegend=True)
-        dist_stats_output = {"head": ["Statistic", "Value", "Confidence Interval (95%)"]}
-        return None, fig, False, default_fit_results_code, plotly_goodness_of_fit(), dist_stats_output, True
 
     if triggered_id == {"type": "run-fit-btn", "page": page_id}:
         distance_axis = fit_options.get('distance_axis', [2, 6]) if fit_options else [2, 6]
@@ -256,7 +237,7 @@ def run_fit(n_clicks, dataset_id, fit_options, model_params):
             )
         except Exception as e:
             print(f"Error during fitting: {e}")
-            return dash.no_update, dash.no_update, False, f"Error during fitting: {e}", dash.no_update, dash.no_update, True
+            return dash.no_update, f"Error during fitting: {e}", True, True, False
 
         r = fit.r
 
@@ -277,7 +258,7 @@ def run_fit(n_clicks, dataset_id, fit_options, model_params):
         fit_dict = fit_to_dict(fit)
         fit_dict['dist_stats'] = dist_stats_dict
         fit_dict['gof'] = fit.stats
-        return fit_dict, fig, False, fit.__str__(), gof_fig, dist_stats_output, False
+        return fit_dict, fit.__str__(), False, False, False
 
 
 @callback(

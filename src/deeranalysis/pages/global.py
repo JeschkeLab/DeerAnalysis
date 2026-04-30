@@ -16,6 +16,8 @@ import deeranalysis.components.fit_page_components as fpc
 from deeranalysis.utils.deerlab_options import regparam_options,background_models, plotly_goodness_of_fit, plotly_deerlab,dists_stats_to_list, fit_to_dict,name_dataset_from_dict
 from deeranalysis.utils.deerlab_global import create_Vmodel, deerlab_global_fitting, extract_global_P
 
+
+import traceback
 dash.register_page(__name__)
 
 default_fit_results_code = """Fit Resuls will be displayed here after running the fit. \nThis can include parameters like mean distance, width, and any other relevant metrics."""
@@ -148,41 +150,31 @@ layout = html.Div([
 ])
 
 # ----- Clientside Callbacks for Loading States and Plot Pagination -----
-clientside_callback(
-        """
-        function updateLoadingState(n_clicks) {
-            return true
-        }
-        """,
-        Output({"type":"run-fit-btn","page":page_id}, "loading", allow_duplicate=True),
-        Input({"type":"run-fit-btn","page":page_id}, "n_clicks"),
-        prevent_initial_call=True,
-    )
 
-clientside_callback(
-    """
-    function(page, figuresJson) {
-        if (!figuresJson || !page) return dash_clientside.no_update;
-        return JSON.parse(figuresJson[page - 1]);
-    }
-    """,
-    Output({"type": "fit-plot", "page": page_id}, "figure", allow_duplicate=True),
-    Input({"type": "fit-plot-pagination", "page": page_id}, "value"),
-    Input({"type": "fit-plot-figures-store", "page": page_id}, "data"),
-    prevent_initial_call=True,
-)
-clientside_callback(
-    """
-    function(figuresJson) {
-        if (!figuresJson) return [1, 1];
-        return [figuresJson.length, 1];
-    }
-    """,
-    Output({"type": "fit-plot-pagination", "page": page_id}, "total"),
-    Output({"type": "fit-plot-pagination", "page": page_id}, "value"),
-    Input({"type": "fit-plot-figures-store", "page": page_id}, "data"),
-    prevent_initial_call=True,
-)
+# clientside_callback(
+#     """
+#     function(page, figuresJson) {
+#         if (!figuresJson || !page) return dash_clientside.no_update;
+#         return JSON.parse(figuresJson[page - 1]);
+#     }
+#     """,
+#     Output({"type": "fit-plot", "page": page_id}, "figure", allow_duplicate=True),
+#     Input({"type": "fit-plot-pagination", "page": page_id}, "value"),
+#     Input({"type": "fit-plot-figures-store", "page": page_id}, "data"),
+#     prevent_initial_call=True,
+# )
+# clientside_callback(
+#     """
+#     function(figuresJson) {
+#         if (!figuresJson) return [1, 1];
+#         return [figuresJson.length, 1];
+#     }
+#     """,
+#     Output({"type": "fit-plot-pagination", "page": page_id}, "total"),
+#     Output({"type": "fit-plot-pagination", "page": page_id}, "value"),
+#     Input({"type": "fit-plot-figures-store", "page": page_id}, "data"),
+#     prevent_initial_call=True,
+# )
 
 # ----- Callbacks for input option updates and checking -----
 
@@ -250,17 +242,16 @@ def update_fit_options(bg_model_option,compactness,distance_axis,pathways_option
 @callback(
     Output({'type': 'fit-results-store', 'page': page_id}, 'data'),
     Output({"type": "fit-plot-figures-store", "page": page_id}, 'data'),
-    Output({"type":"run-fit-btn","page":page_id}, 'loading', allow_duplicate=True),
     Output({"type": "fit-results-code", "page": page_id}, 'code', allow_duplicate=True),
     Output({"type": "gof-plot", "page": page_id}, 'figure', allow_duplicate=True),
     Output({"type": "dist-stats-table", "page": page_id}, 'data', allow_duplicate=True),
     Output({"type":"save-fit-btn","page":page_id}, 'disabled'),
     Output({"type":"download-fit-btn","page":page_id}, 'disabled'),
 
-
     Input({"type":"run-fit-btn","page":page_id}, 'n_clicks'),
     Input({'type': 'dataset-dropdown', 'page': page_id}, 'value'),
     State({'type': 'fit-options', 'page': page_id}, 'data'),
+    running=[(Output({"type":"run-fit-btn","page":page_id}, 'loading'), True, False)],
     prevent_initial_call=True,
 )
 def run_fit(n_clicks, dataset_id, fit_options):
@@ -273,7 +264,7 @@ def run_fit(n_clicks, dataset_id, fit_options):
         pass
 
     if not dataset_id:
-        return dash.no_update,dash.no_update, False, dash.no_update, dash.no_update, dash.no_update, True,True
+        return dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, True, True
     
     session = get_session()
     datasets = []
@@ -294,7 +285,7 @@ def run_fit(n_clicks, dataset_id, fit_options):
             fig = plotly_deerlab(fitresult=ds)
             fig.update_layout(title=f"Dataset: {name}", showlegend=True)
             figures_store.append(fig.to_json())
-        return dash.no_update,figures_store, False, dash.no_update, dash.no_update, dash.no_update, True,True
+        return dash.no_update, figures_store, dash.no_update, dash.no_update, dash.no_update, True, True
     elif triggered_id == {"page":page_id,"type":"run-fit-btn"}:
 
         distance_axis = fit_options.get('distance_axis', [0, 5])
@@ -314,7 +305,8 @@ def run_fit(n_clicks, dataset_id, fit_options):
 
         except Exception as e:
             print(f"Error during fitting: {e}")
-            return dash.no_update, dash.no_update, False, f"Error during fitting: {e}", dash.no_update, dash.no_update, True, True
+            traceback.print_exc()
+            return dash.no_update, dash.no_update, f"Error during fitting: {e}", dash.no_update, dash.no_update, True, True
         
 
         Ps = extract_global_P(fit)
@@ -338,7 +330,7 @@ def run_fit(n_clicks, dataset_id, fit_options):
         dist_stats = dash.no_update
         fit_store = fit_to_dict(fit,n_datasets)
         fit_str = fit.__str__()
-        return fit_store, figures_store, False, fit_str, gof, dist_stats, False, False
+        return fit_store, figures_store, fit_str, gof, dist_stats, False, False
     
 
 def fit_to_dict(fit,n_datasets):

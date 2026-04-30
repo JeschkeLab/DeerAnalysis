@@ -98,20 +98,215 @@ def create_Vmodel(dataset,t,r,Pmodel,pathways):
 
     return Vmodel
 
-def determine_pop_P(r,fit_results,P_model,n_datasets,n_pops):
+def _make_pop_model(base_model, j, i, n_pops):
+    """Create a dl.Model for population j (0-indexed) in dataset i (0-indexed).
+
+    Parameter names match the global fit: mean{X}/std{X} (shared) and
+    frac{X}_{i+1} (dataset-specific). The last population's fraction is
+    computed implicitly as 1 - sum(other fracs).
+    """
+    letter = chr(ord('A') + j)
+    params = [
+        inspect.Parameter('r', inspect.Parameter.POSITIONAL_OR_KEYWORD),
+        inspect.Parameter(f'mean{letter}', inspect.Parameter.POSITIONAL_OR_KEYWORD),
+        inspect.Parameter(f'std{letter}', inspect.Parameter.POSITIONAL_OR_KEYWORD),
+    ]
+
+    if j < n_pops - 1:
+        params.append(inspect.Parameter(f'frac{letter}_{i+1}', inspect.Parameter.POSITIONAL_OR_KEYWORD))
+        def func(r, mean, std, frac):
+            return frac * base_model(r, mean, std)
+    else:
+        for k in range(n_pops - 1):
+            params.append(inspect.Parameter(f'frac{chr(ord("A") + k)}_{i+1}', inspect.Parameter.POSITIONAL_OR_KEYWORD))
+        def func(r, mean, std, *frac_others):
+            return (1 - sum(frac_others)) * base_model(r, mean, std)
+
+    func.__signature__ = inspect.Signature(params)
+    return dl.Model(func, constants='r')
+
+
+def _make_total_pop_model(base_model, i, n_pops):
+    """Create a dl.Model for the sum of all populations in dataset i (0-indexed).
+
+    Parameter names match the global fit: mean{X}/std{X} (shared) and
+    frac{X}_{i+1} (dataset-specific). The last population's fraction is
+    computed implicitly as 1 - sum(other fracs).
+    """
+    params = [inspect.Parameter('r', inspect.Parameter.POSITIONAL_OR_KEYWORD)]
+    for j in range(n_pops):
+        params.append(inspect.Parameter(f'mean{chr(ord("A") + j)}', inspect.Parameter.POSITIONAL_OR_KEYWORD))
+    for j in range(n_pops):
+        params.append(inspect.Parameter(f'std{chr(ord("A") + j)}', inspect.Parameter.POSITIONAL_OR_KEYWORD))
+    for j in range(n_pops - 1):
+        params.append(inspect.Parameter(f'frac{chr(ord("A") + j)}_{i+1}', inspect.Parameter.POSITIONAL_OR_KEYWORD))
+
+    def func(r, *args):
+        means = args[:n_pops]
+        stds  = args[n_pops:2*n_pops]
+        frac_others = list(args[2*n_pops:])
+        fracs = frac_others + [1 - sum(frac_others)]
+        return np.sum([f * base_model(r, m, s) for m, s, f in zip(means, stds, fracs)], axis=0)
+
+    func.__signature__ = inspect.Signature(params)
+    return dl.Model(func, constants='r')
+
+
+def determine_pop_P(r, fit, P_model, n_datasets, n_pops):
+    """
+    Evaluate the per-population and total distance distributions from a fit result.
+
+    For each dataset, builds a DeerLab model per population (and one for the
+    total) with parameter names matching the global fit, then evaluates them
+    with ``fit.evaluate`` and propagates uncertainty with ``fit.propagate``.
+
+    Parameters
+    ----------
+    r : array-like
+        Distance axis.
+    fit : dl.FitResult
+        Result returned by ``deerlab_population_fitting``.
+    P_model : dl.Model
+        Single-population base model (e.g. ``dl.dd_gauss``).
+    n_datasets : int
+        Number of datasets.
+    n_pops : int
+        Number of populations.
+
+    Returns
+    -------
+    Prs : list of dict
+        Per-dataset dicts with keys ``'A'``, ``'B'``, … and ``'sum'``,
+        each containing the scaled distance distribution array.
+    PUQs : list of dict
+        Per-dataset dicts with the same keys, each containing a
+        ``dl.UQResult`` for the corresponding distribution.
+    """
     Prs = []
+    PUQs = []
+
     for i in range(n_datasets):
-        means = [fit_results[f'mean{chr(ord("A") + j)}'] for j in range(n_pops)]
-        stds  = [fit_results[f'std{chr(ord("A") + j)}'] for j in range(n_pops)]
-        fracs = [fit_results[f'frac{chr(ord("A") + j)}_{i+1}'] for j in range(n_pops - 1)] + [1 - sum(fit_results[f'frac{chr(ord("A") + j)}_{i+1}'] for j in range(n_pops - 1))]
-        Ps = [f * P_model(r, m, s) for m, s, f in zip(means, stds, fracs)]
-        Ps = {f'{chr(ord("A") + j)}': P for j, P in enumerate(Ps)}
-        Ps_total = np.sum(list(Ps.values()), axis=0)
-        Ps['sum'] = Ps_total
+        Ps  = {}
+        UQs = {}
+
+        # Per-population models
+        for j in range(n_pops):
+            letter = chr(ord('A') + j)
+            pop_model = _make_pop_model(P_model, j, i, n_pops)
+            Ps[letter]  = fit.evaluate(pop_model, r)
+            UQs[letter] = fit.propagate(pop_model, r, lb=np.zeros_like(r))
+
+        # Total (sum) model
+        total_model = _make_total_pop_model(P_model, i, n_pops)
+        Ps['sum']  = fit.evaluate(total_model, r)
+        UQs['sum'] = fit.propagate(total_model, r, lb=np.zeros_like(r))
+
+        # Normalise and apply scale
+        scale = getattr(fit, f'scale_{i+1}')
+        norm  = np.trapezoid(Ps['sum'])
+        factor = scale / norm
         for key in Ps:
-            Ps[key] = Ps[key]/np.trapezoid(Ps_total)
+            Ps[key] = Ps[key] * factor
+
         Prs.append(Ps)
-    return Prs
+        PUQs.append({'UQs': UQs, 'factor': factor})
+
+    return Prs, PUQs
+
+
+def background_func_population(ts, Vmodels, fit):
+    """
+    Compute the background for each dataset in a population fit.
+
+    Mirrors ``background_func`` from deerlab_normal but handles the merged
+    model where every parameter carries a ``_{i+1}`` suffix.
+
+    Parameters
+    ----------
+    ts : list of np.ndarray
+        Time axes, one per dataset.
+    Vmodels : list of dl.Model
+        Per-dataset dipolar models (before merging).
+    fit : dl.FitResult
+        Result returned by ``deerlab_population_fitting``.
+
+    Returns
+    -------
+    backgrounds : list of np.ndarray
+        Background trace for each dataset.
+    """
+    Bmodel = fit.bg_model
+    backgrounds = []
+
+    for i, (t, Vmodel) in enumerate(zip(ts, Vmodels)):
+        suffix = f"_{i + 1}"
+        pathways = fit.pathways[i]
+
+        # Collect background-model parameters (skip 't' and 'lam')
+        Bmodel_params = {}
+        mod_depth = False
+        for key in Bmodel.signature:
+            if key == 'lam':
+                mod_depth = True
+                continue
+            if key == 't':
+                continue
+            Bmodel_params[key] = getattr(fit, key + suffix)
+
+        # Resolve reference times
+        if hasattr(fit, f'reftime{suffix}') or hasattr(fit, f'reftime1{suffix}'):
+            if len(pathways) > 1:
+                reftimes = []
+                for p in pathways:
+                    if isinstance(p, list):
+                        for j in p:
+                            reftimes.append(getattr(fit, f"reftime{pathways.index(j) + 1}{suffix}"))
+                    else:
+                        reftimes.append(getattr(fit, f"reftime{p}{suffix}"))
+            else:
+                reftimes = [getattr(fit, f"reftime{suffix}")]
+        elif hasattr(fit, f'tau1{suffix}'):
+            expInfo = Vmodel.experimentInfo
+            taus_names = expInfo.reftimes.__code__.co_varnames[:expInfo.reftimes.__code__.co_argcount]
+            taus = {name: getattr(fit, name + suffix) for name in taus_names}
+            reftimes = expInfo.reftimes(**taus)
+
+        prod = 1
+        scale = 1
+        if len(pathways) > 1:
+            for idx, p_id in enumerate(pathways):
+                if isinstance(p_id, list):
+                    lam = getattr(fit, f"lam{p_id[0]}{p_id[1]}{suffix}")
+                    scale += -1 * lam
+                    for j in p_id:
+                        reftime = getattr(fit, f"reftime{pathways.index(j) + 1}{suffix}")
+                        if mod_depth:
+                            prod *= Bmodel(t=t - reftime, lam=lam, **Bmodel_params)
+                        else:
+                            prod *= Bmodel(t=t - reftime, **Bmodel_params)
+                else:
+                    reftime = reftimes[idx]
+                    lam = getattr(fit, f"lam{p_id}{suffix}")
+                    if mod_depth:
+                        prod *= Bmodel(t=t - reftime, lam=lam, **Bmodel_params)
+                    else:
+                        prod *= Bmodel(t=t - reftime, **Bmodel_params)
+                    scale += -1 * lam
+        else:
+            reftime = reftimes[0]
+            lam = getattr(fit, f"mod{suffix}")
+            if mod_depth:
+                prod *= Bmodel(t=t - reftime, lam=lam, **Bmodel_params)
+            else:
+                prod *= Bmodel(t=t - reftime, **Bmodel_params)
+            scale += -1 * lam
+
+        # if hasattr(fit, f'scale{suffix}'):
+        #     scale *= getattr(fit, f'scale{suffix}')
+
+        backgrounds.append(scale * prod)
+
+    return backgrounds
 
 
 def deerlab_population_fitting(datasets, model=dl.dd_gauss, n_pops = 2,bg_model=dl.bg_hom3d, verbosity=0,
@@ -210,14 +405,25 @@ def deerlab_population_fitting(datasets, model=dl.dd_gauss, n_pops = 2,bg_model=
     fit = dl.fit(global_model, Vs,**kwargs)
 
     fit.r = r
-    fit.Pmodel = Pmodel
+    fit.Pmodel = model
+    fit.n_pops = n_pops
     fit.bg_model = bg_model
-    fit.datasets = datasets
+    # fit.datasets = datasets
     fit.Vexp = Vs
     fit.t = ts
-    fit.pathways = pathways
+    # fit.Vmodels = Vmodels
+    fit.pathways = [pathways for i in range(Nsignals)]
 
-    fit.stats['SNR'] = 1/fit.noiselvl
+    for i in range(len(fit.stats)):
+        fit.stats[i]['SNR'] = 1/fit.noiselvl[i]
+
+    if bg_model is not None:
+        fit.background = background_func_population(ts, Vmodels, fit)
+    else:
+        fit.background = None
+        
+
+    # fit.stats['SNR'] = 1/fit.noiselvl
 
     return fit
 

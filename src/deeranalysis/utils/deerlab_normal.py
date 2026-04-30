@@ -146,32 +146,7 @@ def deerlab_fitting(dataset, compactness=True, model=None, exp_type='5pDEER', ve
 
     # Extract params from dataset
 
-    if hasattr(dataset,"sequence"):
-        sequence = dataset.sequence
-        if sequence.name == "4pDEER":
-            exp_type = "4pDEER"
-            tau1 = val_in_us(sequence.tau1)
-            tau2 = val_in_us(sequence.tau2)
-
-        elif sequence.name == "5pDEER":
-            exp_type = "5pDEER"
-            tau1 = val_in_us(sequence.tau1)
-            tau2 = val_in_us(sequence.tau2)
-            tau3 = val_in_us(sequence.tau3)
-
-        elif sequence.name == "3pDEER":
-            exp_type = "3pDEER"
-            tau1 = val_in_us(sequence.tau1)
-
-        elif sequence.name == "nDEER-CP":
-            exp_type = "4pDEER"
-            tau1 = val_in_us(sequence.tau1)
-            tau2 = val_in_us(sequence.tau2)
-
-        tp = find_longest_pulse(sequence)
-        t = val_in_us(sequence.t)
-    
-    elif 't' in dataset.coords: # If the dataset is a xarray and has sequence data
+    if 't' in dataset.coords: # If the dataset is a xarray and has sequence data
         t = dataset['t'].data
         if 'seq_name' in dataset.attrs:
             if dataset.attrs['seq_name'] == "4pDEER":
@@ -225,33 +200,8 @@ def deerlab_fitting(dataset, compactness=True, model=None, exp_type='5pDEER', ve
 
     # Find mask if needed
 
-    if remove_crossing:
-        mask = None
-        if 'pcyc_name' in dataset.attrs:
-            pcyc = dataset.attrs['pcyc_name']
-        elif 'nPcyc' in dataset.attrs: # guess pcyc
-            if dataset.attrs['nPcyc'] == 16:
-                pcyc = 'Full'
-            elif dataset.attrs['nPcyc'] == 8:
-                pcyc = '8-step'
-            elif dataset.attrs['nPcyc'] == 2:
-                pcyc = 'DC'
-            else:
-                pcyc = f'{dataset.attrs["nPcyc"]}-step'
-        else:
-            pcyc = 'unknown'
-
-        if pcyc == 'DC' and exp_type == "5pDEER": # Remove crossing echoes
-            t_position = [tau1 + tau2 - tau3]
-            idx_position = [np.argmin(np.abs(cross - t)) for cross in t_position]
-            mask = np.ones_like(Vexp, bool)
-            for loc in idx_position:
-                mask &= remove_echo(Vexp, Vexp_im, loc, criteria=4, extent=3)
-
     if "mask" in kwargs:
         mask = kwargs["mask"]
-        noiselvl = dl.noiselevel(Vexp[mask])
-    elif remove_crossing and mask is not None:
         noiselvl = dl.noiselevel(Vexp[mask])
     else:
         noiselvl = dl.noiselevel(Vexp)
@@ -305,6 +255,8 @@ def deerlab_fitting(dataset, compactness=True, model=None, exp_type='5pDEER', ve
         experimentInfo = dl.ex_fwd5pdeer(tau1=tau1,tau2=tau2,tau3=tau3,pathways=pathways,pulselength=pulselength)
     elif exp_type == "3pDEER":
         experimentInfo = dl.ex_3pdeer(tau=tau1,pathways=pathways,pulselength=pulselength)
+    else:
+        raise ValueError(f"Experiment type {exp_type} not recognized. Please specify a valid experiment type (e.g., '4pDEER', '5pDEER', '3pDEER').")
 
     if 'r' in kwargs:
         r = kwargs.pop('r')
@@ -417,8 +369,12 @@ def deerlab_fitting(dataset, compactness=True, model=None, exp_type='5pDEER', ve
     fit.Vexp = Vexp
     fit.t = t
     fit.mask = mask
+    fit.pathways=pathways
 
-    fit.background = background_func(t, fit)
+    if bg_model is not None:
+        fit.background = background_func(t, fit)
+    else:
+        fit.background = None
     fit.stats['MNR'] = MNR
     fit.stats['SNR'] = 1/fit.noiselvl
     fit.stats['lam'] = fit.lam
@@ -506,3 +462,84 @@ def background_func(t, fit):
         scale *= fit.scale
 
     return scale * prod
+
+
+def deerlab_background_only(dataset, bg_model=dl.bg_hom3d,  verbosity=0, **kwargs):
+
+    Vexp:np.ndarray = dataset.data 
+    t = dataset['t'].data
+
+    if np.iscomplexobj(Vexp):
+        Vexp,Vexp_im,_ = dl.correctphase(Vexp,full_output=True)
+    
+    if "mask" in kwargs:
+        mask = kwargs["mask"]
+        noiselvl = dl.noiselevel(Vexp[mask])
+    else:
+        noiselvl = dl.noiselevel(Vexp)
+        mask=None
+    
+    # Default fit parameters
+    defualt_fit_params = {'regparam':'bic','nnlsSolver':'qp'}
+    for key in defualt_fit_params:
+        if key not in kwargs:
+            kwargs[key] = defualt_fit_params[key]
+
+    # Build background Vmodel
+    Vmodel = bg_model
+
+
+    if 'bounds' in kwargs:
+        bounds = kwargs.pop('bounds')
+        for key in bounds:
+            if hasattr(Vmodel, key):
+                getattr(Vmodel, key).set(lb=bounds[key][0], ub=bounds[key][1])
+
+    if 'model_overrides' in kwargs:
+        overrides = kwargs.pop('model_overrides')
+        if overrides:
+            for param_name, param_data in overrides.items():
+                if not hasattr(Vmodel, param_name):
+                    continue
+                param = getattr(Vmodel, param_name)
+                if not hasattr(param, 'set'):
+                    continue
+                lb = param_data.get('lb')
+                ub = param_data.get('ub')
+                par0 = param_data.get('par0')
+                frozen = param_data.get('frozen', False)
+                if lb is not None and ub is not None:
+                    param.set(lb=lb, ub=ub)
+                elif lb is not None:
+                    param.set(lb=lb)
+                elif ub is not None:
+                    param.set(ub=ub)
+                if par0 is not None:
+                    param.set(par0=par0)
+                if frozen:
+                    param.freeze(par0 if par0 is not None else param.par0)
+                else:
+                    param.unfreeze()
+
+    # Cleanup extra args
+    extra_args = ['bg_model']
+    for arg in extra_args:
+        if arg in kwargs:
+            kwargs.pop(arg)
+
+    if verbosity > 1:
+        print('Starting Fitting')
+    fit = dl.fit(Vmodel, Vexp,t, 
+                 noiselvl=noiselvl,
+                 verbose=verbosity,
+                 **kwargs)
+    if verbosity > 1:
+        print('Fit complete')
+
+    fit.Bmodel = bg_model
+    fit.dataset = dataset
+    fit.Vexp = Vexp
+    fit.t = t
+    fit.mask = mask
+
+    return fit

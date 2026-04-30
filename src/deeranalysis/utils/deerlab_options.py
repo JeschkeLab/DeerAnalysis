@@ -1,5 +1,6 @@
 import deerlab as dl
 import plotly.graph_objs as go
+import plotly.express.colors as colors
 import numpy as np
 import xarray as xr
 
@@ -16,14 +17,27 @@ experiment_type_options = [
     {"label": "4-pulse DEER", "value": "4pDEER", "max_pathways": 4},
     {"label": "3-pulse DEER", "value": "3pDEER", "max_pathways": 3},
     {"label": "5-pulse DEER", "value": "5pDEER", "max_pathways": 5},
-    {"label": "RIDME", "value": "RIDME"},
-    {"label": "SIFTER", "value": "SIFTER"}
+    {"label": "RIDME", "value": "RIDME","max_pathways": 4},
+    {"label": "SIFTER", "value": "SIFTER","max_pathways": 3},
+    {"label": "DQC", "value": "SIFTER","max_pathways": 3}
     ]
 
 background_models = [
     {'label': 'None', 'value': 'none'},
-    {'label': 'Homogeneous 3D', 'value': 'bg_hom3d'},
-    {'label': 'Exponential', 'value': 'bg_exp'}
+    {'label': 'Hom. 3D', 'value': 'bg_hom3d'},
+    {'label': 'Hom. 3D - Excl. Vol.', 'value': 'bg_hom3dex'},
+    {'label': 'Hom. Fractal Geom.', 'value': 'bg_homfractal'},
+    # These models require complex input data which is not currently supported by the app, so they are commented out for now. They can be added back in the future if complex data support is added.
+    # {'label': 'Hom. 3D - Phase shift', 'value': 'bg_hom3d_phase'},
+    # {'label': 'Hom. 3D - Excl. Vol.,  Phase shift', 'value': 'bg_hom3dex_phase'},
+    # {'label': 'Hom. Fractal Geom., Phase shift', 'value': 'bg_homfractal_phase'},    
+    {'label': 'Exponential', 'value': 'bg_exp'},
+    {'label': 'Stretched Exponential', 'value': 'bg_strexp'},
+    {'label': 'Sum of 2 Stretched Exp.', 'value': 'bg_sumstrexp'},
+    {'label': 'Prod of 2 Stretched Exp.', 'value': 'bg_prodstrexp'},
+    {'label': '1st order polynomial.', 'value': 'bg_poly1'},
+    {'label': '2nd order polynomial.', 'value': 'bg_poly2'},
+    {'label': '3rd order polynomial.', 'value': 'bg_poly3'},
 ]
 
 parametric_models = [
@@ -42,6 +56,8 @@ parametric_models = [
 colour_scheme_dark = ['#7C37DB','#DB7C17','#166122']
 colour_scheme_light = ['#A787D6',"#EDA659",'#67B875']
 
+
+
 def resolve_plot_template(color_scheme=None, plot_theme=None):
     """
     Returns the Plotly template string to use based on the UI color scheme
@@ -56,7 +72,7 @@ def resolve_plot_template(color_scheme=None, plot_theme=None):
         return f"{plot_theme}+compact"
     return "plotly_dark+compact" if color_scheme == "dark" else "plotly_white+compact"
 
-def plotly_goodness_of_fit(results=None):
+def plotly_goodness_of_fit(results=None, index=None):
     """
     Returns a plotly version of the goodness of fit plot for a DeerLab fit result object `dl.plot(gof=True)`.
 
@@ -71,23 +87,28 @@ def plotly_goodness_of_fit(results=None):
     from plotly.subplots import make_subplots
     fig = make_subplots(rows=1, cols=3, subplot_titles=["Residuals", "Residuals Histogram", "Residuals Autocorrelation"],
                         horizontal_spacing=0.01)
-    
+
     if results is None:
         # If no results provided, return empty plots with titles
         return fig
+
+    idx = index if index is not None else 0
+    t         = results.t[idx]         if isinstance(results.t, list)         else results.t
+    residuals = results.residuals[idx] if isinstance(results.residuals, list) else results.residuals
+    noiselvl  = results.noiselvl[idx]  if isinstance(results.noiselvl, (list,np.ndarray))  else results.noiselvl
 
     data_color = "#3409b6"  # Default plotly blue
     grey_color = "#ACACAC"  # Grey for confidence intervals
 
     # Plot 1: Residuals with noise level and mean
-    fig.add_trace(go.Scatter(x=results.dataset.t, y=results.residuals, mode='markers', name='Residuals', line={'color':data_color}), row=1, col=1)
-    fig.add_trace(go.Scatter(x=results.dataset.t, y=2*results.noiselvl*np.ones_like(results.dataset.t), mode='lines', name='2σ', line=dict(dash='dash',color=grey_color),showlegend=False), row=1, col=1)
-    fig.add_trace(go.Scatter(x=results.dataset.t, y=-2*results.noiselvl*np.ones_like(results.dataset.t),fill='tonexty', mode='lines', name='±2σ', line=dict(color=grey_color)), row=1, col=1)
+    fig.add_trace(go.Scatter(x=t, y=residuals, mode='markers', name='Residuals', line={'color':data_color}), row=1, col=1)
+    fig.add_trace(go.Scatter(x=t, y=2*noiselvl*np.ones_like(t), mode='lines', name='2σ', line=dict(dash='dash',color=grey_color),showlegend=False), row=1, col=1)
+    fig.add_trace(go.Scatter(x=t, y=-2*noiselvl*np.ones_like(t),fill='tonexty', mode='lines', name='±2σ', line=dict(color=grey_color)), row=1, col=1)
     # fig.add_trace(go.Scatter(x=results.dataset.t, y=np.mean(results.residuals)*np.ones_like(results.dataset.t), mode='lines', name='Mean', line=dict(dash='dot')), row=1, col=1)
 
 
     # Plot 2: Histogram of residuals with normal distribution fit
-    norm_residuals = (results.residuals - np.mean(results.residuals)) / np.std(results.residuals)
+    norm_residuals = (residuals - np.mean(residuals)) / np.std(residuals)
     hist_data = np.histogram(norm_residuals, bins=20,range=(-4,4), density=True)
     x_hist = (hist_data[1][:-1] + hist_data[1][1:]) / 2  # Bin centers
     x = np.linspace(-4, 4, 100)
@@ -101,15 +122,14 @@ def plotly_goodness_of_fit(results=None):
 
     # Plot 3: Autocorrelation of residuals with confidence intervals
     maxLag = len(norm_residuals)-1
-    acorr = np.correlate(results.residuals, results.residuals, mode='full')
+    acorr = np.correlate(residuals, residuals, mode='full')
     #normed
-    acorr = acorr / np.dot(results.residuals, results.residuals)
-    lags = np.arange(-len(results.residuals)+1, len(results.residuals))
+    acorr = acorr / np.dot(residuals, residuals)
+    lags = np.arange(-len(residuals)+1, len(residuals))
     acorr = acorr[lags>-0.5]
     lags = lags[lags>-0.5]
-    conf_interval = 1.96 / np.sqrt(len(results.residuals))  # 95% confidence interval for white noise
     fig.add_trace(go.Scatter(x=lags, y=acorr, mode='lines', name='Residuals', line={'color':data_color}), row=1, col=3)
-    threshold = 1.96/np.sqrt(len(results.residuals))
+    threshold = 1.96/np.sqrt(len(residuals))
     fig.add_trace(go.Scatter(x=lags, y=threshold*np.ones_like(lags), fill=None, mode='lines', line=dict(color=grey_color),showlegend=False), row=1, col=3)
     fig.add_trace(go.Scatter(x=lags, y=-threshold*np.ones_like(lags), fill='tonexty', mode='lines', name='White Noise Confidence Region', line=dict(color=grey_color)), row=1, col=3,)
 
@@ -204,7 +224,8 @@ def plotly_comparison(results, titles=None, offset=0.3, ci=95, show_ci=True):
 
     return fig
 
-def plotly_deerlab(fitresult=None, orientation='h'):
+def plotly_deerlab(fitresult=None, orientation='h', index=None,
+                    showPathways=False, showPopulation=False,linewidth=3):
 
     import plotly.graph_objects as go
     from plotly.subplots import make_subplots
@@ -226,22 +247,61 @@ def plotly_deerlab(fitresult=None, orientation='h'):
     
     if fitresult is None:
         return fig
-    
+
+    Ps_pop   = None
+    UQs_pop  = None
+    P_factor = 1.0
+
     if isinstance(fitresult, dl.FitResult):
-        data_t = fitresult.t
-        data_V = fitresult.Vexp
-        if hasattr(fitresult,'model_t'):
-            model_t = fitresult.model_t
+        idx = index if index is not None else 0
+        data_t     = fitresult.t[idx]     if isinstance(fitresult.t, list)     else fitresult.t
+        data_V     = fitresult.Vexp[idx]  if isinstance(fitresult.Vexp, list)  else fitresult.Vexp
+        data_model = fitresult.model[idx] if isinstance(fitresult.model, list) else fitresult.model
+        model_t    = data_t
+        r          = fitresult.r
+        background = fitresult.background[idx] if (hasattr(fitresult,'background') and isinstance(fitresult.background, list)) else (fitresult.background if hasattr(fitresult,'background') else None)
+
+        if hasattr(fitresult, 'P') and isinstance(fitresult.P, list):
+            Ps_pop  = fitresult.P[idx]
+            if hasattr(fitresult, 'PUQ'):
+                UQs_pop = fitresult.PUQ[idx]['UQs']
+                P_factor = fitresult.PUQ[idx]['factor']
+            else:
+                UQs_pop = None
+                P_factor = 1.0
+            P       = Ps_pop['sum']
+            PUncert = UQs_pop['sum'] if UQs_pop is not None else None
+        elif hasattr(fitresult, 'P'):
+            P       = fitresult.P
+            PUncert = fitresult.PUncert.ci(95) if hasattr(fitresult,'PUncert') else None
         else:
-            model_t = data_t
-        data_model = fitresult.model
-        P = fitresult.P
-        PUncert = fitresult.PUncert.ci(95)
-        r = fitresult.r
-        background = fitresult.background if hasattr(fitresult,'background') else None
-        model_t = fitresult['model_t'] if 'model_t' in fitresult else data_t
+            print("Warning: FitResult does not contain P or PUQ attributes. Distance distribution will not be plotted.")
+            P = None
+            PUncert = None
+
+        if hasattr(fitresult,"mod") and showPathways:
+            raise ValueError("showPathway requires multi-pathway fitting")
+        elif hasattr(fitresult,"pathways") and showPathways and not showPopulation:
+            if len(fitresult.pathways)==1:
+                lams = [getattr(fitresult,f"mod")]
+                reftimes = [getattr(fitresult,f"reftime")]
+            else:
+                lams           = [getattr(fitresult,f"lam{i}") for i in fitresult.pathways]
+                reftimes       = [getattr(fitresult,f"reftime{i}") for i in fitresult.pathways]
+            pathway_labels = [f'Pathway #{i}' for i in fitresult.pathways]
+            cmap           = colors.qualitative.T10
+        elif hasattr(fitresult,"pathways") and showPathways and showPopulation:
+            if len(fitresult.pathways[idx])==1:
+                lams = [getattr(fitresult,f"mod_{idx+1}")]
+                reftimes = [getattr(fitresult,f"reftime_{idx+1}")]
+            else:
+                lams           = [getattr(fitresult,f"lam{i}_{idx+1}") for i in fitresult.pathways[idx]]
+                reftimes       = [getattr(fitresult,f"reftime{i}_{idx+1}") for i in fitresult.pathways[idx]]
+            pathway_labels = [f'Pathway #{i}' for i in fitresult.pathways[idx]]
+            cmap           = colors.qualitative.T10
 
     elif isinstance(fitresult,xr.DataArray):
+        n_fits = 1
         data_t = fitresult.t.values
         data_V = fitresult.values
         data_V = data_V.real
@@ -252,11 +312,12 @@ def plotly_deerlab(fitresult=None, orientation='h'):
         r = None
         background = None
     elif isinstance(fitresult, dict):
-        data_t = fitresult['t']
-        data_V = fitresult['V']
+        idx = index if index is not None else 0
+        data_t = fitresult['t'][idx] if isinstance(fitresult['t'], list) else fitresult['t']
+        data_V = fitresult['V'][idx] if isinstance(fitresult['V'], list) else fitresult['V']
         data_model = fitresult['model'] if 'model' in fitresult else None
         if 'model_t' in fitresult and fitresult['model_t'] is not None:
-            model_t = fitresult['model_t']
+            model_t = fitresult['model_t'][idx] if isinstance(fitresult['model_t'], list) else fitresult['model_t']
         else:
             model_t = data_t
         P = fitresult['P'] if 'P' in fitresult else None
@@ -274,17 +335,37 @@ def plotly_deerlab(fitresult=None, orientation='h'):
     i=0
     fig.add_trace(go.Scatter(
             x=data_t, y=data_V, mode='markers', name='Data',
-            line={'color':colour_scheme_light[i]}), row=1, col=1)
+            line={'color':colour_scheme_light[i], 'width':linewidth}), row=1, col=1)
     if background is not None:
-        fig.add_trace(go.Scatter(x=model_t, y=background, mode='lines', name='Background', line={'color':colour_scheme_dark[i],'dash':'dash'}), row=1, col=1)
-    if data_model is not None:
-        fig.add_trace(go.Scatter(x=model_t, y=data_model, mode='lines', name='Model', line={'color':colour_scheme_dark[i]}), row=1, col=1)
+        fig.add_trace(go.Scatter(x=model_t, y=background, mode='lines', name='Background', line={'color':colour_scheme_dark[i],'dash':'dash', 'width':linewidth}), row=1, col=1)
     
-    if P is not None:
-        fig.add_trace(go.Scatter(x=r, y=P, mode='lines', name='P(r)', line={'color':colour_scheme_dark[i]}), row=1, col=2)
+    if data_model is not None and not showPathways:
+        fig.add_trace(go.Scatter(x=model_t, y=data_model, mode='lines', name='Model', line={'color':colour_scheme_dark[i], 'width':linewidth}), row=1, col=1)
+    elif data_model is not None and background is not None:
+        for (lam,reftime,c,label) in zip(lams,reftimes,cmap,pathway_labels):
+            Vpath = (1-np.sum(lams)+lam*dl.dipolarkernel(model_t-reftime,r)@P) * (background/(1-np.sum(lams)))
+            fig.add_trace(go.Scatter(x=model_t,y=Vpath,mode='lines',name=label,line={'color':c, 'width':linewidth}),row=1,col=1)
+    elif data_model is not None and background is None:
+        for (lam,reftime,c,label) in zip(lams,reftimes,cmap,pathway_labels):
+            Vpath = (1-np.sum(lams)+lam*dl.dipolarkernel(model_t-reftime,r)@P)
+            fig.add_trace(go.Scatter(x=model_t,y=Vpath,mode='lines',name=label,line={'color':c, 'width':linewidth}),row=1,col=1)
+
+    if P is not None and showPopulation and Ps_pop is not None:
+        pop_letters = [k for k in Ps_pop if k != 'sum']
+        for letter in pop_letters:
+            fig.add_trace(go.Scatter(x=r, y=Ps_pop[letter], mode='lines', name=f'Pop. {letter}',line={'width':linewidth}), row=1, col=2)
+            color = fig.data[-1].line.color
+            if UQs_pop is not None and letter in UQs_pop:
+                ci_pop = UQs_pop[letter].ci(95) * P_factor
+                fig.add_trace(go.Scatter(x=r, y=ci_pop[:,0], mode='lines', line=dict(width=0), showlegend=False, hoverinfo='skip'), row=1, col=2)
+                fig.add_trace(go.Scatter(x=r, y=ci_pop[:,1], mode='lines', line=dict(width=0, color=color), fill='tonexty', showlegend=True, hoverinfo='skip', name='95% CI'), row=1, col=2)
+        fig.add_trace(go.Scatter(x=r, y=P, mode='lines', name='Sum', line={'color': colour_scheme_dark[i]}), row=1, col=2)
+    elif P is not None:
+        fig.add_trace(go.Scatter(x=r, y=P, mode='lines', name='P(r)', line={'color':colour_scheme_dark[i],'width':linewidth}), row=1, col=2)
     if PUncert is not None:
-        fig.add_trace(go.Scatter(x=r, y=PUncert[:,0], mode='lines', line=dict(width=0),showlegend=False, hoverinfo='skip'), row=1, col=2)
-        fig.add_trace(go.Scatter(x=r, y=PUncert[:,1], mode='lines', line=dict(width=0,color=colour_scheme_light[i]), fill='tonexty', name='95% CI'), row=1, col=2)
+        ci = (PUncert.ci(95) * P_factor) if isinstance(PUncert, dl.UQResult) else PUncert
+        fig.add_trace(go.Scatter(x=r, y=ci[:,0], mode='lines', line=dict(width=0),showlegend=False, hoverinfo='skip'), row=1, col=2)
+        fig.add_trace(go.Scatter(x=r, y=ci[:,1], mode='lines', line=dict(width=0,color=colour_scheme_light[i]), fill='tonexty', name='95% CI'), row=1, col=2)
         
     return fig
     
@@ -303,8 +384,10 @@ def fit_to_dict(fit):
                 output['fit_type'] = 'non-parametric'
                 output['dist_model'] = None
 
-            if hasattr(fit,'background'):
+            if hasattr(fit,'background') and fit.background is not None:
                 output['background'] = fit.background.tolist()
+            elif hasattr(fit,'Bmodel') and fit.background is None:
+                output['background'] = None
             output['pathways'] = fit.Vmodel.pathways
         else:
             output['bg_model'] = 'Neural Network'

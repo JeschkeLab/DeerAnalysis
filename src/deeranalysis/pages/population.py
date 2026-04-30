@@ -1,7 +1,7 @@
 import json
 import copy
 import dash
-from dash import html, dcc, callback, Input, Output, State,clientside_callback
+from dash import html, dcc, callback, Input, Output, State
 import dash_bootstrap_components as dbc
 import numpy as np
 import deerlab as dl
@@ -13,6 +13,7 @@ from deeranalysis.components.dataset_search_model import create_dataset_modal
 from deeranalysis.utils.deerlab_options import regparam_options,background_models, plotly_goodness_of_fit, plotly_deerlab,dists_stats_to_list, fit_to_dict,name_dataset_from_dict
 from deeranalysis.components.fit_page_components import fit_save_download_buttons,distance_slider,adv_fit_options_parametric
 import deeranalysis.components.fit_page_components as fpc
+import deeranalysis.components.fpc_global as fpcg
 
 from deeranalysis.utils.deerlab_population import deerlab_population_fitting, determine_pop_P
 
@@ -115,11 +116,11 @@ layout = html.Div([
         
         dbc.Col([
             html.Div([
-                fpc.plotly_deerlab_pagation(page_id=page_id),
+                fpcg.plotly_deerlab_pagination(page_id=page_id),
                 fpc.fit_results_tabs(
+                    fpcg.overview_tab_population(page_id),
                     fpc.fit_results_tab(page_id),
-                    fpc.goodness_of_fit_tab(page_id),
-                    fpc.dist_stats_tab(page_id),
+                    fpcg.goodness_of_fit_tab_pagination(page_id),
                 ),
                 ], style={'display': 'flex', 'flexDirection': 'column', 'height': 'calc(100vh - 160px)', 'gap': '12px'})
         ], width=9) # dbc.col
@@ -133,41 +134,31 @@ layout = html.Div([
 ])
 
 # ----- Clientside Callbacks for Loading States and Plot Pagination -----
-clientside_callback(
-        """
-        function updateLoadingState(n_clicks) {
-            return true
-        }
-        """,
-        Output({"type":"run-fit-btn","page":page_id}, "loading", allow_duplicate=True),
-        Input({"type":"run-fit-btn","page":page_id}, "n_clicks"),
-        prevent_initial_call=True,
-    )
 
-clientside_callback(
-    """
-    function(page, figuresJson) {
-        if (!figuresJson || !page) return dash_clientside.no_update;
-        return JSON.parse(figuresJson[page - 1]);
-    }
-    """,
-    Output({"type": "fit-plot", "page": page_id}, "figure", allow_duplicate=True),
-    Input({"type": "fit-plot-pagination", "page": page_id}, "value"),
-    Input({"type": "fit-plot-figures-store", "page": page_id}, "data"),
-    prevent_initial_call=True,
-)
-clientside_callback(
-    """
-    function(figuresJson) {
-        if (!figuresJson) return [1, 1];
-        return [figuresJson.length, 1];
-    }
-    """,
-    Output({"type": "fit-plot-pagination", "page": page_id}, "total"),
-    Output({"type": "fit-plot-pagination", "page": page_id}, "value"),
-    Input({"type": "fit-plot-figures-store", "page": page_id}, "data"),
-    prevent_initial_call=True,
-)
+# clientside_callback(
+#     """
+#     function(page, figuresJson) {
+#         if (!figuresJson || !page) return dash_clientside.no_update;
+#         return JSON.parse(figuresJson[page - 1]);
+#     }
+#     """,
+#     Output({"type": "fit-plot", "page": page_id}, "figure", allow_duplicate=True),
+#     Input({"type": "fit-plot-pagination", "page": page_id}, "value"),fit-plot-pagination
+#     Input({"type": "fit-plot-figures-store", "page": page_id}, "data"),
+#     prevent_initial_call=True,
+# )
+# clientside_callback(
+#     """
+#     function(figuresJson) {
+#         if (!figuresJson) return [1, 1];
+#         return [figuresJson.length, 1];
+#     }
+#     """,
+#     Output({"type": "fit-plot-pagination", "page": page_id}, "total"),
+#     Output({"type": "fit-plot-pagination", "page": page_id}, "value"),
+#     Input({"type": "fit-plot-figures-store", "page": page_id}, "data"),
+#     prevent_initial_call=True,
+# )
 
 # ----- Callbacks for input option updates and checking -----
 
@@ -226,32 +217,22 @@ def update_fit_options(n_pops,dd_model,bg_model,distance_axis,pathways_options):
 
 @callback(
     Output({'type': 'fit-results-store', 'page': page_id}, 'data'),
-    Output({"type": "fit-plot-figures-store", "page": page_id}, 'data'),
-    Output({"type":"run-fit-btn","page":page_id}, 'loading', allow_duplicate=True),
     Output({"type": "fit-results-code", "page": page_id}, 'code', allow_duplicate=True),
-    Output({"type": "gof-plot", "page": page_id}, 'figure', allow_duplicate=True),
-    Output({"type": "dist-stats-table", "page": page_id}, 'data', allow_duplicate=True),
     Output({"type":"save-fit-btn","page":page_id}, 'disabled'),
     Output({"type":"download-fit-btn","page":page_id}, 'disabled'),
 
     Input({"type":"run-fit-btn","page":page_id}, 'n_clicks'),
-    Input({'type': 'dataset-dropdown', 'page': page_id}, 'value'),
+    State({'type': 'dataset-dropdown', 'page': page_id}, 'value'),
     State({'type': 'fit_options', 'page': page_id}, 'data'),
+    running=[(Output({"type":"run-fit-btn","page":page_id}, 'loading'), True, False)],
     prevent_initial_call=True
 )
 def run_fit(n_clicks, dataset_id, fit_options):
 
-    ctx = dash.callback_context
-    triggered_id = ctx.triggered[0]['prop_id'].split('.')[0]
-    
-    try:
-        triggered_id = json.loads(triggered_id)
-    except (json.JSONDecodeError, TypeError):
-        pass
 
     if not dataset_id:
-        return dash.no_update,dash.no_update, False, dash.no_update, dash.no_update, dash.no_update, True,True
-    
+        return dash.no_update, dash.no_update, True, True
+
     session = get_session()
     datasets = []
     dataset_names = []
@@ -265,58 +246,31 @@ def run_fit(n_clicks, dataset_id, fit_options):
         datasets.append(dataset)
     session.close()
 
-    if triggered_id == {"page":page_id,"type":"dataset-dropdown"}:
-        figures_store = []
-        for ds,name in zip(datasets,dataset_names):
-            fig = plotly_deerlab(fitresult=ds)
-            fig.update_layout(title=f"Dataset: {name}", showlegend=True)
-            figures_store.append(fig.to_json())
-        return dash.no_update,figures_store, False, dash.no_update, dash.no_update, dash.no_update, True,True
+    distance_axis = fit_options.get('distance_axis', [0, 5])
+    bg_model_option = fit_options.get('bg_model', 'bg_hom3d')
+    pathways_options = fit_options.get('pathways_options', ['1'])
+    dd_model_option = fit_options.get('dd_model', 'dd_gauss')
+    n_pops = fit_options.get('n_pops', 2)
+
+    bg_model = getattr(dl, bg_model_option, dl.bg_hom3d)
+    pathways = [int(p) for p in pathways_options]
+    r = np.linspace(distance_axis[0], distance_axis[1], 100) # Default range
+    dd_model = getattr(dl, dd_model_option, dl.dd_gauss)
+    try:
+        n_datasets = len(datasets)
+        fit = deerlab_population_fitting(datasets,
+                                model=dd_model, n_pops=n_pops, 
+                                bg_model=bg_model, r=r, pathways=pathways)
+        fit.n_datasets = n_datasets
+        fit.n_pops = n_pops
+    except Exception as e:
+        print(f"Error during fitting: {e}")
+        return dash.no_update, f"Error during fitting: {e}", True, True
     
-    elif triggered_id == {"page":page_id,"type":"run-fit-btn"}:
 
-        distance_axis = fit_options.get('distance_axis', [0, 5])
-        bg_model_option = fit_options.get('bg_model', 'bg_hom3d')
-        pathways_options = fit_options.get('pathways_options', ['1'])
-        dd_model_option = fit_options.get('dd_model', 'dd_gauss')
-        n_pops = fit_options.get('n_pops', 2)
-
-        bg_model = getattr(dl, bg_model_option, dl.bg_hom3d)
-        pathways = [int(p) for p in pathways_options]
-        r = np.linspace(distance_axis[0], distance_axis[1], 100) # Default range
-        dd_model = getattr(dl, dd_model_option, dl.dd_gauss)
-        try:
-            n_datasets = len(datasets)
-            fit = deerlab_population_fitting(datasets,
-                                    model=dd_model, n_pops=n_pops, 
-                                    bg_model=bg_model, r=r, pathways=pathways)
-            fit.n_datasets = n_datasets
-            fit.n_pops = n_pops
-        except Exception as e:
-            print(f"Error during fitting: {e}")
-            return dash.no_update, dash.no_update, False, f"Error during fitting: {e}", dash.no_update, dash.no_update, True, True,True
-        
-        # Create plots
-
-        figures_store = []
-        Ps = determine_pop_P(r,fit,dd_model,n_datasets=n_datasets,n_pops=n_pops)
-        fit.P = Ps
-        for i in range(n_datasets):
-            plot_dict = {}
-            plot_dict['t'] = fit.t[i]
-            plot_dict['V'] = fit.Vexp[i]
-            plot_dict['model'] = fit.model[i]
-            plot_dict['P'] = Ps[i]['sum']
-            plot_dict['r'] = fit.r
-
-            fig = plotly_deerlab(fitresult=plot_dict)
-            fig.update_layout(title=f"Fit Result: {dataset_names[i]}", showlegend=True)
-            figures_store.append(fig.to_json())
-
-        gof = dash.no_update
-        dist_stats = dash.no_update
-        fit_store = fit_to_dict(fit,n_datasets)
-        return fit_store, figures_store, False, fit.__str__(), gof, dist_stats, False, False
+    fit_store = fit_to_dict(fit,n_datasets)
+    fit_store['populations'] = calc_population_fractions(fit)
+    return fit_store, fit.__str__(), False, False
 
 
 
@@ -324,24 +278,49 @@ def fit_to_dict(fit,n_datasets):
     """"
     Converts fit results to a dictionary for storage in the database. 
     This version is specific for population fitting where multiple fits are produced
-    """
-    fits = []
-    # for
-    for i in range(n_datasets):
-        output = {}
-        output['engine'] = 'DeerLab'
-        output['fit_type'] = 'Population'
 
-        output['t'] = fit.t[i].tolist() if fit.t is not None else None
-        output['model'] = fit.model[i].tolist() if fit.model is not None else None
-        output['P_model'] = fit.P[i]['sum'].tolist() if fit.P is not None else None
-        output['r'] = fit.r.tolist() if fit.r is not None else None
-        output['model_description'] = fit.__str__() if fit is not None else None
-        output['pathways'] = fit.pathways if fit.pathways is not None else None
-        output['PUncert'] = None
-        fits.append(output)
+
+    """
+    output = {}
+    output['engine'] = 'DeerLab'
+    output['fit_type'] = 'Population'
+    output['t'] = [fit.t[i].tolist() for i in range(n_datasets)] if fit.t is not None else None
+    output['V'] = [fit.Vexp[i].tolist() for i in range(n_datasets)] if fit.Vexp is not None else None
+    output['model'] = [fit.model[i].tolist() for i in range(n_datasets)] if fit.model is not None else None
+    # output['P'] = [fit.P[i]['sum'].tolist() for i in range(n_datasets)] if fit.P is not None else None
+    output['r'] = fit.r.tolist() if fit.r is not None else None
+    output['model_description'] = fit.__str__() if fit is not None else None
+    output['data'] = dl.json_dumps(fit) if fit is not None else None
+    output['dist_model'] = fit.Pmodel.name if hasattr(fit, 'Pmodel') else None
+    output['n_pops'] = fit.n_pops if hasattr(fit, 'n_pops') else None
     
-    return 
+    return output
+
+def calc_population_fractions(fit):
+    """
+    Calculates the fractions of each population for each dataset and their corresponding uncertanties
+    """
+
+    n_datasets = len(fit.Vexp)
+    n_pops = fit.n_pops
+    output = []
+    for i in range(n_datasets):
+        populations = {}
+        for j in range(n_pops-1):
+            letter = chr(ord('A') + j)
+            frac = getattr(fit, f"frac{letter}_{i+1}")
+            frac_unc = getattr(fit, f"frac{letter}_{i+1}Uncert")
+            ci = frac_unc.ci(95)
+            unc = (ci[1] - ci[0]) / 2
+            populations[letter] = {'frac': frac, 'unc': unc}
+        output.append(populations)
+
+        # Calculate the last population fraction as 1 - sum of others
+        last_letter = chr(ord('A') + n_pops - 1)
+        last_frac = 1 - sum(populations[chr(ord('A') + j)]['frac'] for j in range(n_pops-1))
+        last_unc = np.sqrt(sum(populations[chr(ord('A') + j)]['unc']**2 for j in range(n_pops-1)))
+        output[-1][last_letter] = {'frac': last_frac, 'unc': last_unc}
+    return output
 
 # ----- Save and Download Callbacks -----
 

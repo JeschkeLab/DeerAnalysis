@@ -1,8 +1,12 @@
 import dash_mantine_components as dmc
 from dash_iconify import DashIconify
 from deeranalysis.utils.deerlab_options import regparam_options, plotly_deerlab, plotly_goodness_of_fit,plotly_lcurve
+from deeranalysis.utils.database import get_session, Dataset
+from deeranalysis.utils import dataarray_from_database_entry
 
 from dash import dcc, html, callback, Input, Output, State, ALL, MATCH
+import deerlab as dl
+import numpy as np
 
 DEFAULT_FIT_RESULTS_CODE = """Fit Resuls will be displayed here after running the fit. \nThis can include parameters like mean distance, width, and any other relevant metrics."""
 
@@ -45,7 +49,7 @@ def adv_fit_options_parametric(page_id):
 
 
 def distance_slider(page_id):
-    return dmc.Stack([dmc.Text("Distance Axis (nm): ", size="md", fw=500, mb=4),
+    return dmc.Stack([dmc.Text("Distance Axis (nm): ", size="sm", fw=500, mb=4),
         dcc.RangeSlider(
                 id= {"type": "distance-axis", "page": page_id},
                 min=1.5,
@@ -58,18 +62,6 @@ def distance_slider(page_id):
                 className="dmc"
             )],gap=2,)
 
-# def distance_slider(page_id):
-#     return dcc.RangeSlider(
-#                     id= {"type": "distance-axis", "page": page_id},
-#                     min=1.5,
-#                     max=12,
-#                     step=0.5,
-#                     value=[1.5, 6],
-#                     marks={i: f'{i}' for i in range(1, 13)},
-#                     allowCross=False,
-#                     allow_direct_input=True,
-#                     className="dmc"
-#             )
 
 def fit_results_tab(page_id):
     """
@@ -169,21 +161,6 @@ def L_curve_tab(page_id):
     ], style={'flex': '1', 'display': 'flex', 'flexDirection': 'column', 'minHeight': 0})
     return tabstab, panel
 
-# def fit_results_tabs(page_id):
-#     return dmc.Paper([
-#         dmc.Tabs([
-#             dmc.TabsList([
-#                 dmc.TabsTab("Fit Results", value="FitResults"),
-#                 dmc.TabsTab("Goodness of Fit", value="gof"),
-#                 dmc.TabsTab("Dist. Stats", value="dist-stats"),
-#             ]),
-#             fit_results_tab(page_id),
-#             goodness_of_fit_tab(page_id),
-#             dist_stats_tab(page_id),
-#         ], style={'flex': '1', 'display': 'flex', 'flexDirection': 'column', 'minHeight': 0}),
-#     ], variant="outline",
-#     style={'flex': '1', 'display': 'flex', 'flexDirection': 'column', 'minHeight': 0, 'overflow': 'hidden'})
-
 
 def fit_results_tabs(*tabs):
     """
@@ -214,14 +191,99 @@ def fit_results_tabs(*tabs):
 
 def fit_plot(page_id):
     return dmc.Paper([
-                    dcc.Graph(id={"type": "fit-plot", "page": page_id},
-                            figure=plotly_deerlab(None),
-                            style={'height': '100%'},
-                            config={'responsive': True})
-                            ],
-                            style={'flex': '1', 'display': 'flex', 'flexDirection': 'column', 'minHeight': 300})
+        dmc.Group([
+            dmc.Text("Dataset:", size="md", id={"type": "fit-plot-dataset-label", "page": page_id}, mb=0),
+            dmc.Switch(id={'type': 'fit-plot-showpathways','page':page_id},
+                       onLabel="ON", offLabel="OFF",
+                       label="Show Pathways", labelPosition='left',
+                       size="lg",pr='lg'),
+        ],justify="space-between"),
+        dcc.Graph(id={"type": "fit-plot", "page": page_id},
+                figure=plotly_deerlab(None),
+                style={'height': '100%'},
+                config={'responsive': True})
+                ],
+                style={'flex': '1', 'display': 'flex', 'flexDirection': 'column', 'minHeight': 300})
+
+@callback(
+    Output({'type': 'fit-results-store', 'page': MATCH}, 'data', allow_duplicate=True),
+    Input({'type': 'dataset-dropdown', 'page': MATCH}, 'value'),
+    prevent_initial_call=True,
+)
+def plot_dataset(dataset_id):
+    if not dataset_id:
+        return None
+    if not isinstance(dataset_id, list):
+        dataset_id = [dataset_id]
+    n_datasets = len(dataset_id)
+    output = {"fit_type":None}
+    
+    if n_datasets == 1:
+        session = get_session()
+        dataset_entry = session.query(Dataset).filter_by(id=dataset_id[0]).first()
+        dataset = dataarray_from_database_entry(dataset_entry)
+        session.close()
+        dataset = dataset.assign_coords(t=dataset.t.values)
+        # Normalise the data:
+        V = dataset.values.real
+        V = V / np.max(V)
+        output.update({'t': [dataset.t.values.tolist()], 'V': [V.tolist()]})
+        return output
+    elif n_datasets > 1:
+        session = get_session()
+        ts = []
+        Vs = []
+        for ds_id in dataset_id:
+            dataset_entry = session.query(Dataset).filter_by(id=ds_id).first()
+            dataset = dataarray_from_database_entry(dataset_entry)
+            dataset = dataset.assign_coords(t=dataset.t.values)
+            # Normalise the data:
+            V = dataset.values.real
+            V = V / np.max(V)
+            ts.append(dataset.t.values.tolist())
+            Vs.append(V.tolist())
+        session.close()
+        output.update({'t': ts, 'V': Vs})
+        return output
+    else:
+        raise ValueError("Invalid dataset_id: expected a single ID or a list of IDs, got {}".format(dataset_id))
+
+@callback(
+    Output({"type": "fit-plot", "page": MATCH}, 'figure'),
+    Output({'type': 'fit-plot-showpathways', 'page': MATCH}, 'disabled'),
+    Input({'type': 'fit-plot-showpathways', 'page': MATCH}, 'checked'),
+    Input({'type': 'fit-results-store', 'page': MATCH}, 'data'),
+    prevent_initial_call=True,
+)
+def toggle_pathways(show_pathways, fit_dict):
+    if not fit_dict:
+        return plotly_deerlab(None), True
+    if 'data' not in fit_dict:
+        return plotly_deerlab(fitresult=fit_dict), True
+    fit = dl.json_loads(fit_dict['data'])
+    if not hasattr(fit, 'pathways') or len(fit.pathways) == 1:
+        show_pathways = False
+        pathway_option = False
+    else:
+        pathway_option = True
+    return plotly_deerlab(fitresult=fit, showPathways=show_pathways or False), not pathway_option
 
 
+def pathway_input(page_id):
+    tooltip_msg = "Select which pathways to include in the fit. These will be applied to all datasets, if they are feasible for the corresponding experiment. If no pathways are selected, the fit will be background only."
+    return dmc.Tooltip(dmc.CheckboxGroup(
+                id={'type': 'pathways-options', 'page': page_id},
+                label="Pathways to include:",
+                description="Select no pathways for a background-only fit.",
+                children=dmc.Group([
+                    dmc.Checkbox(value='1', label='1'),
+                    dmc.Checkbox(value='2', label='2'),
+                    dmc.Checkbox(value='3', label='3'),
+                    dmc.Checkbox(value='4', label='4'),
+                    dmc.Checkbox(value='5', label='5'),
+                ]),
+                value=['1'], # Default selected pathways
+            ),label=tooltip_msg, position="left", withArrow=True, transitionProps={"duration": 0},multiline=True,w="15%")
 
 # ----- Callbacks for Global and Population Fitting Pages -----
 
