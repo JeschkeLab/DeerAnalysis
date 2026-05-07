@@ -66,9 +66,16 @@ def initialize_logs_api():
     set_logs_api_global()
 
 def test_logs_api():
-    
+    import concurrent.futures
+    def _connect():
+        return LOGS(url, apiKey, verify=False)
+    executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+    future = executor.submit(_connect)
+    executor.shutdown(wait=False)
     try:
-        logs = LOGS(url, apiKey,verify= False)
+        future.result(timeout=2)
+    except concurrent.futures.TimeoutError:
+        raise Exception("Connection timed out. The LOGS server is unreachable from this network.")
     except Exception as e:
         raise Exception(f"Failed to connect to LOGS API: {e}")
 

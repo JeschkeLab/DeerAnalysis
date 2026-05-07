@@ -34,7 +34,7 @@ layout = dmc.Container([
     
     dmc.Accordion(
         multiple=True,
-        value=["general"],
+        value=["about","general"],
         children=[
             # About / Version
             dmc.AccordionItem(
@@ -134,13 +134,13 @@ layout = dmc.Container([
                             #     step=10,
                             #     mb="sm"
                             # ),
-                            dmc.TextInput(
-                                id="config-default-path",
-                                label="Data Directory",
-                                description="The directory for loading data files",
-                                placeholder="/path/to/data",
-                                mb="sm"
-                            ),
+                            # dmc.TextInput(
+                            #     id="config-default-path",
+                            #     label="Data Directory",
+                            #     description="The directory for loading data files",
+                            #     placeholder="/path/to/data",
+                            #     mb="sm"
+                            # ),
                             dmc.Select(
                                 id="config-plot-theme",
                                 label="Plot Theme",
@@ -418,15 +418,13 @@ clientside_callback(
     Input("config-save-btn", "n_clicks"),
     State("config-dark-mode", "checked"),
     State("config-ui-scale", "value"),
-    State("config-auto-save", "checked"),
-    State("config-max-datasets", "value"),
-    State("config-default-path", "value"),
+    # State("config-default-path", "value"),
     State("config-plot-theme", "value"),
     State("config-logs-api-url", "value"),
     State("config-logs-api-key", "value"),
     prevent_initial_call=True
 )
-def save_configuration(n_clicks, dark_mode, ui_scale, auto_save, max_datasets, default_path, plot_theme, logs_url, logs_api_key):
+def save_configuration(n_clicks, dark_mode, ui_scale, plot_theme, logs_url, logs_api_key):
     if n_clicks:
         try:
             if logs_url and logs_api_key:
