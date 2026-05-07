@@ -32,6 +32,7 @@ class Dataset(Base):
     delays = Column(JSON, default={})
     meta = Column(JSON, default={})
     created_at = Column(DateTime, default=datetime.now(timezone.utc))
+    measured_at = Column(DateTime, nullable=True, default=None)
     
     fits = relationship("Fit", back_populates="dataset", cascade="all, delete-orphan", lazy='joined')
 

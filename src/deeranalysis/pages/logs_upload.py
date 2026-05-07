@@ -26,7 +26,7 @@ logsTable_column_defs = [
 layout = dmc.Container([
     dcc.Store(id='logs-connected', data=False),
     dmc.Group([
-        dmc.Title("LOGS Data Upload", order=1),
+        dmc.Title("LOGS Data Import", order=1),
         dmc.ActionIcon(
             DashIconify(icon="mdi:refresh", width=20),
             id="logs-refresh-btn",

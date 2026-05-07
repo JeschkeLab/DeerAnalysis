@@ -275,7 +275,7 @@ def download_fit(n_clicks, fit_store):
     Output({"type": "l-curve-plot", "page": page_id}, 'figure', allow_duplicate=True),
     Output({"type": "dist-stats-table", "page": page_id}, 'data', allow_duplicate=True),
     Input({'type': 'fit-results-store', 'page': page_id}, 'data'),
-     prevent_initial_call=True
+    prevent_initial_call=True
 )
 def update_plots_tables(fit_dict):
 

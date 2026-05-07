@@ -4,6 +4,8 @@ import xarray as xr
 import inspect
 import numpy as np
 
+from deeranalysis.utils.deerlab_normal import apply_model_overrides
+from deeranalysis.utils.deerlab_global import create_Vmodel
 
 def _create_multi_pop_model_func(model, n_pops):
     # Build new param names for n_pops populations
@@ -57,46 +59,46 @@ def create_multi_pop_model(model, n_pops):
     return Pmodel
 
 
-def create_Vmodel(dataset,t,r,Pmodel,pathways):
+# def create_Vmodel(dataset,t,r,Pmodel,pathways):
 
-    pathways = np.array(pathways)
+#     pathways = np.array(pathways)
 
 
-    if 'exp_type' in dataset.attrs:
-        exp_name = dataset.attrs['exp_type']
-    elif 'seq_name' in dataset.attrs:
-        exp_name = dataset.attrs['seq_name']
-    else:
-        exp_name = None
+#     if 'exp_type' in dataset.attrs:
+#         exp_name = dataset.attrs['exp_type']
+#     elif 'seq_name' in dataset.attrs:
+#         exp_name = dataset.attrs['seq_name']
+#     else:
+#         exp_name = None
     
-    if exp_name is None:
-        Vmodel = dl.dipolarmodel(t, r, Pmodel)
+#     if exp_name is None:
+#         Vmodel = dl.dipolarmodel(t, r, Pmodel)
 
-    elif exp_name == '4pDEER':
-        tau1 = dataset.attrs['tau1']/1e3
-        tau2 = dataset.attrs['tau2']/1e3
-        experiment_info= dl.ex_4pdeer(tau1, tau2,pathways=pathways[pathways<4])
-        Vmodel = dl.dipolarmodel(t, r, Pmodel, experiment=experiment_info)
+#     elif exp_name == '4pDEER':
+#         tau1 = dataset.attrs['tau1']/1e3
+#         tau2 = dataset.attrs['tau2']/1e3
+#         experiment_info= dl.ex_4pdeer(tau1, tau2,pathways=pathways[pathways<5])
+#         Vmodel = dl.dipolarmodel(t, r, Pmodel, experiment=experiment_info)
     
-    elif exp_name == '3pDEER':
-        tau1 = dataset.attrs['tau1']/1e3
-        experiment_info= dl.ex_3pdeer(tau1,pathways=pathways[pathways<2])
-        Vmodel = dl.dipolarmodel(t, r, Pmodel, experiment=experiment_info)
+#     elif exp_name == '3pDEER':
+#         tau1 = dataset.attrs['tau1']/1e3
+#         experiment_info= dl.ex_3pdeer(tau1,pathways=pathways[pathways<3])
+#         Vmodel = dl.dipolarmodel(t, r, Pmodel, experiment=experiment_info)
     
-    elif exp_name ==  '5pDEER':
-        tau1 = dataset.attrs['tau1']/1e3
-        tau2 = dataset.attrs['tau2']/1e3
-        tau3 = dataset.attrs['tau3']/1e3
-        experiment_info= dl.ex_fwd5pdeer(tau1, tau2, tau3,pathways=pathways[pathways<8])
-        Vmodel = dl.dipolarmodel(t, r, Pmodel, experiment=experiment_info)
+#     elif exp_name ==  '5pDEER':
+#         tau1 = dataset.attrs['tau1']/1e3
+#         tau2 = dataset.attrs['tau2']/1e3
+#         tau3 = dataset.attrs['tau3']/1e3
+#         experiment_info= dl.ex_fwd5pdeer(tau1, tau2, tau3,pathways=pathways[pathways<9])
+#         Vmodel = dl.dipolarmodel(t, r, Pmodel, experiment=experiment_info)
     
-    elif exp_name == 'RIDME':
-        tau1 = dataset.attrs['tau1']/1e3
-        tau2 = dataset.attrs['tau2']/1e3
-        experiment_info= dl.ex_ridme(tau1,tau2,pathways=pathways[pathways<4])
-        Vmodel = dl.dipolarmodel(t, r, Pmodel, experiment=experiment_info)
+#     elif exp_name == 'RIDME':
+#         tau1 = dataset.attrs['tau1']/1e3
+#         tau2 = dataset.attrs['tau2']/1e3
+#         experiment_info= dl.ex_ridme(tau1,tau2,pathways=pathways[pathways<5])
+#         Vmodel = dl.dipolarmodel(t, r, Pmodel, experiment=experiment_info)
 
-    return Vmodel
+#     return Vmodel
 
 def _make_pop_model(base_model, j, i, n_pops):
     """Create a dl.Model for population j (0-indexed) in dataset i (0-indexed).
@@ -214,6 +216,74 @@ def determine_pop_P(r, fit, P_model, n_datasets, n_pops):
     return Prs, PUQs
 
 
+def build_population_model_data(datasets, bg_model_name, pathways,
+                                 dd_model_name, n_pops, existing_overrides=None):
+    """
+    Build a serialisable parameter dict for the population model edit modal.
+
+    Constructs the full merged+linked global model so that per-dataset params
+    (lam1_1, conc_2, fracA_3, …) appear alongside the shared global ones
+    (meanA, stdA, …).
+    """
+    from deeranalysis.utils.deerlab_options import _safe_float
+
+    r = np.linspace(1.5,6, 100)
+    base_model = getattr(dl, dd_model_name, dl.dd_gauss)
+    Pmodel = create_multi_pop_model(base_model, n_pops)
+
+    Vmodels = []
+    for ds in datasets:
+        t = ds.coords['t'].values
+        Vmodels.append(create_Vmodel(ds, t, r, Pmodel, pathways=pathways))
+
+    global_model = dl.merge(*Vmodels)
+    Nsignals = len(datasets)
+    links_args = {}
+    for i in range(n_pops):
+        links_args[f"mean{chr(ord('A') + i)}"] = [f"mean{chr(ord('A') + i)}_{j+1}" for j in range(Nsignals)]
+        links_args[f"std{chr(ord('A') + i)}"] = [f"std{chr(ord('A') + i)}_{j+1}" for j in range(Nsignals)]
+    global_model = dl.link(global_model, **links_args)
+
+    params_dict = {}
+    for name in global_model.signature:
+        if name in ('t', 'P'):
+            continue
+        try:
+            param = getattr(global_model, name)
+            if not hasattr(param, 'par0'):
+                continue
+            params_dict[name] = {
+                'par0': _safe_float(param.par0),
+                'lb': _safe_float(param.lb),
+                'ub': _safe_float(param.ub),
+                'frozen': bool(param.frozen),
+                'description': str(param.description) if param.description else '',
+                'unit': str(param.unit) if param.unit else '',
+            }
+        except Exception as e:
+            print(f"Warning: could not serialise param {name}: {e}")
+
+    if existing_overrides:
+        for name, override in existing_overrides.items():
+            if name in params_dict:
+                for key in ('par0', 'lb', 'ub', 'frozen'):
+                    if key in override and override[key] is not None:
+                        params_dict[name][key] = override[key]
+
+    # Detect which experiment type the first dataset is
+    ds0 = datasets[0]
+    attrs = ds0.attrs
+    seq_name = attrs.get('seq_name', attrs.get('exp_type', '4pDEER'))
+
+    return {
+        'params': params_dict,
+        'exp_type': seq_name,
+        'bg_model': bg_model_name,
+        'p_model': dd_model_name,
+        'pathways': pathways,
+    }
+
+
 def background_func_population(ts, Vmodels, fit):
     """
     Compute the background for each dataset in a population fit.
@@ -275,7 +345,7 @@ def background_func_population(ts, Vmodels, fit):
         scale = 1
         if len(pathways) > 1:
             for idx, p_id in enumerate(pathways):
-                if isinstance(p_id, list):
+                if isinstance(p_id, list): # Adds support for linked pathways e.g. lam23 when lam 2 =
                     lam = getattr(fit, f"lam{p_id[0]}{p_id[1]}{suffix}")
                     scale += -1 * lam
                     for j in p_id:
@@ -309,8 +379,8 @@ def background_func_population(ts, Vmodels, fit):
     return backgrounds
 
 
-def deerlab_population_fitting(datasets, model=dl.dd_gauss, n_pops = 2,bg_model=dl.bg_hom3d, verbosity=0,
-                               r=None,pathways=None, **kwargs):
+def deerlab_population_fitting(datasets, model=dl.dd_gauss, n_pops=2, bg_model=dl.bg_hom3d, verbosity=0,
+                               r=None, pathways=None, model_overrides=None, **kwargs):
     """
     
     
@@ -401,6 +471,9 @@ def deerlab_population_fitting(datasets, model=dl.dd_gauss, n_pops = 2,bg_model=
         links_args[f"std{chr(ord('A') + i)}"] = [f"std{chr(ord('A') + i)}_{j+1}" for j in range(Nsignals)]
 
     global_model = dl.link(global_model, **links_args)
+
+    if model_overrides:
+        apply_model_overrides(global_model, model_overrides)
 
     fit = dl.fit(global_model, Vs,**kwargs)
 

@@ -5,6 +5,7 @@ from dash_iconify import DashIconify
 from deeranalysis.utils.database import get_session, Dataset
 from deeranalysis.utils.pulsespel_parser import parse_PulseSpel
 from deeranalysis.components.metadata_table import build_metadata_section_datarray, metadata_long_values_model
+from deeranalysis.utils.deerlab_options import experiment_type_options
 import dash_ag_grid as dag
 import numpy as np
 import plotly.graph_objs as go
@@ -163,7 +164,6 @@ def _build_signal_figure(dataset_store):
             title=title_text,
             xaxis_title='Time (us)',
             yaxis_title='Signal (a.u.)',
-            template=None
         )
     }
 
@@ -304,16 +304,12 @@ def update_samples_and_projects(n_clicks):
     prevent_initial_call=True
 )
 def check_delays(exp_type, delays_row_data):
-    if exp_type == '4pDEER':
-        required_delays = ['tau1', 'tau2']
-    elif exp_type == '5pDEER':
-        required_delays = ['tau1', 'tau2', 'tau3']
-    elif exp_type == '3pDEER':
-        required_delays = ['tau1']
-    elif exp_type == 'RIDME':
-        required_delays = ['tau1', 'tau2']
-    else:
-        return dash.no_update
+    def get_delays_by_value(options_list, value):
+        """Extract the delays element from a list of dicts based on a value."""
+        option = next((opt for opt in options_list if opt.get('value') == value), None)
+        return option.get('delays') if option else None
+    
+    required_delays = get_delays_by_value(experiment_type_options, exp_type)
 
     delays = {row['parameter']: row['value'] for row in delays_row_data}
     new_delays = delays.copy()

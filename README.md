@@ -6,7 +6,7 @@
 
 
 DeerAnalysis 2026 is major re-design and re-release of the popular dipolar-EPR data processing tool, DeerAnalysis. 
-DeerAnalysis was originally released in 2006, as a matlab based GUI for Tikhnov-regularisation based approaches for extracting distance distributions from Double-Electron-Electron-Resonance (DEER) data, it has been updated multiple times since then most recently in 2022. In xxx DeerAnalysis gained support for neural-network based fitting in the form of DeerNet.
+DeerAnalysis was originally released in 2004, as a matlab based GUI for Tikhnov-regularisation based approaches for extracting distance distributions from Double-Electron-Electron-Resonance (DEER) data, it has been updated multiple times since then most recently in 2022. In xxx DeerAnalysis gained support for neural-network based fitting in the form of DeerNet.
 
 In the 2026 release, DeerAnalysis moved to a modern Python and Javascript based software stack, gaining support for multi-pathway fitting, compactness criterion for non-parametric models, and a completely redesigned user interface. Additionally, a new data/fit management software was implemented, allowing users to easily manage and compare multiple datasets and fits. Support for DeerNet was retained. The parametric and non-parametric fitting is powered by the latest version of [DeerLab](github.com/JeschkeLab/DeerLab), which is also available as a standalone package for Python. 
 

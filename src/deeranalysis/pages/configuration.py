@@ -116,24 +116,24 @@ layout = dmc.Container([
                                     mb="xl",
                                 ),
                             ], gap=0, mb="sm"),
-                            dmc.Switch(
-                                id="config-auto-save",
-                                label="Auto-save Results",
-                                description="Automatically save fit results to database",
-                                checked=True,
-                                size="md",
-                                mb="sm"
-                            ),
-                            dmc.NumberInput(
-                                id="config-max-datasets",
-                                label="Maximum Displayed Datasets",
-                                description="Maximum number of datasets to display in tables",
-                                value=100,
-                                min=10,
-                                max=1000,
-                                step=10,
-                                mb="sm"
-                            ),
+                            # dmc.Switch(
+                            #     id="config-auto-save",
+                            #     label="Auto-save Results",
+                            #     description="Automatically save fit results to database",
+                            #     checked=True,
+                            #     size="md",
+                            #     mb="sm"
+                            # ),
+                            # dmc.NumberInput(
+                            #     id="config-max-datasets",
+                            #     label="Maximum Displayed Datasets",
+                            #     description="Maximum number of datasets to display in tables",
+                            #     value=100,
+                            #     min=10,
+                            #     max=1000,
+                            #     step=10,
+                            #     mb="sm"
+                            # ),
                             dmc.TextInput(
                                 id="config-default-path",
                                 label="Data Directory",
@@ -249,22 +249,6 @@ layout = dmc.Container([
                                 allowDecimal=False,
                                 mb="sm"
                             ),
-                            dmc.Switch(
-                                id="config-dl-phase-correction",
-                                label="Automatic Phase Correction",
-                                description="Apply automatic phase correction to data",
-                                checked=True,
-                                size="md",
-                                mb="sm"
-                            ),
-                            dmc.Switch(
-                                id="config-dl-zero-time-correction",
-                                label="Automatic Zero-Time Correction",
-                                description="Apply automatic zero-time correction",
-                                checked=True,
-                                size="md",
-                                mb="sm"
-                            ),
                         ])
                     ])
                 ]
@@ -318,14 +302,14 @@ layout = dmc.Container([
                                 step=5,
                                 mb="sm"
                             ),
-                            dmc.Switch(
-                                id="config-dn-gpu-acceleration",
-                                label="GPU Acceleration",
-                                description="Use GPU for DeerNet inference (if available)",
-                                checked=False,
-                                size="md",
-                                mb="sm"
-                            ),
+                            # dmc.Switch(
+                            #     id="config-dn-gpu-acceleration",
+                            #     label="GPU Acceleration",
+                            #     description="Use GPU for DeerNet inference (if available)",
+                            #     checked=False,
+                            #     size="md",
+                            #     mb="sm"
+                            # ),
                             dmc.TextInput(
                                 id="config-dn-model-path",
                                 label="Custom Model Path",

@@ -19,7 +19,10 @@ def fit_save_download_buttons(page_id):
 
 
 def adv_fit_options_regularisation(page_id):
-    return dmc.Group([
+    return dmc.Accordion(
+                    dmc.AccordionItem([
+                        dmc.AccordionControl("Advanced Fit Options"),
+                        dmc.AccordionPanel([
         dmc.Select(
             label='Regularization Method',
             description="Method for the automatic selection of the optimal regularization parameter:",
@@ -32,10 +35,13 @@ def adv_fit_options_regularisation(page_id):
         dmc.NumberInput(
             label="Fixed Regularization Parameter (α):",
             id={"type": "fixed-alpha", "page": page_id},
-            placeholder="Set a fixed regularization parameter (overrides automatic selection)",
-            disabled=True,
+            description="Set a fixed regularization parameter (overrides automatic selection)",
+            type='text',
+            value=None,
+            step=0.001,
+            allowNegative=False,
         ),
-    ],gap="xs",)
+    ],)],value='adv-options'),)
 
 def adv_fit_options_parametric(page_id):
     return dmc.Group([
@@ -285,52 +291,6 @@ def pathway_input(page_id):
                 value=['1'], # Default selected pathways
             ),label=tooltip_msg, position="left", withArrow=True, transitionProps={"duration": 0},multiline=True,w="15%")
 
-# ----- Callbacks for Global and Population Fitting Pages -----
-
-
-def plotly_deerlab_pagation(*datasets, page_id):
-    """
-    For globally fit datasets, creates a plotly figure using the plotly deerlab function for each dataset and combines them
-    into a single element with a dmc.Pagination component to navigate between them. This is encapsulated in a dmc.Paper just like the fit_plot function. 
-    The pagination component will have as many pages as there are datasets, and the figure will update to show the corresponding dataset when a page is selected.
-
-    If no datasets are provided, returns a default plotly deerlab figure but still with a pagination element.
-    """
-    if datasets:
-        figures = [plotly_deerlab(ds) for ds in datasets]
-        initial_figure = figures[0]
-        total_pages = len(figures)
-    else:
-        figures = [plotly_deerlab(None)]
-        initial_figure = figures[0]
-        total_pages = 1
-
-    # Store serialized figures so a clientside callback can swap them
-    figures_json = [fig.to_json() for fig in figures]
-
-    return dmc.Paper([
-        dcc.Store(
-            id={"type": "fit-plot-figures-store", "page": page_id},
-            data=figures_json,
-        ),
-        dcc.Graph(
-            id={"type": "fit-plot", "page": page_id},
-            figure=initial_figure,
-            style={'height': '100%'},
-            config={'responsive': True},
-        ),
-        dmc.Center(
-            dmc.Pagination(
-                id={"type": "fit-plot-pagination", "page": page_id},
-                total=total_pages,
-                value=1,
-                withEdges=True,
-            ),
-            mt="xs",
-        ),
-    ], style={'flex': '1', 'display': 'flex', 'flexDirection': 'column', 'minHeight': 300})
-
-
 # ---------------------------------------------------------------------------
 # Overview Tab Components, Cards and Callbacks
 # ---------------------------------------------------------------------------
@@ -424,6 +384,9 @@ def overview_tab(page_id):
     """
     tabstab = dmc.TabsTab("Overview", value="overview")
     panel = dmc.TabsPanel(value="overview", children=[
+        # Dummy components so the shared overview-card callback can find all its MATCH inputs
+        dcc.Store(id={"type": "fit-results-store-multi", "page": page_id}),
+        html.Div(dmc.Pagination(id={"type": "fit-plot-pagination", "page": page_id}, total=1, value=1), style={"display": "none"}),
         *_overview_card_grids(page_id),
     ], style={'flex': '1', 'display': 'flex', 'flexDirection': 'column', 'minHeight': 0})
     return tabstab, panel
@@ -497,7 +460,7 @@ def _overview_card_grids(page_id):
 # Overview card callbacks — registered once, work for every page via MATCH
 # ---------------------------------------------------------------------------
 
-def _extract_overview_metrics(store_data):
+def _extract_overview_metrics(store_data,page_number=None):
     """
     Extracts overview card metrics from a fit-results-store dict.
 
@@ -512,6 +475,9 @@ def _extract_overview_metrics(store_data):
 
     gof = store_data.get('gof') or {}
     dist_stats = store_data.get('dist_stats') or {}
+    if page_number is not None and isinstance(gof, list) and isinstance(dist_stats, list):
+        gof = gof[page_number]
+        dist_stats = dist_stats[page_number]
 
     def _gof(key, *aliases):
         for k in (key,) + aliases:
@@ -560,27 +526,16 @@ def _render_cards(outputs, metrics):
 @callback(
     Output({"type": "overview-card", "metric": ALL, "page": MATCH}, "children"),
     Input({"type": "fit-results-store", "page": MATCH}, "data"),
+    Input({"type": "fit-results-store-multi", "page": MATCH}, "data"),
+    Input({"type": "fit-plot-pagination", "page": MATCH}, "value"),
+    prevent_initial_call=True,
 )
-def update_overview_cards(store_data):
+def update_overview_cards(store_data, store_data_multi, page_number=None):
     """Updates all overview cards on a page whenever fit-results-store changes."""
     import dash
     outputs = dash.callback_context.outputs_list
+    if store_data_multi is not None:
+        page_idx = (page_number or 1) - 1
+        return _render_cards(outputs, _extract_overview_metrics(store_data_multi, page_idx))
     return _render_cards(outputs, _extract_overview_metrics(store_data))
 
-
-@callback(
-    Output({"type": "overview-card", "metric": ALL, "page": MATCH}, "children", allow_duplicate=True),
-    Input({"type": "overview-pagination", "page": MATCH}, "value"),
-    State({"type": "overview-global-data-store", "page": MATCH}, "data"),
-    prevent_initial_call=True,
-)
-def update_overview_cards_global(page_value, all_store_data):
-    """Updates overview cards when the pagination changes on a global-fit overview tab."""
-    import dash
-    outputs = dash.callback_context.outputs_list
-    per_dataset_store = {}
-    if all_store_data and page_value is not None:
-        idx = page_value - 1
-        if 0 <= idx < len(all_store_data):
-            per_dataset_store = all_store_data[idx]
-    return _render_cards(outputs, _extract_overview_metrics(per_dataset_store))

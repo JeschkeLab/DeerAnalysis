@@ -14,12 +14,13 @@ regparam_options = [
 ]
 
 experiment_type_options = [
-    {"label": "4-pulse DEER", "value": "4pDEER", "max_pathways": 4},
-    {"label": "3-pulse DEER", "value": "3pDEER", "max_pathways": 3},
-    {"label": "5-pulse DEER", "value": "5pDEER", "max_pathways": 5},
-    {"label": "RIDME", "value": "RIDME","max_pathways": 4},
-    {"label": "SIFTER", "value": "SIFTER","max_pathways": 3},
-    {"label": "DQC", "value": "SIFTER","max_pathways": 3}
+     {"label": "Single Pathway", "value": "single", "max_pathways": 1, "delays": []},
+    {"label": "4-pulse DEER", "value": "4pDEER", "max_pathways": 4, "delays": ['tau1', 'tau2']},
+    {"label": "3-pulse DEER", "value": "3pDEER", "max_pathways": 3, "delays": ['tau1']},
+    {"label": "5-pulse DEER", "value": "5pDEER", "max_pathways": 5, "delays": ['tau1', 'tau2', 'tau3']},
+    {"label": "RIDME", "value": "RIDME","max_pathways": 4, "delays": ['tau1', 'tau2']},
+    {"label": "SIFTER", "value": "SIFTER","max_pathways": 3, "delays": ['tau1', 'tau2']},
+    {"label": "DQC", "value": "DQC","max_pathways": 3, "delays": ['tau1', 'tau2', 'tau3']},
     ]
 
 background_models = [
@@ -97,7 +98,7 @@ def plotly_goodness_of_fit(results=None, index=None):
     residuals = results.residuals[idx] if isinstance(results.residuals, list) else results.residuals
     noiselvl  = results.noiselvl[idx]  if isinstance(results.noiselvl, (list,np.ndarray))  else results.noiselvl
 
-    data_color = "#3409b6"  # Default plotly blue
+    data_color =  colour_scheme_light[0] #"#3409b6"  # Default plotly blue
     grey_color = "#ACACAC"  # Grey for confidence intervals
 
     # Plot 1: Residuals with noise level and mean
@@ -105,7 +106,7 @@ def plotly_goodness_of_fit(results=None, index=None):
     fig.add_trace(go.Scatter(x=t, y=2*noiselvl*np.ones_like(t), mode='lines', name='2σ', line=dict(dash='dash',color=grey_color),showlegend=False), row=1, col=1)
     fig.add_trace(go.Scatter(x=t, y=-2*noiselvl*np.ones_like(t),fill='tonexty', mode='lines', name='±2σ', line=dict(color=grey_color)), row=1, col=1)
     # fig.add_trace(go.Scatter(x=results.dataset.t, y=np.mean(results.residuals)*np.ones_like(results.dataset.t), mode='lines', name='Mean', line=dict(dash='dot')), row=1, col=1)
-
+    fig.update_xaxes(title_text="Time (µs)", row=1, col=1)
 
     # Plot 2: Histogram of residuals with normal distribution fit
     norm_residuals = (residuals - np.mean(residuals)) / np.std(residuals)
@@ -117,7 +118,7 @@ def plotly_goodness_of_fit(results=None, index=None):
     fig.add_trace(go.Scatter(x=x, y=(1/np.sqrt(2*np.pi))*np.exp(-0.5*x**2), mode='lines', name='Normal Fit', showlegend=True), row=1, col=2)
     fig.update_yaxes(visible=False, row=1, col=2)
 
-    fig.update_xaxes(range=[-4, 4], row=1, col=2)
+    fig.update_xaxes(range=[-4, 4],title_text="Normalized Residuals", row=1, col=2)
 
 
     # Plot 3: Autocorrelation of residuals with confidence intervals
@@ -134,7 +135,7 @@ def plotly_goodness_of_fit(results=None, index=None):
     fig.add_trace(go.Scatter(x=lags, y=-threshold*np.ones_like(lags), fill='tonexty', mode='lines', name='White Noise Confidence Region', line=dict(color=grey_color)), row=1, col=3,)
 
     # Set lower x lim
-    fig.update_xaxes(range=[-0.5, maxLag], row=1, col=3)
+    fig.update_xaxes(range=[-0.5, maxLag],title_text="Lags", row=1, col=3)
     fig.update_yaxes(visible=False, row=1, col=3)
 
 
@@ -262,15 +263,18 @@ def plotly_deerlab(fitresult=None, orientation='h', index=None,
         background = fitresult.background[idx] if (hasattr(fitresult,'background') and isinstance(fitresult.background, list)) else (fitresult.background if hasattr(fitresult,'background') else None)
 
         if hasattr(fitresult, 'P') and isinstance(fitresult.P, list):
-            Ps_pop  = fitresult.P[idx]
-            if hasattr(fitresult, 'PUQ'):
-                UQs_pop = fitresult.PUQ[idx]['UQs']
-                P_factor = fitresult.PUQ[idx]['factor']
-            else:
-                UQs_pop = None
-                P_factor = 1.0
-            P       = Ps_pop['sum']
-            PUncert = UQs_pop['sum'] if UQs_pop is not None else None
+            P  = fitresult.P[idx]
+            PUncert = fitresult.PUncert[idx]
+            if isinstance(P, dict) and 'sum' in P:
+                Ps_pop = P
+                P = P['sum']
+                if hasattr(fitresult, 'PUQ'):
+                    UQs_pop = PUncert['UQs']
+                    P_factor = PUncert['factor']
+                else:
+                    UQs_pop = None
+                    P_factor = 1.0
+                PUncert = UQs_pop['sum'] if UQs_pop is not None else None
         elif hasattr(fitresult, 'P'):
             P       = fitresult.P
             PUncert = fitresult.PUncert.ci(95) if hasattr(fitresult,'PUncert') else None
@@ -479,7 +483,7 @@ def _safe_float(val):
 
 
 def build_model_data(dataset, bg_model_name, pathways, r_range,
-                     p_model_name=None, existing_overrides=None):
+                     p_model_name=None, existing_overrides=None, p_model=None):
     """
     Build a serialisable dict of the dipolar model parameters for the modal.
 
@@ -540,7 +544,8 @@ def build_model_data(dataset, bg_model_name, pathways, r_range,
         if bg_model_name and bg_model_name != 'none'
         else None
     )
-    p_model = getattr(dl, p_model_name, None) if p_model_name else None
+    if p_model is None:
+        p_model = getattr(dl, p_model_name, None) if p_model_name else None
 
     Vmodel = dl.dipolarmodel(t, r, experiment=exp_info,
                              Bmodel=bg_model, Pmodel=p_model)

@@ -3,12 +3,13 @@ from dash import html, dcc, callback, Input, Output, State, MATCH
 import dash_mantine_components as dmc
 from dash_iconify import DashIconify
 import io
-import traceback
-from deeranalysis.utils.io import datasetSQL_to_file,fitSQL_to_file
-from deeranalysis.utils.database import get_session, Dataset,Fit
-from deerlab import save, json_loads
-import sys
 import os
+import tempfile
+import traceback
+import zipfile
+from deeranalysis.utils.io import datasetSQL_to_file, fitSQL_to_file, save_bruker_bes3t
+from deeranalysis.utils.database import get_session, Dataset, Fit
+from deerlab import save, json_loads
 
 def _is_pywebview():
     return os.environ.get('DEERANALYSIS_PYWEBVIEW') == '1'
@@ -21,7 +22,7 @@ DATASET_DOWNLOAD_FORMAT_OPTIONS = [
 ]
 
 EXTENSIONS = {
-    "bruker": ".DTA",
+    "bruker": ".zip",
     "hdf5":   ".h5",
     "matlab": ".mat",
     "csv":    ".csv",
@@ -104,7 +105,6 @@ def create_dataset_download_modal(page_id="dataset-download-modal"):
             title=dmc.Text("Download Dataset", fw=600, size="lg"),
             size="md",
             opened=False,
-            withinPortal=False,
             children=[
                 dmc.Stack([
                     html.Div(id={"type": "dataset-dl-alert", "page": page_id}),
@@ -331,12 +331,28 @@ def _download_dataset(n_clicks, dataset_id, fmt, filename):
     # Create file content in memory and send as download
 
     if fmt == "bruker":
-        alert = dmc.Alert(
-            "Bruker export is not yet implemented. Please choose another format.",
-            color="red",
-            variant="filled",
-        )
-        return dash.no_update, True, alert
+        buf = io.BytesIO()
+        try:
+            with tempfile.TemporaryDirectory() as tmp:
+                base = os.path.join(tmp, filename)
+                datasetSQL_to_file(base, dataset, 'Bruker')
+                with zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as zf:
+                    for ext in ('.DTA', '.DSC'):
+                        path = base + ext
+                        if os.path.exists(path):
+                            zf.write(path, arcname=filename + ext)
+                    for ext in ('.XGF', '.YGF'):
+                        path = base + ext
+                        if os.path.exists(path):
+                            zf.write(path, arcname=filename + ext)
+        except Exception as e:
+            traceback.print_exc()
+            alert = dmc.Alert(
+                f"Bruker export failed: {str(e)}",
+                color="red",
+                variant="filled",
+            )
+            return dash.no_update, True, alert
     elif fmt == "hdf5":
         buf = io.BytesIO()
         try:

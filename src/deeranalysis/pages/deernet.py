@@ -44,27 +44,27 @@ layout = html.Div([
                 value='512',
                 className="mb-3"
             ),
-            dbc.Row([
-            dbc.Col([dmc.Select(label='Uncertainty Type',
-                id='dn-uncertainty-type',
-                data=[
-                    {'value': 'net', 'label': 'Network ensemble'},
-                    # {'value': 'boot', 'label': 'Bootstrap'},
-                ],
-                value='net',
-                className="mb-3"
-            )]),
-            dbc.Col([dmc.NumberInput(
-                label="Number of Bootstrap Samples",
-                id="dn-bootstrap-samples",
-                min=10,
-                max=1000,
-                step=10,
-                value=100,
-                className="mb-3",
-                disabled=True
-            )]),
-            ]),
+            # dbc.Row([
+            #     dbc.Col([dmc.Select(label='Uncertainty Type',
+            #         id='dn-uncertainty-type',
+            #         data=[
+            #             {'value': 'net', 'label': 'Network ensemble'},
+            #             # {'value': 'boot', 'label': 'Bootstrap'},
+            #         ],
+            #         value='net',
+            #         className="mb-3"
+            #     )]),
+            #     dbc.Col([dmc.NumberInput(
+            #         label="Number of Bootstrap Samples",
+            #         id="dn-bootstrap-samples",
+            #         min=10,
+            #         max=1000,
+            #         step=10,
+            #         value=100,
+            #         className="mb-3",
+            #         disabled=True
+            #     )]),
+            # ]),
 
             html.Br(),
             fpc.fit_save_download_buttons(page_id),
@@ -115,12 +115,11 @@ def update_dropdown(pathname):
 
 @callback(
     Output({'type':'fit-results-store','page': page_id}, 'data'),
-    Output({"type": "gof-plot", "page": page_id}, 'figure', allow_duplicate=True),
-    Output({"type": "dist-stats-table", "page": page_id}, 'data', allow_duplicate=True),
     Output({"type":"save-fit-btn","page":page_id}, 'disabled'),
     Output({"type": "download-fit-btn", "page": page_id}, 'disabled'),
+    Output('dn-fit-status', 'children',allow_duplicate=True),
     Input({"type":"run-fit-btn","page":page_id}, 'n_clicks'),
-    Input({'type': 'dataset-dropdown', 'page': page_id}, 'value'),
+    State({'type': 'dataset-dropdown', 'page': page_id}, 'value'),
     State('dn-model-size', 'value'),
     running=[(Output({"type":"run-fit-btn","page":page_id}, 'loading'), True, False)],
     prevent_initial_call=True,
@@ -135,45 +134,35 @@ def run_fit(n_clicks, dataset_id,model_size):
         pass
 
     if not dataset_id:
-        return dash.no_update, dash.no_update, dash.no_update, True, True
-
+        # return dash.no_update, dash.no_update, dash.no_update, True, True
+        return dash.no_update, True, True,None
     session = get_session()
     dataset_entry = session.query(Dataset).filter_by(id=dataset_id).first()
     dataset = dataarray_from_database_entry(dataset_entry)
     dataset = dataset.assign_coords(t=dataset.t.values)
     session.close()
 
+    if dataset_entry.exp not in ['4pDEER', '3pDEER', 'single']:
+        alert = dmc.Alert(f"Dataset {dataset_entry.name} has unsupported experiment type '{dataset_entry.exp}'. Only 'single','4pDEER' and '3pDEER' are supported.!",
+                          title='Error!', color="red", duration=10000,withCloseButton=True)
+        return dash.no_update, True, True, alert
     model_size = int(model_size)
     deernet_folder = os.path.join(get_DeerAnalysis_directory(), "deernet", 'deernet_models')
 
-    if triggered_id == {"page":page_id,"type":"dataset-dropdown"}:
-        dist_stats_output = {"head": ["Statistic", "Value", "Confidence Interval (95%)"]}
-        raw = {'t': dataset.t.values.tolist(), 'V': dataset.values.real.tolist()}
-        return raw, plotly_goodness_of_fit(), dist_stats_output, True, True
+    try:
+        fit = deernet2(dataset, model_size, model_dir=deernet_folder, providor=['CPUExecutionProvider'])
+    except Exception as e:
+        print(f"Error running DeerNet fit: {e}")
+        return dash.no_update, dash.no_update, dash.no_update, True, True
 
-    elif triggered_id == {"type":"run-fit-btn","page":page_id}:
+    dist_stats = dl.diststats(fit.r, fit.P, fit.PUncert)
+    dist_stats_dict = dists_stats_to_list(*dist_stats)
 
-        try:
-            fit = deernet2(dataset, model_size, model_dir=deernet_folder, providor=['CPUExecutionProvider'])
-        except Exception as e:
-            print(f"Error running DeerNet fit: {e}")
-            return dash.no_update, dash.no_update, dash.no_update, True, True
-
-        gof_fig = plotly_goodness_of_fit(fit)
-
-        dist_stats = dl.diststats(fit.r, fit.P, fit.PUncert)
-        dist_stats_dict = dists_stats_to_list(*dist_stats)
-        dist_stats_output = {
-            "head": ["Statistic", "Value", "Confidence Interval (95%)"],
-            "body": [
-                [k, f"{v['value']:.3f}", f"[{v['ci'][0]:.3f}, {v['ci'][1]:.3f}]" if v['ci'] else "N/A"]
-                for k, v in dist_stats_dict.items()
-            ]
-        }
-        fit_dict = fit_to_dict(fit)
-        fit_dict['dist_stats'] = dist_stats_dict
-        fit_dict['gof'] = fit.stats
-        return fit_dict, gof_fig, dist_stats_output, False, False
+    fit_dict = fit_to_dict(fit)
+    fit_dict['dist_stats'] = dist_stats_dict
+    fit_dict['gof'] = fit.stats
+    # return fit_dict, gof_fig, dist_stats_output, False, False
+    return fit_dict, False, False,None
 
 
 @callback(
@@ -200,4 +189,28 @@ def save_fit(n_clicks, dataset_id,dataset_store):
     session.commit()
     session.close()
     
-    return dbc.Alert("Fit saved successfully!", color="success", duration=4000)
+    return dmc.Alert("Fit saved successfully!", color="green", duration=4000)
+
+
+@callback(
+    Output({"type": "gof-plot", "page": page_id}, 'figure', allow_duplicate=True),
+    Output({"type": "dist-stats-table", "page": page_id}, 'data', allow_duplicate=True),
+    Input({'type': 'fit-results-store', 'page': page_id}, 'data'),
+    prevent_initial_call=True
+)
+def update_plots_tables(fit_dict):
+
+    if not fit_dict or 'data' not in fit_dict:
+        return dash.no_update
+    fit = dl.json_loads(fit_dict['data'])
+    gof_fig = plotly_goodness_of_fit(fit)
+
+    dist_stats_dict = fit_dict['dist_stats']
+    dist_stats_output = {
+        "head": ["Statistic", "Value", "Confidence Interval (95%)"],
+        "body": [
+            [k, f"{v['value']:.3f}", f"[{v['ci'][0]:.3f}, {v['ci'][1]:.3f}]" if v['ci'] else "N/A"]
+            for k, v in dist_stats_dict.items()
+        ]
+    }
+    return gof_fig, dist_stats_output

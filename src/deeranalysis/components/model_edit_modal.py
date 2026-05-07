@@ -138,7 +138,7 @@ def create_model_edit_modal(page_id):
     return dmc.Modal(
         title="Edit Model Parameters",
         id={'type': 'model-edit-modal', 'page': page_id},
-        size='50%',
+        size='70%',
         children=[
             dcc.Store(id={'type': 'model-store', 'page': page_id}),
             dmc.Group(
@@ -158,6 +158,7 @@ def create_model_edit_modal(page_id):
                 highlightOnHover=True,
             ),
             dmc.Button("Save", id={'type': 'save-model-btn', 'page': page_id}, color="blue", mt="md"),
+            dmc.Text("", id={'type': 'param-save-error', 'page': page_id}, c="red", size="sm", mt="xs"),
         ],
     )
 
@@ -207,6 +208,8 @@ _register_inf_toggle('param-ub')
 @callback(
     Output({'type': 'model-params-store', 'page': MATCH}, 'data'),
     Output({'type': 'model-edit-modal', 'page': MATCH}, 'opened', allow_duplicate=True),
+    Output({'type': 'param-par0', 'name': ALL, 'page': MATCH}, 'error'),
+    Output({'type': 'param-save-error', 'page': MATCH}, 'children'),
     Input({'type': 'save-model-btn', 'page': MATCH}, 'n_clicks'),
     State({'type': 'param-par0', 'name': ALL, 'page': MATCH}, 'value'),
     State({'type': 'param-lb', 'name': ALL, 'page': MATCH}, 'value'),
@@ -216,10 +219,23 @@ _register_inf_toggle('param-ub')
 )
 def save_model_params(n_clicks, par0_vals, lb_vals, ub_vals, frozen_vals):
     if not n_clicks:
-        return no_update, no_update
+        return no_update, no_update, no_update, no_update
 
     # Recover param names from the ALL-pattern states (par0 inputs)
     param_names = [s['id']['name'] for s in ctx.states_list[0]]
+
+    errors = []
+    for i in range(len(param_names)):
+        par0 = par0_vals[i] if i < len(par0_vals) else None
+        lb = lb_vals[i] if i < len(lb_vals) else None
+        ub = ub_vals[i] if i < len(ub_vals) else None
+        if par0 is not None and ((lb is not None and par0 < lb) or (ub is not None and par0 > ub)):
+            errors.append("Must be between lb and ub")
+        else:
+            errors.append(False)
+
+    if any(errors):
+        return no_update, no_update, errors, "Par0 must be between lb and ub for all parameters."
 
     overrides = {}
     for i, name in enumerate(param_names):
@@ -230,4 +246,4 @@ def save_model_params(n_clicks, par0_vals, lb_vals, ub_vals, frozen_vals):
             'frozen': frozen_vals[i] if i < len(frozen_vals) else False,
         }
 
-    return overrides, False
+    return overrides, False, [False] * len(param_names), ""

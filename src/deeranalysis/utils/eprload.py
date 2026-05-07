@@ -3,6 +3,7 @@ import xarray as xr
 from warnings import warn
 import re
 import os
+from datetime import datetime
 
 def eprload(*filenames, file_format=None, **kwargs):
     """
@@ -123,6 +124,9 @@ def bes3t_eprload(DSC, DTA,XGF=None,YGF=None,ZGF=None, **kwargs):
     # Read the description file
     parameters = _read_des3t_dsc_file(DSC)
     parDESC = parameters['DESC']
+    parSPL = parameters.get('SPL', {})
+
+
 
     # XPTS, YPTS, ZPTS specify the number of data points along x, y and z.
     if 'XPTS' in parDESC:
@@ -211,15 +215,12 @@ def bes3t_eprload(DSC, DTA,XGF=None,YGF=None,ZGF=None, **kwargs):
 
                 dt_axis = dt_axis.newbyteorder(byteorder)
                 # Open and read companion file
-                fileBytes = getattr(globals(),f'{a}GF')
+                fileBytes = locals()[f'{a}GF']
                 try:
                     abscissa[:Dimensions[index],index] = np.frombuffer(fileBytes,dtype=dt_axis)
-                # try:
-                #     with open(companionfilename,'rb') as fp:
-                #         abscissa[:Dimensions[index],index] = np.frombuffer(fp.read(),dtype=dt_axis)
                 except:
                     warn(f"Could not read companion file f'{a}GF' for nonlinear axis. Assuming linear axis.")
-                axistype='IDX'
+                    axistype='IDX'
         if axistype == 'IDX':
             minimum = float(parDESC[str(a+'MIN')])
             width = float(parDESC[str(a+'WID')])
@@ -308,6 +309,7 @@ def bes3t_eprload(DSC, DTA,XGF=None,YGF=None,ZGF=None, **kwargs):
 
     attrs = kwargs.get('attrs', {}) # Get any existing attrs from kwargs
     attrs['title'] = parDESC.get('TITL','')
+    attrs['datetime'] = extract_datetime(parSPL)
     attrs.update(extract_key_parameters(parameters))
     attrs.update(extract_PulseSpel_files(parameters))
 
@@ -613,3 +615,19 @@ def extract_value_ns(var_dict):
         key = keys[0]
     value_ns = var_dict[key][0] # Convert to seconds
     return value_ns
+
+def extract_datetime(spl_dict):
+    date = spl_dict.get('DATE', None) # ASCI date format MM/DD/YY
+    time = spl_dict.get('TIME', None) # ASCI time format HH:MM:SS
+    if date and time:
+        datetime_str = f"{date} {time}"
+        try:
+            datetime_obj = datetime.strptime(datetime_str, "%m/%d/%y %H:%M:%S")
+            return datetime_obj
+        except ValueError:
+            warn(f"Could not parse date and time from SPL parameters: {datetime_str}")
+            return None
+    else:
+        warn("Date or time not found in SPL parameters.")
+        return None
+    

@@ -2,7 +2,8 @@ import dash
 from dash import html, dcc, callback, Input, Output, State
 import dash_bootstrap_components as dbc
 import dash_mantine_components as dmc
-from deeranalysis.utils.database import get_session, Dataset
+from deeranalysis.utils.database import get_session, Dataset, Fit
+from sqlalchemy import func
 from dash_iconify import DashIconify
 
 import numpy as np
@@ -10,6 +11,7 @@ import dash_ag_grid as dag
 import plotly.graph_objs as go
 from deeranalysis.utils import create_subplot_figure,dataarray_from_database_entry
 from deeranalysis.utils.deerlab_options import plotly_deerlab
+from deeranalysis.components.data_viewer import plot_upload
 from deeranalysis.components.download_modal import create_dataset_download_modal, create_fit_download_modal
 from deeranalysis.components.metadata_table import build_metadata_section,metadata_long_values_model
 
@@ -30,8 +32,11 @@ columnDefs = [
     {'field': 'Experiment',
      'filter': 'agTextColumnFilter',
 },
+{'field': 'Measurement Date',
+     'filter': 'agDateColumnFilter',
+     
+},
     {'field': '# Fits',"width": 120,},
-    {'field': 'SNR'},
     {
         "field": "Open",
         "headerName": "",
@@ -159,8 +164,8 @@ layout = html.Div([
         dbc.Col([
             dcc.Graph(
                 id="datasets-graph",
-                figure=create_subplot_figure(),
-                style={"height": "700px"}
+                figure=plot_upload(None,correct_phase=False,masking_enabled=False),
+                style={"height": "400px"}
             ),
         ], width=4),
     ], style={"flex": "1", "overflow": "hidden"}),
@@ -176,22 +181,37 @@ def update_datasets_table(n_clicks):
     session = get_session()
     if session is None:
         return dash.no_update
-    datasets = session.query(Dataset).all()
+
+    fit_count = (
+        session.query(func.count(Fit.id))
+        .filter(Fit.dataset_id == Dataset.id)
+        .correlate(Dataset)
+        .scalar_subquery()
+    )
+    rows = session.query(
+        Dataset.id,
+        Dataset.name,
+        Dataset.project,
+        Dataset.sample,
+        Dataset.exp,
+        Dataset.measured_at,
+        fit_count.label('n_fits'),
+    ).all()
     session.close()
-    
+
     data = []
-    for ds in datasets:
+    for row in rows:
         data.append({
-            'Title': ds.name,
-            'Project': ds.project,
-            'Sample': ds.sample,
-            'Experiment': ds.exp,
-            '# Fits': ds.n_fits,
-            'SNR': '',
+            'Title': row.name,
+            'Project': row.project,
+            'Sample': row.sample,
+            'Experiment': row.exp,
+            '# Fits': row.n_fits,
+            'Measurement Date': row.measured_at.strftime("%Y-%m-%d %H:%M:%S") if row.measured_at else '',
             'Open': '',
-            'id': ds.id,
+            'id': row.id,
         })
-    
+
     return data
 
 @callback(
@@ -289,10 +309,10 @@ def update_graph_on_selection(selected_rows):
     session.close()
 
     if dataset is None:
-        return plotly_deerlab(None, orientation='v')
+        return plot_upload(None,correct_phase=False,masking_enabled=False)  # Return an empty plot or a placeholder
 
 
-    fig = plotly_deerlab(dataset,orientation='v')
+    fig = plot_upload(dataset_entry,correct_phase=False,masking_enabled=False)
     
     return fig
 

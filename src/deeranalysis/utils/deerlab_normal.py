@@ -2,6 +2,7 @@ import numpy as np
 from scipy.optimize import curve_fit
 import deerlab as dl
 import matplotlib.pyplot as plt
+from deeranalysis.utils.deerlab_options import experiment_type_options
 from scipy.integrate import cumulative_trapezoid
 import logging
 import importlib
@@ -15,6 +16,27 @@ from scipy.optimize import minimize,brute
 import scipy.optimize as opt
 import scipy.signal as signal
 
+def apply_model_overrides(model, overrides):
+    """Apply parameter overrides (par0/lb/ub/frozen) to a DeerLab model in-place."""
+    for param_name, param_data in overrides.items():
+        if not hasattr(model, param_name):
+            continue
+        param = getattr(model, param_name)
+        if not hasattr(param, 'set'):
+            continue
+        lb, ub, par0 = param_data.get('lb'), param_data.get('ub'), param_data.get('par0')
+        if lb is not None and ub is not None:
+            param.set(lb=lb, ub=ub)
+        elif lb is not None:
+            param.set(lb=lb)
+        elif ub is not None:
+            param.set(ub=ub)
+        if par0 is not None:
+            param.set(par0=par0)
+        if param_data.get('frozen', False):
+            param.freeze(par0 if par0 is not None else param.par0)
+        else:
+            param.unfreeze()
 
 def MNR_estimate(Vexp, t, mask=None, norm=False):
     """
@@ -149,54 +171,16 @@ def deerlab_fitting(dataset, compactness=True, model=None, exp_type='5pDEER', ve
     if 't' in dataset.coords: # If the dataset is a xarray and has sequence data
         t = dataset['t'].data
         if 'seq_name' in dataset.attrs:
-            if dataset.attrs['seq_name'] == "4pDEER":
-                exp_type = "4pDEER"
-                tau1 = dataset.attrs['tau1'] / 1e3
-                tau2 = dataset.attrs['tau2'] / 1e3
-            elif dataset.attrs['seq_name'] == "5pDEER":
-                exp_type = "5pDEER"
-                tau1 = dataset.attrs['tau1'] / 1e3
-                tau2 = dataset.attrs['tau2'] / 1e3
-                tau3 = dataset.attrs['tau3'] / 1e3
-            elif dataset.attrs['seq_name'] == "3pDEER":
-                exp_type = "3pDEER"
-                tau1 = dataset.attrs['tau1'] / 1e3
-        else:
-            if 'tau1' in dataset.attrs:
-                tau1 = dataset.attrs['tau1'] / 1e3
-            elif 'tau1' in kwargs:
-                tau1 = kwargs.pop('tau1')
-            else:
-                raise ValueError("tau1 not found in dataset or kwargs")
-            if 'tau2' in dataset.attrs:
-                tau2 = dataset.attrs['tau2'] / 1e3
-            elif 'tau2' in kwargs:
-                tau2 = kwargs.pop('tau2')
-            else:
-                raise ValueError("tau2 not found in dataset or kwargs")
-            if 'tau3' in dataset.attrs:
-                tau3 = dataset.attrs['tau3'] / 1e3
-                exp_type = "5pDEER"
-            elif 'tau3' in kwargs:
-                tau3 = kwargs.pop('tau3')
-                exp_type = "5pDEER"
-            else:
-                exp_type = "4pDEER"
-
+            exp_type = dataset.attrs['seq_name']
+            exp_opt = next((e for e in experiment_type_options if e['value'] == exp_type), None)
+            if exp_opt is not None:
+                delays = {d: dataset.attrs[d] / 1e3 for d in exp_opt['delays']}
+                tau1 = delays.get('tau1')
+                tau2 = delays.get('tau2')
+                tau3 = delays.get('tau3')
     else:
-        # Extract params from kwargs
-        if "tau1" in kwargs:
-            tau1 = kwargs.pop("tau1")
-        if "tau2" in kwargs:
-            tau2 = kwargs.pop("tau2")
-        if "tau3" in kwargs:
-            tau3 = kwargs.pop("tau3")
-        exp_type = kwargs.pop("exp_type")
-        # t = dataset.axes[0]
-        t = dataset['X']
-
-    if t.max() > 500:
-        t /= 1e3
+        raise ValueError("Time axis 't' not found in dataset coordinates. Please ensure the dataset has a time coordinate named 't'.")
+    
 
     # Find mask if needed
 
@@ -255,6 +239,14 @@ def deerlab_fitting(dataset, compactness=True, model=None, exp_type='5pDEER', ve
         experimentInfo = dl.ex_fwd5pdeer(tau1=tau1,tau2=tau2,tau3=tau3,pathways=pathways,pulselength=pulselength)
     elif exp_type == "3pDEER":
         experimentInfo = dl.ex_3pdeer(tau=tau1,pathways=pathways,pulselength=pulselength)
+    elif exp_type == "RIDME":
+        experimentInfo = dl.ex_ridme(tau=tau1,tau2=tau2,pathways=pathways,pulselength=pulselength)
+    elif exp_type == "SIFTER":
+        experimentInfo = dl.ex_sifter(tau1=tau1,tau2=tau2,pathways=pathways,pulselength=pulselength)
+    elif exp_type == "DQC":
+        experimentInfo = dl.ex_dqc(tau1=tau1,tau2=tau2,tau3=tau3,pathways=pathways,pulselength=pulselength)
+    elif exp_type == "single":
+        experimentInfo = None
     else:
         raise ValueError(f"Experiment type {exp_type} not recognized. Please specify a valid experiment type (e.g., '4pDEER', '5pDEER', '3pDEER').")
 

@@ -1,7 +1,149 @@
+import os
+from datetime import datetime
+
 import numpy as np
 from numpy import savetxt, column_stack
 
 from deeranalysis.utils import dataarray_from_database_entry
+
+
+def save_bruker_bes3t(filename, x, data, title='', mw_freq=np.nan):
+    """Save data in Bruker BES3T format (.DTA + .DSC files).
+
+    Parameters
+    ----------
+    filename : str
+        Output filename, with or without .DTA/.DSC extension.
+    x : array-like or list of two array-likes
+        X-axis values for 1D data, or ``[x_axis, y_axis]`` for 2D data.
+    data : array-like
+        Signal data (real or complex). For 2D data, shape must be
+        ``(len(x_axis), len(y_axis))``.
+    title : str, optional
+        Dataset title shown in Bruker software.
+    mw_freq : float, optional
+        Microwave frequency in GHz.
+    """
+    # Strip known extensions
+    base, ext = os.path.splitext(filename)
+    if ext.upper() in ('.DTA', '.DSC', '.XGF', '.YGF'):
+        filename = base
+
+    data = np.asarray(data)
+    if data.ndim > 2:
+        raise ValueError("Cannot save data with more than 2 dimensions.")
+
+    two_dim = data.ndim == 2 and min(data.shape) > 1
+
+    if two_dim:
+        if not (isinstance(x, (list, tuple)) and len(x) == 2):
+            raise ValueError("For 2D data, x must be a list/tuple of two axes.")
+        x_axis = np.asarray(x[0], dtype=np.float64).ravel()
+        y_axis = np.asarray(x[1], dtype=np.float64).ravel()
+    else:
+        if isinstance(x, (list, tuple)):
+            x_axis = np.asarray(x[0], dtype=np.float64).ravel()
+        else:
+            x_axis = np.asarray(x, dtype=np.float64).ravel()
+        y_axis = None
+
+    complex_data = not np.isrealobj(data)
+    byteorder = 'big'  # BES3T default (XEPR/Linux)
+    bes3t_version = '1.2'
+
+    # --- Write .DTA binary file ---
+    dta_path = filename + '.DTA'
+    # Flatten column-major (Fortran order) to match MATLAB data(:)
+    flat = data.flatten('F')
+    if complex_data:
+        interleaved = np.empty(2 * len(flat), dtype=np.float64)
+        interleaved[0::2] = flat.real
+        interleaved[1::2] = flat.imag
+        raw = interleaved
+    else:
+        raw = flat.real.astype(np.float64)
+
+    with open(dta_path, 'wb') as f:
+        f.write(raw.astype('>f8').tobytes())
+
+    # --- Write .DSC descriptor file ---
+    dsc_path = filename + '.DSC'
+    now = datetime.now()
+
+    def _is_linear(axis):
+        diffs = np.diff(axis)
+        if len(diffs) == 0:
+            return True
+        mn, mx = diffs.min(), diffs.max()
+        if mn == 0:
+            return False
+        return abs(mx / mn - 1) < 1e-5
+
+    x_linear = _is_linear(x_axis)
+    x_type = 'IDX' if x_linear else 'IGD'
+    if two_dim:
+        y_linear = _is_linear(y_axis)
+        y_type = 'IDX' if y_linear else 'IGD'
+    else:
+        y_type = 'NODATA'
+
+    with open(dsc_path, 'w') as f:
+        def kv(key, val):
+            f.write(f'{key}\t{val}\n')
+
+        def line(val=''):
+            f.write(f'{val}\n')
+
+        f.write(f'* Exported from DeerAnalysis, {now.strftime("%Y-%m-%d %H:%M:%S")}\n')
+        kv('#DESC', f'{bes3t_version} * DESCRIPTOR INFORMATION ***********************')
+        kv('DSRC', 'MAN')
+        kv('BSEQ', 'BIG' if byteorder == 'big' else 'LIT')
+        kv('IKKF', 'CPLX' if complex_data else 'REAL')
+        kv('IRFMT', 'D')
+        if complex_data:
+            kv('IIFMT', 'D')
+
+        # Write XGF gauge file if X axis is non-linear
+        if not x_linear:
+            xgf_path = filename + '.XGF'
+            with open(xgf_path, 'wb') as gf:
+                gf.write(x_axis.astype('>f8').tobytes())
+            kv('XFMT', 'D')
+
+        # Write YGF gauge file if Y axis is non-linear
+        if two_dim and not y_linear:
+            ygf_path = filename + '.YGF'
+            with open(ygf_path, 'wb') as gf:
+                gf.write(y_axis.astype('>f8').tobytes())
+            kv('YFMT', 'D')
+
+        kv('XTYP', x_type)
+        kv('YTYP', y_type)
+        kv('ZTYP', 'NODATA')
+
+        kv('XPTS', str(len(x_axis)))
+        kv('XMIN', f'{x_axis[0]:g}')
+        kv('XWID', f'{x_axis[-1] - x_axis[0]:g}')
+        if two_dim:
+            kv('YPTS', str(len(y_axis)))
+            kv('YMIN', f'{y_axis[0]:g}')
+            kv('YWID', f'{y_axis[-1] - y_axis[0]:g}')
+
+        if title:
+            kv('TITL', f"'{title}'")
+
+        line('*')
+        line('************************************************************')
+        line('*')
+        kv('#SPL', f'{bes3t_version} * STANDARD PARAMETER LAYER')
+        kv('OPER', '')
+        kv('DATE', now.strftime('%d/%m/%y'))
+        kv('TIME', now.strftime('%H:%M:%S'))
+        kv('CMNT', '')
+        kv('SAMP', '')
+        kv('SFOR', '')
+        if not (isinstance(mw_freq, float) and np.isnan(mw_freq)):
+            kv('MWFQ', f'{mw_freq * 1e9:.9g}')
 
 
 def datasetSQL_to_file(file, dataset_entry, format_type):
@@ -53,8 +195,14 @@ def datasetSQL_to_file(file, dataset_entry, format_type):
 
         dataset.epr.save(file)
     
-    elif format_type =='Bruker':
-        raise NotImplementedError("Bruker format export is not implemented yet.")
+    elif format_type == 'Bruker':
+        t = np.array(dataset_entry.t)
+        V = np.array(dataset_entry.V) + 1j * np.array(dataset_entry.V_im)
+        title = getattr(dataset_entry, 'name', '') or ''
+        mw_freq = getattr(dataset_entry, 'mwFreq', np.nan)
+        if mw_freq is None:
+            mw_freq = np.nan
+        save_bruker_bes3t(file, t, V, title=title, mw_freq=mw_freq)
     
     else:
         raise ValueError(f"Unsupported format type: {format_type}") 
@@ -125,3 +273,5 @@ def fitSQL_to_file(file, fit_entry,dataset_entry, format_type, uncert=True):
 
     else:
         raise ValueError(f"Unsupported format type: {format_type}")
+    
+

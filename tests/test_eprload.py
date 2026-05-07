@@ -6,8 +6,8 @@ import os
 
 
 def test_eprload_BES3T():
-    DSC_file= 'tests/data/data_multi_lab1.DSC'
-    DTA_file= 'tests/data/data_multi_lab1.DTA'
+    DSC_file= 'tests/data/benchmark/data_multi_lab1.DSC'
+    DTA_file= 'tests/data/benchmark/data_multi_lab1.DTA'
     print(os.getcwd())
 
     # Load files into bytes
@@ -23,3 +23,5 @@ def test_eprload_BES3T():
     assert 'units' in dataarray.coords['X'].attrs
     assert dataarray.coords['X'].attrs['units'] =='ns'
     assert np.isclose(dataarray.values[0],562303+69661j,rtol=1e-2)
+    assert hasattr(dataarray,'datetime') and isinstance(dataarray.datetime, datetime)
+    

@@ -59,7 +59,8 @@ app = dash.Dash(__name__,
                  use_pages=True, 
                 #  pages_folder=str(basedir / 'pages'),
                 #  assets_folder=str(basedir / 'assets'),
-                 external_stylesheets=[dbc.themes.BOOTSTRAP, dmc.styles.ALL])
+                 external_stylesheets=[dbc.themes.BOOTSTRAP, dmc.styles.ALL],
+                 suppress_callback_exceptions=True)
 server = app.server
 
 def get_icon(icon):
@@ -78,8 +79,8 @@ def create_nav_link(label, href, icon):
 sidebar_content = dmc.Stack(
     [
         dmc.Text("Datasets", size="sm", c="dimmed", fw=500),
-        create_nav_link("File Upload", "/upload", "mdi:upload"),
-        *( [create_nav_link("Logs Upload", "/logs_upload", "mdi:file-document-outline")] if check_logs_api_key() else [] ),
+        create_nav_link("File Import", "/upload", "mdi:upload"),
+        *( [create_nav_link("Logs Import", "/logs_upload", "mdi:file-document-outline")] if check_logs_api_key() else [] ),
         create_nav_link("Datasets", "/", "mdi:database"),
         create_nav_link("Comparison", "/comparison", "mdi:compare"),
         

@@ -16,8 +16,13 @@ import dash_mantine_components as dmc
 from sqlalchemy.orm import Session
 from dash_iconify import DashIconify
 import pyepr as pyepr
-
+from deerlab import correctphase
 from deeranalysis.components.metadata_table import build_metadata_section_datarray, metadata_long_values_model
+from deeranalysis.components.data_viewer import data_viewer_layout, plot_upload
+import datetime as dt
+from deeranalysis.utils.deerlab_options import experiment_type_options
+from deeranalysis.utils.csv_loader import parse_csv_raw, build_csv_store, TIME_UNIT_TO_US
+
 dash.register_page(__name__)
 page_id = 'upload'
 
@@ -56,6 +61,9 @@ layout = html.Div([
                         {'label': 's',   'value': 's'},
                     ],
                 ),
+                dmc.Switch(
+                    id='csv-has-header', label='Has header row', checked=True, mt='xl',
+                ),
             ]),
             dmc.Group([
                 dmc.Select(id='csv-t-col',   label='Time column (t)',                placeholder='Select column…', style={'flex': 1}),
@@ -70,7 +78,7 @@ layout = html.Div([
         ], gap='md'),
     ),
 
-    dmc.Title("Upload Dataset from File", order=1, mb="md"),
+    dmc.Title("Import Dataset from File", order=1, mb="md"),
     dmc.Divider(mb="lg"),
     
     dmc.Grid([
@@ -95,7 +103,7 @@ layout = html.Div([
                 },
                 multiple=True, className="mb-2"
             ),
-            dcc.Store(id='dataset-store'),
+            dcc.Store(id={'type':"dataset-store",'page': page_id}),
             dmc.Autocomplete(id="project-name", label="Project Name", mb="sm"),
             dmc.Autocomplete(id="sample-name", label="Sample Name", mb="sm"),
             dmc.TextInput(id="dataset-name", label="Dataset Name", mb="sm"),
@@ -104,10 +112,7 @@ layout = html.Div([
                 label='Experiment Type:',
                 id='experiment-type-dropdown',
                 value='4pDEER',
-                data=[{'label': '3-pulse', 'value': '3pDEER'},
-                        {'label': '4-pulse', 'value': '4pDEER'},
-                        {'label': '5-pulse', 'value': '5pDEER'},
-                        {'label': 'RIDME', 'value': '5pRIDME'},]
+                data=experiment_type_options
             ),
             
             dmc.Title("Delays", order=4, mt="md", mb="sm"),
@@ -152,28 +157,7 @@ layout = html.Div([
             )
         ], span=4),
         dmc.GridCol([
-            dmc.Title("Data Viewer", order=2, mb="sm"),
-            dcc.Graph(id='data-viewer-plot',
-                      style={'height': '500px'}),
-            dmc.Group([
-                dmc.Text("Box/lasso select points, then:", size="sm", c="dimmed"),
-                dmc.Button(
-                    "Mask Selected",
-                    id="mask-selected-btn",
-                    color="orange",
-                    size="sm",
-                    variant="light",
-                    leftSection=DashIconify(icon="mdi:eye-off-outline", width=16),
-                ),
-                dmc.Button(
-                    "Clear Masks",
-                    id="clear-masks-btn",
-                    color="gray",
-                    size="sm",
-                    variant="subtle",
-                ),
-                dmc.Badge(id="masked-count-badge", color="orange", variant="light", size="sm"),
-            ], mt="xs", mb="md"),
+            data_viewer_layout(page_id=page_id,masking_enabled=True),
             dmc.Button("Add Dataset to Libary", id="save-dataset-btn", color="blue", mb="lg",size="lg"),
         ], span=8),
     ]),
@@ -191,7 +175,7 @@ def _error_message(message):
     )]
 
 @callback(
-    Output('dataset-store', 'data'),
+    Output({'type':"dataset-store",'page': page_id}, 'data'),
     Output({'type':"metadata-content", 'page': page_id}, 'children'),
     Output({"type":"metadata-modal-store","page":page_id}, 'data'),
     Output('delays-grid', 'rowData'),
@@ -235,7 +219,8 @@ def handle_file_upload(contents_list, filenames_list):
             file_format = 'hdf5'
         elif filenames_list[0].endswith('.csv'):
             # Hand off to the CSV import modal
-            return *no_update_9[:7], contents_list[0], True
+            csv_store = {'content': contents_list[0], 'filename': filenames_list[0]}
+            return *no_update_9[:7], csv_store, True
         else:
             alert = _error_message("Unsupported file type. Please upload .DSC/.DTA (Bruker BES3T), .h5 (HDF5), or .csv files.")
             return *no_update_9[:6], alert, dash.no_update, dash.no_update
@@ -270,6 +255,9 @@ def handle_file_upload(contents_list, filenames_list):
             metadata_children, long_values_store = build_metadata_section_datarray(dataarray)
             delays = get_delays_dict(dataarray)
             tmin = dataarray.t.values.min()*1e3 # Convert from microseconds to nanoseconds
+            
+            filename = filenames_list[0].split('/')[-1].split('.')[0]
+            dataarray.attrs['title'] = filename
 
     except Exception as e:
         alert = _error_message(f"Error processing files: {str(e)}")
@@ -280,10 +268,14 @@ def handle_file_upload(contents_list, filenames_list):
     
     
     # save dataarray to dcc.Store for later use
+    t = dataarray.t.values if 't' in dataarray.coords else dataarray.X.values
+    t = t - t[0]  # Ensure time starts at zero
+
+
     store_data = {}
     store_data['RealData'] = dataarray.real.values.tolist()
     store_data['ImagData'] = dataarray.imag.values.tolist()
-    store_data['t'] = dataarray.t.values.tolist() if hasattr(dataarray, 't') else dataarray.X.values.tolist()
+    store_data['t'] = t.tolist()
     store_data['attrs'] = dataarray.attrs
     store_data['delays'] = delays
     store_data['tmin'] = tmin
@@ -296,63 +288,18 @@ def handle_file_upload(contents_list, filenames_list):
 
 
 @callback(
-    Output('data-viewer-plot', 'figure', allow_duplicate=True),
-    Input('dataset-store', 'data'),
+    Output({'type':'data-viewer-plot','page': page_id}, 'figure', allow_duplicate=True),
+    Input({'type':"dataset-store",'page': page_id}, 'data'),
+    Input({'type':'data-plot-correctphase','page': page_id}, 'checked'),
+    Input({'type':'data-masking-enabled','page': page_id}, 'checked'),
     prevent_initial_call=True
 )
-def _build_signal_figure(dataset_store):
-    """ Updates the plot when tmin is changed """
+def _build_signal_figure(dataset_store, correct_phase, masking_enabled):
+    """Rebuilds the signal figure whenever the dataset or phase switch changes."""
     if dataset_store is None:
         return dash.no_update
 
-    t_min = dataset_store.get('tmin', 0)
-    t = np.array(dataset_store['t']) + t_min
-    V = np.array(dataset_store['RealData']) + 1j * np.array(dataset_store['ImagData'])
-    V = V / np.max(np.abs(V))
-    masked_indices = np.array(dataset_store.get('masked_indices', []), dtype=int)
-
-    title_text = dataset_store['attrs'].get('title', 'Uploaded Data')
-
-    traces = [
-        # Invisible markers on Real trace so box/lasso select captures points
-        go.Scatter(
-            x=t, y=V.real,
-            mode='lines+markers',
-            name='Real',
-            marker=dict(size=8, opacity=0),
-        ),
-        go.Scatter(x=t, y=V.imag, mode='lines', name='Imag'),
-    ]
-
-    if len(masked_indices) > 0:
-        traces.append(go.Scatter(
-            x=t[masked_indices],
-            y=V.real[masked_indices],
-            mode='markers',
-            name='Masked (Real)',
-            marker=dict(size=8, color='rgba(180, 180, 180, 0.4)'),
-            hovertemplate='<b>Masked (Real)</b><br>t=%{x:.3f}<br>V=%{y:.4f}<extra></extra>',
-        ))
-        traces.append(go.Scatter(
-            x=t[masked_indices],
-            y=V.imag[masked_indices],
-            mode='markers',
-            name='Masked (Imag)',
-            marker=dict(size=8, color='rgba(180, 180, 180, 0.4)'),
-            hovertemplate='<b>Masked (Imag)</b><br>t=%{x:.3f}<br>V=%{y:.4f}<extra></extra>',
-        ))
-
-    figure = {
-        'data': traces,
-        'layout': go.Layout(
-            title=title_text,
-            xaxis_title='Time (us)',
-            yaxis_title='Signal (a.u.)',
-            template=None,
-            dragmode='select',
-            clickmode='event+select',
-        )
-    }
+    figure = plot_upload(dataset_store, correct_phase, masking_enabled)
     return figure
 
 @callback(
@@ -372,61 +319,15 @@ def open_metadata_modal(n_clicks_list, store_data):
     full_value = (store_data or {}).get(key, "Value not found.")
     return True, full_value
 
-@callback(
-    Output('dataset-store', 'data', allow_duplicate=True),
-    Input('mask-selected-btn', 'n_clicks'),
-    State('data-viewer-plot', 'selectedData'),
-    State('dataset-store', 'data'),
-    prevent_initial_call=True,
-)
-def mask_selected_points(n_clicks, selected_data, dataset_store):
-    """ Adds box/lasso-selected points to the masked set """
-    if dataset_store is None or not selected_data:
-        return dash.no_update
-
-    current_masked = set(dataset_store.get('masked_indices', []))
-    for point in selected_data.get('points', []):
-        # curveNumber 0 is the Real trace (with invisible markers)
-        if point.get('curveNumber') == 0:
-            current_masked.add(point['pointIndex'])
-
-    dataset_store['masked_indices'] = sorted(current_masked)
-    return dataset_store
-
-
-@callback(
-    Output('dataset-store', 'data', allow_duplicate=True),
-    Input('clear-masks-btn', 'n_clicks'),
-    State('dataset-store', 'data'),
-    prevent_initial_call=True,
-)
-def clear_masks(n_clicks, dataset_store):
-    """ Removes all masked points """
-    if dataset_store is None:
-        return dash.no_update
-    dataset_store['masked_indices'] = []
-    return dataset_store
-
-
-@callback(
-    Output('masked-count-badge', 'children'),
-    Input('dataset-store', 'data'),
-)
-def update_masked_badge(dataset_store):
-    if dataset_store is None:
-        return ""
-    count = len(dataset_store.get('masked_indices', []))
-    return f"{count} masked" if count > 0 else ""
-
 
 @callback(
         Output('notification-container', 'sendNotifications', allow_duplicate=True),
         Output('project-name', 'value'),
         Output('sample-name', 'value'),
         Output('dataset-name', 'value', allow_duplicate=True),
-        Output('dataset-store', 'data', allow_duplicate=True),
+        Output({'type':"dataset-store",'page': page_id}, 'data', allow_duplicate=True),
         Output('delays-grid', 'rowData', allow_duplicate=True),
-        Output('data-viewer-plot', 'figure', allow_duplicate=True),
+        Output({'type':'data-viewer-plot','page': page_id}, 'figure', allow_duplicate=True),
         Output({"type": "tmin", 'page': page_id}, 'value', allow_duplicate=True),
         Output({'type': "metadata-content", 'page': page_id}, 'children', allow_duplicate=True),
         Output({"type": "metadata-modal-store", "page": page_id}, 'data', allow_duplicate=True),
@@ -434,10 +335,11 @@ def update_masked_badge(dataset_store):
         State('project-name', 'value'),
         State('sample-name', 'value'),
         State('dataset-name', 'value'),
-        State('dataset-store', 'data'),
+        State({'type':"dataset-store",'page': page_id}, 'data'),
         State('experiment-type-dropdown', 'value'),
         prevent_initial_call=True)
-def save_dataset(n_clicks, project_name, sample_name, dataset_name, dataset_store, experiment_type):
+def save_dataset(n_clicks, project_name, sample_name, dataset_name, dataset_store, experiment_type,
+                 phase_correction=True):
     """ Saves the uploaded dataset to the database """
     no_update_10 = (dash.no_update,) * 10
     if n_clicks is None:
@@ -486,12 +388,21 @@ def save_dataset(n_clicks, project_name, sample_name, dataset_name, dataset_stor
 
     V_real = np.array(dataset_store['RealData'])
     V_imag = np.array(dataset_store['ImagData'])
-
+    if phase_correction:
+        V = V_real + 1j * V_imag
+        V_real, V_imag,_ = correctphase(V, full_output=True)
+        
     masked_indices = dataset_store.get('masked_indices', []) or []
     mask = np.ones(len(t), dtype=bool)
     if masked_indices:
         mask[np.array(masked_indices, dtype=int)] = False
     mask = mask.tolist()
+
+    datetime_str = dataset_store['attrs'].get('datetime', None)
+    if datetime_str:
+        datetime = dt.datetime.strptime(datetime_str, "%Y-%m-%dT%H:%M:%S")
+    else:
+        datetime = None
 
     new_dataset = Dataset(
         name=dataset_name,
@@ -503,7 +414,8 @@ def save_dataset(n_clicks, project_name, sample_name, dataset_name, dataset_stor
         mask=mask,
         exp=experiment_type,
         delays=delays,
-        meta=dataset_store['attrs']
+        meta=dataset_store['attrs'],
+        measured_at=datetime
     )
     session.add(new_dataset)
     session.commit()
@@ -529,9 +441,9 @@ def save_dataset(n_clicks, project_name, sample_name, dataset_name, dataset_stor
 
 
 @callback(
-    Output('dataset-store', 'data', allow_duplicate=True),
+    Output({'type':"dataset-store",'page': page_id}, 'data', allow_duplicate=True),
     Input({"type": "tmin", 'page': page_id}, 'value'),
-    State('dataset-store', 'data'),
+    State({'type':"dataset-store",'page': page_id}, 'data'),
     prevent_initial_call=True
 )
 def update_tmin(tmin, dataset_store):
@@ -568,18 +480,12 @@ def update_samples_and_projects(n_clicks):
 def check_delays(exp_type,delays_row_data,):
     """ Checks that enough delay parameters are present for the selected experiment type.
     """
-
-    if exp_type == '4pDEER':
-        required_delays = ['tau1', 'tau2', ]
-    elif exp_type == '5pDEER':
-        required_delays = ['tau1', 'tau2', 'tau3']
-    elif exp_type == '3pDEER':
-        required_delays = ['tau1', ]
-    elif exp_type == 'RIDME':
-        required_delays = ['tau1', 'tau2', ]
-    else:
-        print(f"Unknown experiment type: {exp_type}. No specific delay requirements applied.")
-        return True, []  # No specific requirements for unknown experiment types
+    def get_delays_by_value(options_list, value):
+        """Extract the delays element from a list of dicts based on a value."""
+        option = next((opt for opt in options_list if opt.get('value') == value), None)
+        return option.get('delays') if option else None
+    
+    required_delays = get_delays_by_value(experiment_type_options, exp_type)
 
     delays = {row['parameter']: row['value'] for row in delays_row_data}
     print(f"Checking delays for experiment type {exp_type} with current delays: {delays}")
@@ -595,11 +501,11 @@ def check_delays(exp_type,delays_row_data,):
 
 @callback(
     Output('tmin-warning-div', 'children'),
-    Input('dataset-store', 'data'),
-    State('experiment-type-dropdown', 'value'),
+    Input({'type':"dataset-store",'page': page_id}, 'data'),
+    Input('experiment-type-dropdown', 'value'),
     prevent_initial_call=True
 )
-def check_tmin(store,exp_type):
+def check_tmin(store, exp_type):
     """ Checks that the data maxmium is close to predicted value based on delays, and raises a warning if not"""
     
     if store is None:
@@ -644,30 +550,24 @@ def get_delays_dict(dataarray: xr.DataArray):
 # CSV import modal callbacks
 # ---------------------------------------------------------------------------
 
-def _parse_csv_raw(raw_content, skiprows, separator):
-    """ Decode base64 CSV content and return a DataFrame """
-    decoded = base64.b64decode(raw_content.split(',')[1])
-    text = decoded.decode('utf-8', errors='replace')
-    return pd.read_csv(io.StringIO(text), skiprows=int(skiprows or 0), sep=separator)
-
-
 @callback(
     Output('csv-preview', 'children'),
     Output('csv-t-col',   'data'),
     Output('csv-vre-col', 'data'),
     Output('csv-vim-col', 'data'),
-    Input('csv-raw-store',  'data'),
-    Input('csv-skiprows',   'value'),
-    Input('csv-separator',  'value'),
+    Input('csv-raw-store',   'data'),
+    Input('csv-skiprows',    'value'),
+    Input('csv-separator',   'value'),
+    Input('csv-has-header',  'checked'),
     prevent_initial_call=True,
 )
-def update_csv_preview(raw_content, skiprows, separator):
+def update_csv_preview(csv_store, skiprows, separator, has_header):
     """ Re-parses CSV and updates the preview table and column selectors """
-    if raw_content is None:
+    if csv_store is None:
         return dash.no_update, [], [], []
 
     try:
-        df = _parse_csv_raw(raw_content, skiprows, separator or ',')
+        df = parse_csv_raw(csv_store['content'], skiprows, separator or ',', has_header=bool(has_header))
     except Exception as e:
         return dmc.Alert(f"Could not parse file: {e}", color='red'), [], [], []
 
@@ -686,17 +586,16 @@ def update_csv_preview(raw_content, skiprows, separator):
 
 @callback(
     Output('csv-import-modal', 'opened', allow_duplicate=True),
+    Output('upload-data', 'contents', allow_duplicate=True),
     Input('csv-cancel-btn', 'n_clicks'),
     prevent_initial_call=True,
 )
 def cancel_csv_import(_):
-    return False
+    return False, None
 
-
-_TIME_UNIT_TO_US = {'ns': 1e-3, 'us': 1.0, 'ms': 1e3, 's': 1e6}
 
 @callback(
-    Output('dataset-store', 'data', allow_duplicate=True),
+    Output({'type':"dataset-store",'page': page_id}, 'data', allow_duplicate=True),
     Output({'type': "metadata-content",    'page': page_id}, 'children', allow_duplicate=True),
     Output({"type": "metadata-modal-store",'page': page_id}, 'data',     allow_duplicate=True),
     Output('delays-grid', 'rowData', allow_duplicate=True),
@@ -704,51 +603,42 @@ _TIME_UNIT_TO_US = {'ns': 1e-3, 'us': 1.0, 'ms': 1e3, 's': 1e6}
     Output({"type": "tmin", 'page': page_id}, 'value', allow_duplicate=True),
     Output('notification-container', 'sendNotifications', allow_duplicate=True),
     Output('csv-import-modal', 'opened', allow_duplicate=True),
+    Output('upload-data', 'contents', allow_duplicate=True),
     Input('csv-import-btn', 'n_clicks'),
-    State('csv-raw-store',  'data'),
-    State('csv-skiprows',   'value'),
-    State('csv-separator',  'value'),
-    State('csv-t-col',      'value'),
-    State('csv-vre-col',    'value'),
-    State('csv-vim-col',    'value'),
-    State('csv-time-unit',  'value'),
+    State('csv-raw-store',   'data'),
+    State('csv-skiprows',    'value'),
+    State('csv-separator',   'value'),
+    State('csv-t-col',       'value'),
+    State('csv-vre-col',     'value'),
+    State('csv-vim-col',     'value'),
+    State('csv-time-unit',   'value'),
+    State('csv-has-header',  'checked'),
     prevent_initial_call=True,
 )
-def import_csv_data(_, raw_content, skiprows, separator, t_col, vre_col, vim_col, time_unit):
-    no_update_8 = (dash.no_update,) * 8
+def import_csv_data(_, csv_store, skiprows, separator, t_col, vre_col, vim_col, time_unit, has_header):
+    no_update_9 = (dash.no_update,) * 9
 
-    if raw_content is None:
-        return no_update_8
+    if csv_store is None:
+        return no_update_9
 
     if not t_col or not vre_col:
         alert = _error_message("Please select at least the Time and Real signal columns.")
-        return *no_update_8[:6], alert, dash.no_update
+        return *no_update_9[:6], alert, dash.no_update, dash.no_update
 
     try:
-        df = _parse_csv_raw(raw_content, skiprows, separator or ',')
+        df = parse_csv_raw(csv_store['content'], skiprows, separator or ',', has_header=bool(has_header))
     except Exception as e:
-        return *no_update_8[:6], _error_message(f"CSV parse error: {e}"), dash.no_update
+        return *no_update_9[:6], _error_message(f"CSV parse error: {e}"), dash.no_update, dash.no_update
 
     try:
-        scale = _TIME_UNIT_TO_US.get(time_unit or 'us', 1.0)
-        t_us  = pd.to_numeric(df[t_col],   errors='raise').to_numpy() * scale
-        V_re  = pd.to_numeric(df[vre_col], errors='raise').to_numpy()
-        V_im  = pd.to_numeric(df[vim_col], errors='raise').to_numpy() if vim_col else np.zeros_like(V_re)
+        store_data = build_csv_store(df, t_col, vre_col, vim_col, time_unit)
     except Exception as e:
-        return *no_update_8[:6], _error_message(f"Column conversion error: {e}"), dash.no_update
+        return *no_update_9[:6], _error_message(f"Column conversion error: {e}"), dash.no_update, dash.no_update
 
-    tmin_ns = float(t_us[0]) * 1e3   # first point = deadtime, shown in ns in the UI
-    t_rel   = t_us - t_us[0]         # zero-based time for the store
+    title = csv_store['filename'].split('/')[-1].rsplit('.', 1)[0]
+    store_data['attrs']['title'] = title
 
-    store_data = {
-        'RealData':       V_re.tolist(),
-        'ImagData':       V_im.tolist(),
-        't':              t_rel.tolist(),
-        'attrs':          {'title': 'Imported CSV', 'file_format': 'csv'},
-        'delays':         {},
-        'tmin':           float(t_us[0]),
-        'masked_indices': [],
-    }
+    tmin_ns = store_data['tmin'] * 1e3  # shown in ns in the UI
 
-    return store_data, None, {}, [], '', tmin_ns, dash.no_update, False
+    return store_data, None, {}, [], title, tmin_ns, dash.no_update, False, None
 

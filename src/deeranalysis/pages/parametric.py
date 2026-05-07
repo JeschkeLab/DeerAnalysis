@@ -210,55 +210,50 @@ def run_fit(n_clicks, dataset_id, fit_options, model_params):
     mask = np.array(dataset_entry.mask) if dataset_entry.mask else None
     session.close()
 
-    if triggered_id == {"type": "run-fit-btn", "page": page_id}:
-        distance_axis = fit_options.get('distance_axis', [2, 6]) if fit_options else [2, 6]
-        r = np.linspace(distance_axis[0], distance_axis[1], 100)
+    distance_axis = fit_options.get('distance_axis', [2, 6]) if fit_options else [2, 6]
+    r = np.linspace(distance_axis[0], distance_axis[1], 100)
 
-        bg_model_option = fit_options.get('bg_model', 'bg_hom3d') if fit_options else 'bg_hom3d'
-        dist_model_name = fit_options.get('dist_model', 'dd_gauss') if fit_options else 'dd_gauss'
+    bg_model_option = fit_options.get('bg_model', 'bg_hom3d') if fit_options else 'bg_hom3d'
+    dist_model_name = fit_options.get('dist_model', 'dd_gauss') if fit_options else 'dd_gauss'
 
-        Bmodel = getattr(dl, bg_model_option, dl.bg_hom3d)
-        Pmodel = getattr(dl, dist_model_name, dl.dd_gauss)
-        pathways_options = fit_options.get('pathways_options', ['1']) if fit_options else ['1']
-        pathways = [int(p) for p in pathways_options]
+    Bmodel = getattr(dl, bg_model_option, dl.bg_hom3d)
+    Pmodel = getattr(dl, dist_model_name, dl.dd_gauss)
+    pathways_options = fit_options.get('pathways_options', ['1']) if fit_options else ['1']
+    pathways = [int(p) for p in pathways_options]
 
-        try:
-            fit = deerlab_fitting(
-                dataset,
-                compactness=False,
-                model=Pmodel,
-                ROI=False,
-                bg_model=Bmodel,
-                r=r,
-                pathways=pathways,
-                multistart=fit_options.get('multistart', 1) if fit_options else 1,
-                model_overrides=model_params,
-                mask=mask,
-            )
-        except Exception as e:
-            print(f"Error during fitting: {e}")
-            return dash.no_update, f"Error during fitting: {e}", True, True, False
+    try:
+        fit = deerlab_fitting(
+            dataset,
+            compactness=False,
+            model=Pmodel,
+            ROI=False,
+            bg_model=Bmodel,
+            r=r,
+            pathways=pathways,
+            multistart=fit_options.get('multistart', 1) if fit_options else 1,
+            model_overrides=model_params,
+            mask=mask,
+        )
+    except Exception as e:
+        print(f"Error during fitting: {e}")
+        return dash.no_update, f"Error during fitting: {e}", True, True, False
 
-        r = fit.r
+    r = fit.r
 
-        fig = plotly_deerlab(fitresult=fit)
-        fig.update_layout(title=f"Fit Result: {dataset_entry.name}", showlegend=True)
+    dist_stats = dl.diststats(r, fit.P, fit.PUncert)
+    dist_stats_dict = dists_stats_to_list(*dist_stats)
+    dist_stats_output = {
+        "head": ["Statistic", "Value", "Confidence Interval (95%)"],
+        "body": [
+            [k, f"{v['value']:.3f}", f"[{v['ci'][0]:.3f}, {v['ci'][1]:.3f}]" if v['ci'] else "N/A"]
+            for k, v in dist_stats_dict.items()
+        ]
+    }
+    fit_dict = fit_to_dict(fit)
+    fit_dict['dist_stats'] = dist_stats_dict
+    fit_dict['gof'] = fit.stats
+    return fit_dict, fit.__str__(), False, False, False
 
-        gof_fig = plotly_goodness_of_fit(fit)
-
-        dist_stats = dl.diststats(r, fit.P, fit.PUncert)
-        dist_stats_dict = dists_stats_to_list(*dist_stats)
-        dist_stats_output = {
-            "head": ["Statistic", "Value", "Confidence Interval (95%)"],
-            "body": [
-                [k, f"{v['value']:.3f}", f"[{v['ci'][0]:.3f}, {v['ci'][1]:.3f}]" if v['ci'] else "N/A"]
-                for k, v in dist_stats_dict.items()
-            ]
-        }
-        fit_dict = fit_to_dict(fit)
-        fit_dict['dist_stats'] = dist_stats_dict
-        fit_dict['gof'] = fit.stats
-        return fit_dict, fit.__str__(), False, False, False
 
 
 @callback(
@@ -284,3 +279,27 @@ def save_fit(n_clicks, dataset_id, dataset_store):
     session.close()
 
     return dbc.Alert("Fit saved successfully!", color="success", duration=4000)
+
+
+@callback(
+    Output({"type": "gof-plot", "page": page_id}, 'figure', allow_duplicate=True),
+    Output({"type": "dist-stats-table", "page": page_id}, 'data', allow_duplicate=True),
+    Input({'type': 'fit-results-store', 'page': page_id}, 'data'),
+    prevent_initial_call=True
+)
+def update_plots_tables(fit_dict):
+
+    if not fit_dict or 'data' not in fit_dict:
+        return dash.no_update
+    fit = dl.json_loads(fit_dict['data'])
+    gof_fig = plotly_goodness_of_fit(fit)
+
+    dist_stats_dict = fit_dict['dist_stats']
+    dist_stats_output = {
+        "head": ["Statistic", "Value", "Confidence Interval (95%)"],
+        "body": [
+            [k, f"{v['value']:.3f}", f"[{v['ci'][0]:.3f}, {v['ci'][1]:.3f}]" if v['ci'] else "N/A"]
+            for k, v in dist_stats_dict.items()
+        ]
+    }
+    return gof_fig, dist_stats_output
