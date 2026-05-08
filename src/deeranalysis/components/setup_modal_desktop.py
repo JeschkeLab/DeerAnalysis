@@ -3,11 +3,16 @@ import dash
 from dash import html, dcc, callback, Input, Output, State,clientside_callback
 from dash_iconify import DashIconify
 import os
+import json
+from pathlib import Path
 from deeranalysis.utils.database import init_db, get_session, Settings, save_appearance_settings
+
+_CONFIG_FILE = Path.home() / ".deeranalysis" / "config.json"
+
 
 def default_directory():
     """
-    Finds the OS specific default dirfectory at ~/DeerAnalysis.
+    Finds the OS specific default directory at ~/DeerAnalysis.
     """
     home = os.path.expanduser("~")
     default_dir = os.path.join(home, "DeerAnalysis")
@@ -16,21 +21,31 @@ def default_directory():
 
 def store_DeerAnalysis_directory(directory):
     """
-    Stores and created the  directory
+    Persists the chosen directory path and creates the directory if needed.
     """
-
-    # Check if the directory exists, if not create it
     if not os.path.exists(directory):
         os.makedirs(directory)
 
+    _CONFIG_FILE.parent.mkdir(parents=True, exist_ok=True)
+    with open(_CONFIG_FILE, "w") as f:
+        json.dump({"directory": str(directory)}, f)
+
+
 def get_DeerAnalysis_directory():
     """
-    Retrieves the stored DeerAnalysis directory. If it does not exist, returns the default directory.
+    Retrieves the stored DeerAnalysis directory.
+    Falls back to the default directory if no config has been saved yet.
     """
-    directory = default_directory()
-    if not os.path.exists(directory):
-        return default_directory()
-    return directory
+    if _CONFIG_FILE.exists():
+        try:
+            with open(_CONFIG_FILE) as f:
+                data = json.load(f)
+            stored = data.get("directory")
+            if stored:
+                return stored
+        except (json.JSONDecodeError, KeyError):
+            pass
+    return default_directory()
 
 def download_deernet_models():
     """

@@ -5,7 +5,7 @@ with open(os.path.join(SPECPATH, 'pyproject.toml'), 'rb') as f:
     _pyproject = tomllib.load(f)
 version = _pyproject['project']['version']
 
-from PyInstaller.utils.hooks import collect_data_files,collect_submodules
+from PyInstaller.utils.hooks import collect_data_files, collect_submodules, copy_metadata
 
 datas = [('src/deeranalysis/assets', 'deeranalysis/assets')]
 datas += [('src/deeranalysis/pages', 'deeranalysis/pages')]  # Add pages folder
@@ -15,6 +15,8 @@ datas += collect_data_files('dash_iconify')
 datas += collect_data_files('dash_mantine_components')
 datas += collect_data_files('dash_ag_grid')
 datas += collect_data_files('deerlab')  # Collect deerlab data files
+datas += copy_metadata('deeranalysis')
+datas += copy_metadata('deerlab')
 
 # Collect all submodules from deeranalysis package
 hiddenimports = ['dash_iconify', 'deerlab','pyepr-esr', 'dash_ag_grid']

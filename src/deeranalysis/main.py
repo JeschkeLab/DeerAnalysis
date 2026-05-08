@@ -6,8 +6,18 @@ import sys
 from pathlib import Path
 
 os.environ['PYWEBVIEW_GUI'] = 'cocoa'  # force macOS backend
-os.environ['DEERANALYSIS_PYWEBVIEW'] = '1'                         
-PORT = 8050
+os.environ['DEERANALYSIS_PYWEBVIEW'] = '1'
+
+
+def _find_free_port(start=8050):
+    import socket
+    for port in range(start, start + 100):
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            if s.connect_ex(('localhost', port)) != 0:
+                return port
+    raise RuntimeError("No free port found in range 8050-8149")
+
+PORT = _find_free_port()
 
 from deeranalysis.app import app
 

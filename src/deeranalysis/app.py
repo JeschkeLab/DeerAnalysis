@@ -8,7 +8,7 @@ import sys
 import os
 from pathlib import Path
 
-from deeranalysis.components.setup_modal_desktop import create_setup_modal, default_directory
+from deeranalysis.components.setup_modal_desktop import create_setup_modal, get_DeerAnalysis_directory
 from deeranalysis.components.new_version_modal import new_version_modal, update_button
 from deeranalysis.components.dmc_theme import da_dmctheme
 from deeranalysis.utils.logs_plugin import initialize_logs_api,check_logs_api_key
@@ -32,7 +32,7 @@ def first_time_setup():
     """
     Checks if the database exists.
     """
-    database_dir = os.path.join(default_directory(), 'deeranalysis.db')
+    database_dir = os.path.join(get_DeerAnalysis_directory(), 'deeranalysis.db')
     # print(f"Checking for existing database at {database_dir}: {'Found' if database_dir else 'Not found'}")
     if not os.path.exists(database_dir):
         return True
@@ -48,7 +48,7 @@ else:
 
 if not first_time_setup():
     # print("Initializing database connection...")
-    init_db(default_directory())
+    init_db(get_DeerAnalysis_directory())
     initialize_logs_api()
     _appearance = get_appearance_settings()
     pio.templates.default = resolve_plot_template(_appearance[0], _appearance[2])
