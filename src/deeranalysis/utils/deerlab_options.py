@@ -255,14 +255,25 @@ def plotly_deerlab(fitresult=None, orientation='h', index=None,
 
     if isinstance(fitresult, dl.FitResult):
         idx = index if index is not None else 0
+        
         data_t     = fitresult.t[idx]     if isinstance(fitresult.t, list)     else fitresult.t
         data_V     = fitresult.Vexp[idx]  if isinstance(fitresult.Vexp, list)  else fitresult.Vexp
-        data_model = fitresult.model[idx] if isinstance(fitresult.model, list) else fitresult.model
+        pathways = fitresult.pathways if hasattr(fitresult,'pathways') else None
         model_t    = data_t
-        r          = fitresult.r
-        background = fitresult.background[idx] if (hasattr(fitresult,'background') and isinstance(fitresult.background, list)) else (fitresult.background if hasattr(fitresult,'background') else None)
+        if pathways is not None:
+            data_model = fitresult.model[idx] if isinstance(fitresult.model, list) else fitresult.model
+            r          = fitresult.r
+        else:
+            data_model = None
+            r           = None
+        if (hasattr(fitresult,'background') and isinstance(fitresult.background, list)):
+            background = fitresult.background[idx]  
+        elif hasattr(fitresult,'background'): 
+            background = fitresult.background
+        else:
+            None
 
-        if hasattr(fitresult, 'P') and isinstance(fitresult.P, list):
+        if hasattr(fitresult, 'P') and isinstance(fitresult.P, list) and fitresult.P is not None:
             P  = fitresult.P[idx]
             PUncert = fitresult.PUncert[idx]
             if isinstance(P, dict) and 'sum' in P:
@@ -374,7 +385,7 @@ def plotly_deerlab(fitresult=None, orientation='h', index=None,
     return fig
     
 
-def fit_to_dict(fit):
+def fit_to_dict(fit,background_only=False):
     """Takes a fit objects and converts it to a dictionary for storage in the database."""
     output = {}
     if isinstance(fit, dl.FitResult):
@@ -392,7 +403,10 @@ def fit_to_dict(fit):
                 output['background'] = fit.background.tolist()
             elif hasattr(fit,'Bmodel') and fit.background is None:
                 output['background'] = None
-            output['pathways'] = fit.Vmodel.pathways
+            if background_only:
+                output['pathways'] = None
+            else:
+                output['pathways'] = fit.Vmodel.pathways
         else:
             output['bg_model'] = 'Neural Network'
             output['fit_type'] = 'Neural Network'
@@ -402,10 +416,14 @@ def fit_to_dict(fit):
 
     output['t'] = fit.t.tolist() if fit.t is not None else None
     output['model'] = fit.model.tolist() if fit.model is not None else None
-    output['P_model'] = fit.P.tolist() if fit.P is not None else None
-    
-    output['r'] = fit.r.tolist() if fit.r is not None else None
-    output['PUncert'] = fit.PUncert.to_dict() if fit.PUncert is not None else None
+    if background_only:
+        output['P_model'] = None
+        output['r'] = None
+        output['PUncert'] = None
+    else:
+        output['P_model'] = fit.P.tolist() if fit.P is not None else None
+        output['r'] = fit.r.tolist() if fit.r is not None else None
+        output['PUncert'] = fit.PUncert.to_dict() if fit.PUncert is not None else None
     output['model_description'] = fit.__str__() if fit is not None else None
     output['data'] = dl.json_dumps(fit) if fit is not None else None
     return output

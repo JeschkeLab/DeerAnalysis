@@ -7,7 +7,7 @@ import xarray as xr
 import deerlab as dl
 import dash_mantine_components as dmc
 from dash_iconify import DashIconify
-from deeranalysis.utils.deerlab_normal import deerlab_fitting
+from deeranalysis.utils.deerlab_normal import deerlab_fitting, deerlab_background_only
 from deeranalysis.utils.database import get_session, Dataset, Fit
 from deeranalysis.utils import  dataarray_from_database_entry
 from deeranalysis.components.dataset_search_model import create_dataset_modal
@@ -202,7 +202,23 @@ def run_fit(n_clicks, dataset_id, bg_model_option, compactness, distance_axis, p
     if len(pathways) == 0:
         if bg_model is None:
             return dash.no_update, "Please select at least one pathway or a background model.", True, True, False
-        print("No pathways selected, defaulting to background-only fit.")
+        try:
+            fit = deerlab_background_only(
+                dataset,
+                bg_model=bg_model,
+                model_overrides=model_params,
+                mask=mask)
+        except Exception as e:
+            print(f"Error during background-only fitting: {e}")
+            return dash.no_update, f"Error during background-only fitting: {e}", True, True, False
+        fit.background= fit.model
+        fit_dict = fit_to_dict(fit,background_only=True)
+        fit_dict['fit_type'] = 'background'
+        fit_dict['dist_stats'] = {}
+        fit_dict['gof'] = fit.stats
+        # fit_dict['dataset'] = dataset.to_dict()
+        return fit_dict, fit.__str__(), False, False, False
+
     else:
         try:
             fit = deerlab_fitting(dataset,
@@ -218,10 +234,21 @@ def run_fit(n_clicks, dataset_id, bg_model_option, compactness, distance_axis, p
         except Exception as e:
             print(f"Error during fitting: {e}")
             return dash.no_update, f"Error during fitting: {e}", True, True, False
+        
+        dist_stats = dl.diststats(r,fit.P,fit.PUncert)
+        dist_stats_dict = dists_stats_to_list(*dist_stats)
 
+        fit_dict = fit_to_dict(fit)
+        fit_dict['dist_stats'] = dist_stats_dict
+        fit_dict['gof'] = fit.stats
+        # fit_dict['dataset'] = dataset.to_dict()
+        return fit_dict, fit.__str__(), False, False, False
 
-    dist_stats = dl.diststats(r,fit.P,fit.PUncert)
-    dist_stats_dict = dists_stats_to_list(*dist_stats)
+    if hasattr(fit,'P'):
+        dist_stats = dl.diststats(r,fit.P,fit.PUncert)
+        dist_stats_dict = dists_stats_to_list(*dist_stats)
+    else:
+        dist_stats_dict = {}
 
     fit_dict = fit_to_dict(fit)
     fit_dict['dist_stats'] = dist_stats_dict
@@ -283,7 +310,10 @@ def update_plots_tables(fit_dict):
         return dash.no_update
     fit = dl.json_loads(fit_dict['data'])
     gof_fig = plotly_goodness_of_fit(fit)
-    l_curve_fig = plotly_lcurve(fit)
+    if fit_dict.get('fit_type') != 'background':
+        l_curve_fig = plotly_lcurve(fit)
+    else:
+        l_curve_fig = plotly_lcurve(None)
 
     dist_stats_dict = fit_dict['dist_stats']
     dist_stats_output = {

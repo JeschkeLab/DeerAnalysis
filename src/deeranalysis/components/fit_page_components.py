@@ -267,7 +267,7 @@ def toggle_pathways(show_pathways, fit_dict):
     if 'data' not in fit_dict:
         return plotly_deerlab(fitresult=fit_dict), True
     fit = dl.json_loads(fit_dict['data'])
-    if not hasattr(fit, 'pathways') or len(fit.pathways) == 1:
+    if not hasattr(fit, 'pathways') or fit.pathways is None or len(fit.pathways) == 1:
         show_pathways = False
         pathway_option = False
     else:

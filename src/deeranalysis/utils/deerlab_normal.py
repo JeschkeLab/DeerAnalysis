@@ -533,5 +533,7 @@ def deerlab_background_only(dataset, bg_model=dl.bg_hom3d,  verbosity=0, **kwarg
     fit.Vexp = Vexp
     fit.t = t
     fit.mask = mask
+    fit.pathways = None
+    fit.background = fit.model
 
     return fit
