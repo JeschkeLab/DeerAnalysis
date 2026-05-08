@@ -6,8 +6,8 @@ import os
 
 
 def test_eprload_BES3T():
-    DSC_file= 'tests/data/benchmark/data_multi_lab1.DSC'
-    DTA_file= 'tests/data/benchmark/data_multi_lab1.DTA'
+    DSC_file = os.path.join(os.path.dirname(__file__), 'data/data_multi_lab1.DSC')
+    DTA_file = os.path.join(os.path.dirname(__file__), 'data/data_multi_lab1.DTA')
     print(os.getcwd())
 
     # Load files into bytes

@@ -332,13 +332,13 @@ def _read_des3t_dsc_file(DSC_file):
     elif not isinstance(DSC_file, str):
         raise TypeError("DSC_file must be bytes or str")
 
-    allLines = DSC_file.splitlines(keepends=True)
+    allLines = DSC_file.splitlines(keepends=False)
     
     # Remove lines with comments
     allLines = [l for l in allLines if not l.startswith("*")]
 
-    # Remove newlines
-    allLines = [l.rstrip("\n") for l in allLines]
+    # Remove newlines (handle Unix and Windows line endings)
+    allLines = [l.rstrip("\r\n") for l in allLines]
     
     # Remove empty lines
     allLines = [l for l in allLines if l]
