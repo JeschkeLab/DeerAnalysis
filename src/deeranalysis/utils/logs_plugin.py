@@ -1,5 +1,6 @@
 from LOGS import LOGS
-from LOGS.Entities import DatasetRequestParameter,PersonRequestParameter, ProjectRequestParameter, InventoryItemRequestParameter, SampleRequestParameter
+from LOGS.Entities import DatasetRequestParameter,PersonRequestParameter, ProjectRequestParameter, InventoryItemRequestParameter, SampleRequestParameter, DatasetSortingOptions
+from LOGS.Entity.EntitySortBy import SortDirection
 import urllib3
 from io import BytesIO
 from zipfile import ZipFile
@@ -135,9 +136,10 @@ def get_list_of_samples(person_ids=None, project_ids=None):
     return convert_to_list_of_dicts(samples)
 
 
-def get_list_of_datasets(person_ids=None, project_ids=None, sample_ids=None):
+def get_list_of_datasets(person_ids=None, project_ids=None, sample_ids=None,
+                         date_from=None, date_to=None):
     global url, apiKey
-    logs = LOGS(url, apiKey,verify= False)
+    logs_conn = LOGS(url, apiKey, verify=False)
     if person_ids:
         if not isinstance(person_ids, list):
             person_ids = [person_ids]
@@ -146,15 +148,43 @@ def get_list_of_datasets(person_ids=None, project_ids=None, sample_ids=None):
         if not isinstance(project_ids, list):
             project_ids = [project_ids]
         project_ids = [int(pid) for pid in project_ids]
-    if sample_ids:
-        if not isinstance(sample_ids, list):
-            sample_ids = [sample_ids]
-        sample_ids = [int(sid) for sid in sample_ids]
-    datasets = logs.datasets(DatasetRequestParameter(
-                                projectIds=project_ids,
-                                )    
-                             )
+    datasets = logs_conn.datasets(DatasetRequestParameter(
+        projectIds=project_ids,
+        ownerIds=person_ids,
+        creationDateFrom=date_from,
+        creationDateTo=date_to,
+    ))
     return datasets
+
+
+def get_datasets_rowdata(person_ids=None, project_ids=None):
+    """Fetch datasets and resolve custom values in parallel. Returns rowData list sorted by date desc."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    datasets = get_list_of_datasets(person_ids=person_ids, project_ids=project_ids)
+
+    def process(ds):
+        try:
+            cv = get_customValues(ds)
+        except Exception:
+            cv = {}
+        return {
+            "id": ds.id,
+            "name": ds.name,
+            "owner": ds.owner.name if ds.owner else "",
+            "project": [p.name for p in ds.projects] if ds.projects else [],
+            "sample": cv.get("Sample", ""),
+            "experiment": cv.get("Experiment", ""),
+            "date": ds.creationDate.strftime("%Y-%m-%d") if ds.creationDate else "",
+        }
+
+    datasets_list = list(datasets)
+    max_workers = min(20, len(datasets_list)) if datasets_list else 1
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        rows = list(executor.map(process, datasets_list))
+
+    rows.sort(key=lambda x: x.get("date") or "", reverse=True)
+    return rows
 
 def get_dataset_by_id(dataset_id):
     global url, apiKey
@@ -256,3 +286,97 @@ def download_to_memory(dataset, verbose=False):
             if verbose:
                 print(f"Extracted: {file_info.filename} ({len(file_content)} bytes)")
     return file_buffers
+
+def get_recent_datasets(person_ids=None,project_ids=None,sample_ids=None,
+                        date_range=None,
+                        search_direction="DESC", page_size=20, page_number=0):
+    sort = DatasetSortingOptions("CREATION_DATE")
+    sort_direction = SortDirection(search_direction)
+
+    if person_ids:
+        if not isinstance(person_ids, list):
+            person_ids = [person_ids]
+        
+        person_ids = [int(pid) for pid in person_ids]
+    if person_ids is not None and len(person_ids) == 0:
+        person_ids = None
+
+    if project_ids:
+        if not isinstance(project_ids, list):
+            project_ids = [project_ids]
+        
+        project_ids = [int(pid) for pid in project_ids]
+        
+    if project_ids is not None and len(project_ids) == 0:
+            project_ids = None
+    
+    # if sample_ids:
+    #     if not isinstance(sample_ids, list):
+    #         sample_ids = [sample_ids]
+    #     sample_ids = [int(sid) for sid in sample_ids]
+    #     if len(sample_ids) == 0:
+    #         sample_ids = None
+    # if sample_ids is not None and len(sample_ids) == 0:
+    #     sample_ids = None
+
+    if date_range:
+        from datetime import datetime, timezone
+        date_from, date_to = date_range
+        if isinstance(date_from, str):
+            date_from = datetime.fromisoformat(date_from).replace(tzinfo=timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+        elif date_from is not None and date_from.tzinfo is None:
+            date_from = date_from.replace(tzinfo=timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+        if isinstance(date_to, str):
+            date_to = datetime.fromisoformat(date_to).replace(tzinfo=timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+        elif date_to is not None and date_to.tzinfo is None:
+            date_to = date_to.replace(tzinfo=timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+    else:
+        date_from, date_to = None, None
+    
+    global url, apiKey
+    logs = LOGS(url, apiKey,verify= False)
+
+    dataset_search = DatasetRequestParameter(
+        sortBy=(sort, sort_direction),
+        projectIds=project_ids,
+        ownerIds=person_ids,
+        creationDateFrom=date_from,
+        creationDateTo=date_to,
+    )
+
+      
+    datasets = logs.datasets(dataset_search)
+    count = datasets.count # Get total count for pagination
+    datasets_list = datasets.toList(page_size*(page_number+1))[page_size*page_number:page_size*(page_number+1)]
+
+    return datasets_list, count
+     
+
+def get_row_data(datasets):
+    """
+    
+    Parameters:
+    -----------
+    datasets: list of LOGS.Entities.Dataset or single LOGS.Entities.Dataset
+        The dataset(s) to process.
+    """
+
+    if not isinstance(datasets, list):
+        datasets = [datasets]
+    output = []
+    for ds in datasets:
+        try:
+            cv = get_customValues(ds)
+        except Exception:
+            cv = {}
+        row = {
+            "id": ds.id,
+            "name": ds.name,
+            "owner": ds.owner.name if ds.owner else "",
+            "project": [p.name for p in ds.projects] if ds.projects else [],
+            "sample": cv.get("Sample", ""),
+            "experiment": cv.get("Experiment", ""),
+            "date": ds.creationDate.strftime("%Y-%m-%d") if ds.creationDate else "",
+        }
+        output.append(row)
+    return output
