@@ -8,7 +8,7 @@
 DeerAnalysis 2026 is major re-design and re-release of the popular dipolar-EPR data processing tool, DeerAnalysis. 
 DeerAnalysis was originally released in 2004, as a matlab based GUI for Tikhnov-regularisation based approaches for extracting distance distributions from Double-Electron-Electron-Resonance (DEER) data, it has been updated multiple times since then most recently in 2022. In xxx DeerAnalysis gained support for neural-network based fitting in the form of DeerNet.
 
-In the 2026 release, DeerAnalysis moved to a modern Python and Javascript based software stack, gaining support for multi-pathway fitting, compactness criterion for non-parametric models, and a completely redesigned user interface. Additionally, a new data/fit management software was implemented, allowing users to easily manage and compare multiple datasets and fits. Support for DeerNet was retained. The parametric and non-parametric fitting is powered by the latest version of [DeerLab](www.github.com/JeschkeLab/DeerLab), which is also available as a standalone package for Python. 
+In the 2026 release, DeerAnalysis moved to a modern Python and Javascript based software stack, gaining support for multi-pathway fitting, compactness criterion for non-parametric models, and a completely redesigned user interface. Additionally, a new data/fit management software was implemented, allowing users to easily manage and compare multiple datasets and fits. Support for DeerNet was retained. The parametric and non-parametric fitting is powered by the latest version of [DeerLab](https://github.com/JeschkeLab/DeerLab), which is also available as a standalone package for Python. 
 
 
 ## Improvements over DeerAnalysis 2022
@@ -23,7 +23,7 @@ In the 2026 release, DeerAnalysis moved to a modern Python and Javascript based 
 
 ## Installation
 
-DeerAnalysis 2026 is avaliable in pre-compiled binaries for Windows, Mac and Linux. The latest release can be found on the [GitHub releases page](www.github.com/JeschkeLab/DeerAnalysis/releases/latest). There is **no** need to install Python or any dependencies, simply download the latest release for your operating system and run the executable.
+DeerAnalysis 2026 is avaliable in pre-compiled binaries for Windows, Mac and Linux. The latest release can be found on the [GitHub releases page](https://github.com/JeschkeLab/DeerAnalysis/releases/latest). There is **no** need to install Python or any dependencies, simply download the latest release for your operating system and run the executable.
 
 
 ## Citing DeerAnalysis
