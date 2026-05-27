@@ -56,37 +56,7 @@ layout = html.Div([
             dmc.Space(h=10),
             dmc.Button("Edit Dipolar Model", id={'type': 'open-model-edit-btn', 'page': page_id}, color="blue", variant='outline', className="mb-2 ms-1", leftSection=DashIconify(icon='material-symbols:edit', width=20)),
             dmc.Space(h=10),
-            # dmc.Paper([
-                dmc.Accordion(
-                    children=[
-                        dmc.AccordionItem(
-                            [
-                                dmc.AccordionControl("Advanced Fit Options"),
-                                dmc.AccordionPanel([
-                                    dmc.Select(
-                                        label='Regularization Method',
-                                        description="Method for the automatic selection of the optimal regularization parameter:",
-                                        id='np-regparam-method',
-                                        data=regparam_options,
-                                        value="bic"
-                                    ),
-                                    dmc.NumberInput(
-                                        label="Fixed Regularization Parameter (α):",
-                                        description="Set a fixed regularization parameter (overrides automatic selection)",
-                                        id='np-alpha',
-                                        type='text',
-                                        value=None,
-                                        step=0.001,
-                                        allowNegative=False,
-                                        className="mb-2"
-                                    )
-                                ])
-                            ],
-                            value="adv-options"
-                        )
-                    ]
-                ),
-            # ], withBorder=True, className="mb-3"),
+            fpc.adv_fit_options_regularisation(page_id),
             
             dmc.Space(h=10),
             
@@ -115,6 +85,7 @@ layout = html.Div([
     dcc.Store(id={'type':'fit-results-store','page': page_id}),
     # Hidden store for user-edited model parameter overrides
     dcc.Store(id={'type': 'model-params-store', 'page': page_id}),
+    dcc.Store(id={'type': 'adv_options', 'page': page_id}, data={'regparam': 'bic', 'regparamrange': [1e-8,1e2]}),
 ])
 
 @callback(
@@ -128,6 +99,28 @@ def update_dropdown(pathname):
     session.close()
     return options
 
+@callback(
+    Output({'type': 'adv_options', 'page': page_id}, 'data'),
+    Input({"type": "regparam-method", "page": page_id}, "value"),
+    Input({"type": "regparam-search-method", "page": page_id}, "value"),
+    Input({"type": "regparam-grid-size", "page": page_id}, "value"),
+    Input({"type": "fixed-alpha", "page": page_id}, "value"),
+)
+def update_adv_options(regparam_method,search_method, grid_size, fixed_alpha):
+    output = {}
+
+    if search_method == 'fixed':
+        output['regparam'] = fixed_alpha
+    else:
+        output['regparam'] = regparam_method
+
+    searchrange = [1e-8,1e2]
+    if search_method == 'grid':
+        output['regparamrange'] = 10**np.linspace(np.log10(searchrange[0]),np.log10(searchrange[1]),grid_size)
+    elif search_method == 'brent':
+        output['regparamrange'] = searchrange
+    
+    return output
 
 @callback(
     Output({'type': 'model-edit-modal', 'page': page_id}, 'opened'),
@@ -170,13 +163,12 @@ def open_model_edit_modal(n_clicks, dataset_id, bg_model_name, pathways, distanc
     State('np-compactness-option', 'checked'),
     State({"type": "distance-axis", "page": page_id}, 'value'),
     State({'type': 'pathways-options', 'page': page_id}, 'value'),
-    State('np-regparam-method', 'value'),
+    State({'type': 'adv_options', 'page': page_id}, 'data'),
     State({'type': 'model-params-store', 'page': page_id}, 'data'),
     running=[(Output('np-run-fit-btn', 'loading'), True, False)],
     prevent_initial_call=True,
 )
-def run_fit(n_clicks, dataset_id, bg_model_option, compactness, distance_axis, pathways_options, regparam_method, model_params):
-
+def run_fit(n_clicks, dataset_id, bg_model_option, compactness, distance_axis, pathways_options, adv_options, model_params):
 
     if not dataset_id:
         return dash.no_update, dash.no_update, dash.no_update, True, True
@@ -228,9 +220,9 @@ def run_fit(n_clicks, dataset_id, bg_model_option, compactness, distance_axis, p
                 bg_model=bg_model,
                 r=r,
                 pathways=pathways,
-                regparam=regparam_method,
                 model_overrides=model_params,
-                mask=mask)
+                mask=mask,
+                **adv_options)
         except Exception as e:
             print(f"Error during fitting: {e}")
             return dash.no_update, f"Error during fitting: {e}", True, True, False

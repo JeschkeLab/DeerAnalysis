@@ -68,7 +68,7 @@ def run_dash():
 def wait_for_dash(window):
     """Poll until Dash is ready, then load the app."""
     import urllib.request
-    time.sleep(5)  # initial delay to give Dash a moment to start
+    # time.sleep(5)  # initial delay to give Dash a moment to start
     while True:
         try:
             urllib.request.urlopen(f"http://localhost:{PORT}", timeout=1)
