@@ -6,9 +6,8 @@ import os
 import json
 from pathlib import Path
 from deeranalysis.utils.database import init_db, get_session, Settings, save_appearance_settings
-
 _CONFIG_FILE = Path.home() / ".deeranalysis" / "config.json"
-
+from importlib.metadata import version as get_version
 
 def default_directory():
     """
@@ -57,7 +56,17 @@ def download_deernet_models():
     if not os.path.exists(deernet_dir):
         os.makedirs(deernet_dir)
     
-    URL = r"https://polybox.ethz.ch/index.php/s/xbB5Yj6bT3PQNK4/download"
+    # OG Hugo's polybox link (expires after 30.06.2024):
+    # URL = r"https://polybox.ethz.ch/index.php/s/xbB5Yj6bT3PQNK4/download"
+    # Latest github release attachment
+    try:
+        _version = get_version("DeerAnalysis")
+    except Exception as e:
+        print(f"Could not get DeerAnalysis version: {e}")
+        _version = "latest"
+
+    URL = rf"https://github.com/JeschkeLab/DeerAnalysis/releases/download/V{_version}/deernet_models.zip"
+    print(f"Downloading DeerNet models from {URL}...")
 
     # download the file and save it to the deernet directory
     import requests

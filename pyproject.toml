@@ -1,6 +1,6 @@
 [project]
 name = "deeranalysis"
-version = "2026.0.b4"
+version = "2026.0b4"
 description = "A graphical fitting and data managment tool for DEER spectroscopy, using DeerLab and DeerNet as fitting engines."
 authors = [
     {name = "Hugo Karas",email = "hkaras@ethz.ch"}
@@ -25,7 +25,7 @@ dependencies = [
     "psutil (>=7.2.1,<8.0.0)",
     "h5py (>=3.15.1,<4.0.0)",
     "onnxruntime (>=1.23.2,<2.0.0)",
-    "logs-py (<4.0.22)",
+    "logs-py (<4.0.35)",
     "pyepr-esr (>=1.0,<2.0)",
     "pywebview (>=6.1)",
     "sqlalchemy (>2.0)",
