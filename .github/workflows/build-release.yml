@@ -15,9 +15,9 @@ jobs:
       matrix:
         include:
           - os: macos-latest
-            spec: packaging/pyinstaller/DeerAnalysis_MacOS.spec
+            spec: DeerAnalysis_MacOS.spec
           - os: windows-latest
-            spec: packaging/pyinstaller/DeerAnalysis_Win.spec
+            spec: DeerAnalysis_Win.spec
         python-version: ['3.12']
 
     steps:
@@ -36,7 +36,8 @@ jobs:
           pip install -e .
 
       - name: Build with PyInstaller
-        run: pyinstaller "${{ matrix.spec }}"
+        run: pyinstaller "${{ matrix.spec }}" --distpath dist --workpath build
+        working-directory: packaging/pyinstaller
 
       - name: Get version
         id: get_version
@@ -59,14 +60,14 @@ jobs:
       - name: Package macOS build
         if: runner.os == 'macOS'
         run: |
-          cd dist
+          cd packaging/pyinstaller/dist
           zip -r "${{ steps.artifact_name.outputs.artifact_name }}.zip" DeerAnalysis.app
 
       - name: Package Windows build
         if: runner.os == 'Windows'
         # The Win spec names the executable "DeerAnalysis 2026.exe".
         run: |
-          cd dist
+          cd packaging/pyinstaller/dist
           Compress-Archive -Path "DeerAnalysis 2026.exe" -DestinationPath "${{ steps.artifact_name.outputs.artifact_name }}.zip"
         shell: pwsh
 
@@ -74,7 +75,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ${{ steps.artifact_name.outputs.artifact_name }}
-          path: dist/*.zip
+          path: packaging/pyinstaller/dist/*.zip
           retention-days: 7
 
   # Linux: Flatpak bundle built with flatpak-builder.
@@ -82,13 +83,16 @@ jobs:
   build-flatpak:
     name: Build Linux Flatpak
     runs-on: ubuntu-latest
-    container:
-      image: bilelmoussaoui/flatpak-github-actions:gnome-48
-      options: --privileged
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
+      - name: Install flatpak-builder
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y flatpak flatpak-builder
+          sudo flatpak remote-add --system --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
 
       - name: Get version
         id: get_version
@@ -102,6 +106,7 @@ jobs:
           bundle: DeerAnalysis.flatpak
           manifest-path: packaging/flatpak/io.github.JeschkeLab.DeerAnalysis.yml
           cache-key: flatpak-builder-${{ github.sha }}
+          run-tests: false
 
       - name: Upload Flatpak artifact
         uses: actions/upload-artifact@v4
