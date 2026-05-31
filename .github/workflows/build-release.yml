@@ -154,11 +154,7 @@ jobs:
 
       - name: Download DeerNet model from latest release
         run: |
-          gh release download latest \
-            --repo ${{ github.repository }} \
-            --pattern "deernet_model.zip" \
-            --dir release-artifacts \
-            --skip-existing \
+          gh release download --repo JeschkeLab/DeerAnalysis  --pattern "deernet_models.zip" --dir release-artifacts --skip-existing \
           || echo "Warning: DeerNet_model.zip not found in latest release, omitting from draft"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
