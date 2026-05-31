@@ -43,7 +43,7 @@ modules:
       #    pip build them from source and use them to satisfy deeranalysis's
       #    deerlab>=1.1.5 / pyepr-esr>=1.0 requirements (instead of PyPI).
       #    Remove the two ./_deps/* paths to go back to the PyPI versions.
-      - pip3 install --prefix=${FLATPAK_DEST} --no-cache-dir ./_deps/deerlab ./_deps/pyepr .
+      - pip3 install --prefix=${FLATPAK_DEST} --no-cache-dir .
       # 2. Overlay the source package so all non-Python assets (CSS/JS/SVG/
       #    PNG under assets/, plus pages/ and components/) are guaranteed
       #    present regardless of wheel data-file packaging.
@@ -72,12 +72,3 @@ modules:
     sources:
       - type: dir
         path: ../..
-      # Local source checkouts of the two in-house dependencies. These are
-      # siblings of the DeerAnalysis repo. Each goes into its own subdir so it
-      # does not collide with the app source copied above.
-      - type: dir
-        path: ../../../DeerLab
-        dest: _deps/deerlab
-      - type: dir
-        path: ../../../PyEPR
-        dest: _deps/pyepr

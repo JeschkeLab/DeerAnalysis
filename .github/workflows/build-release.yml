@@ -79,10 +79,6 @@ jobs:
 
   # Linux: Flatpak bundle built with flatpak-builder.
   #
-  # NOTE: the manifest currently builds deerlab/pyepr-esr from local sibling
-  # checkouts (packaging/flatpak/...yml -> ../../../DeerLab, ../../../PyEPR),
-  # which do NOT exist in CI. This job will fail until the manifest is changed
-  # to pull those deps from PyPI (or until those repos are checked out here).
   build-flatpak:
     name: Build Linux Flatpak
     runs-on: ubuntu-latest
