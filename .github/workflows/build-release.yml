@@ -16,9 +16,10 @@ jobs:
         include:
           - os: macos-latest
             spec: DeerAnalysis_MacOS.spec
+            python-version: '3.12'
           - os: windows-latest
             spec: DeerAnalysis_Win.spec
-        python-version: ['3.12']
+            python-version: '3.12'
 
     steps:
       - name: Checkout code
@@ -157,7 +158,7 @@ jobs:
         with:
           tag_name: v${{ steps.get_version.outputs.version }}
           name: ${{ steps.get_version.outputs.version }}
-          draft: false
+          draft: true
           prerelease: false
           files: release-files/*
           generate_release_notes: true
