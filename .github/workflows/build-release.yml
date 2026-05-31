@@ -79,7 +79,9 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: ${{ steps.artifact_name.outputs.artifact_name }}
-          path: packaging/pyinstaller/dist/*.{zip,dmg}
+          path: |
+            packaging/pyinstaller/dist/*.zip
+            packaging/pyinstaller/dist/*.dmg
           retention-days: 7
 
   # Linux: Flatpak bundle built with flatpak-builder.
@@ -164,7 +166,7 @@ jobs:
       - name: Prepare release files
         run: |
           mkdir release-files
-          find release-artifacts -type f \( -name "*.tar.gz" -o -name "*.zip" -o -name "*.flatpak" \) -exec cp {} release-files/ \;
+          find release-artifacts -type f \( -name "*.tar.gz" -o -name "*.zip" -o -name "*.dmg" -o -name "*.flatpak" \) -exec cp {} release-files/ \;
           ls -la release-files/
 
       - name: Create Release
