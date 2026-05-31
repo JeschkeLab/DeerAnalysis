@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.JeschkeLab.DeerAnalysis</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+  <name>DeerAnalysis</name>
+  <summary>Fitting and data management tool for DEER spectroscopy</summary>
+  <description>
+    <p>
+      DeerAnalysis 2026 is a graphical tool for processing dipolar-EPR (DEER)
+      data. It extracts distance distributions from DEER time traces using
+      Tikhonov regularisation, parametric models, and neural-network fitting
+      (DeerNet), powered by DeerLab. It also provides dataset and fit
+      management for comparing multiple measurements.
+    </p>
+  </description>
+  <launchable type="desktop-id">io.github.JeschkeLab.DeerAnalysis.desktop</launchable>
+  <url type="homepage">https://github.com/JeschkeLab/DeerAnalysis</url>
+  <url type="bugtracker">https://github.com/JeschkeLab/DeerAnalysis/issues</url>
+  <developer id="ch.ethz.jeschkelab">
+    <name>Jeschke Lab, ETH Zurich</name>
+  </developer>
+  <content_rating type="oars-1.1"/>
+  <releases>
+    <release version="2026.0.b4" date="2026-05-22"/>
+  </releases>
+</component>

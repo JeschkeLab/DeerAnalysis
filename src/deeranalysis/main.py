@@ -5,7 +5,7 @@ import os
 import sys
 from pathlib import Path
 
-os.environ['PYWEBVIEW_GUI'] = 'cocoa'  # force macOS backend
+#os.environ['PYWEBVIEW_GUI'] = 'cocoa'  # force macOS backend
 os.environ['DEERANALYSIS_PYWEBVIEW'] = '1'
 
 

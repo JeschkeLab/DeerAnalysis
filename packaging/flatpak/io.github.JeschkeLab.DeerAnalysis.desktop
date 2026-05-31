@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=DeerAnalysis
+GenericName=DEER Spectroscopy Analysis
+Comment=Fitting and data management tool for DEER spectroscopy
+Exec=deeranalysis
+Icon=io.github.JeschkeLab.DeerAnalysis
+Terminal=false
+Categories=Science;Education;
+Keywords=DEER;EPR;ESR;spectroscopy;DeerLab;DeerNet;
