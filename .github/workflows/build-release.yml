@@ -61,8 +61,11 @@ jobs:
       - name: Package macOS build
         if: runner.os == 'macOS'
         run: |
-          cd packaging/pyinstaller/dist
-          zip -r "${{ steps.artifact_name.outputs.artifact_name }}.zip" DeerAnalysis.app
+          hdiutil create \
+            -volname "DeerAnalysis" \
+            -srcfolder packaging/pyinstaller/dist/DeerAnalysis.app \
+            -ov -format UDZO \
+            "packaging/pyinstaller/dist/${{ steps.artifact_name.outputs.artifact_name }}.dmg"
 
       - name: Package Windows build
         if: runner.os == 'Windows'
@@ -76,7 +79,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: ${{ steps.artifact_name.outputs.artifact_name }}
-          path: packaging/pyinstaller/dist/*.zip
+          path: packaging/pyinstaller/dist/*.{zip,dmg}
           retention-days: 7
 
   # Linux: Flatpak bundle built with flatpak-builder.
@@ -146,6 +149,17 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           path: release-artifacts
+
+      - name: Download DeerNet model from latest release
+        run: |
+          gh release download latest \
+            --repo ${{ github.repository }} \
+            --pattern "deernet_model.zip" \
+            --dir release-artifacts \
+            --skip-existing \
+          || echo "Warning: DeerNet_model.zip not found in latest release, omitting from draft"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Prepare release files
         run: |
