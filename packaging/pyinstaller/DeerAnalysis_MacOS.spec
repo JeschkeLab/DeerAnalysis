@@ -1,15 +1,17 @@
 import tomllib
 import os
 
-with open(os.path.join(SPECPATH, 'pyproject.toml'), 'rb') as f:
+ROOT = os.path.normpath(os.path.join(SPECPATH, '..', '..'))
+
+with open(os.path.join(ROOT, 'pyproject.toml'), 'rb') as f:
     _pyproject = tomllib.load(f)
 version = _pyproject['project']['version']
 
 from PyInstaller.utils.hooks import collect_data_files, collect_submodules, copy_metadata
 
-datas = [('src/deeranalysis/assets', 'deeranalysis/assets')]
-datas += [('src/deeranalysis/pages', 'deeranalysis/pages')]  # Add pages folder
-datas += [('src/deeranalysis/components', 'deeranalysis/components')]  # Add pages folder
+datas = [(os.path.join(ROOT, 'src/deeranalysis/assets'), 'deeranalysis/assets')]
+datas += [(os.path.join(ROOT, 'src/deeranalysis/pages'), 'deeranalysis/pages')]
+datas += [(os.path.join(ROOT, 'src/deeranalysis/components'), 'deeranalysis/components')]
 
 datas += collect_data_files('dash_iconify')
 datas += collect_data_files('dash_mantine_components')
@@ -43,7 +45,7 @@ excludes = [
 ]
 
 a = Analysis(
-    ['src/deeranalysis/main.py'],
+    [os.path.join(ROOT, 'src/deeranalysis/main.py')],
     pathex=[],
     binaries=[],
     datas=datas,
@@ -89,7 +91,7 @@ coll = COLLECT(
 app = BUNDLE(
     coll,
     name='DeerAnalysis.app',
-    icon='src/deeranalysis/assets/favicon.ico',
+    icon=os.path.join(ROOT, 'src/deeranalysis/assets/favicon.ico'),
     bundle_identifier='com.deeranalysis.app',
     version=version,
     info_plist={

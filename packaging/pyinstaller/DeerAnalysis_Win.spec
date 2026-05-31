@@ -1,8 +1,11 @@
+import os
+ROOT = os.path.normpath(os.path.join(SPECPATH, '..', '..'))
+
 from PyInstaller.utils.hooks import collect_data_files, collect_submodules, copy_metadata
 
-datas = [('src/deeranalysis/assets', 'deeranalysis/assets')]
-datas += [('src/deeranalysis/pages', 'deeranalysis/pages')]  # Add pages folder
-datas += [('src/deeranalysis/components', 'deeranalysis/components')]  # Add pages folder
+datas = [(os.path.join(ROOT, 'src/deeranalysis/assets'), 'deeranalysis/assets')]
+datas += [(os.path.join(ROOT, 'src/deeranalysis/pages'), 'deeranalysis/pages')]
+datas += [(os.path.join(ROOT, 'src/deeranalysis/components'), 'deeranalysis/components')]
 
 datas += collect_data_files('dash_iconify')
 datas += collect_data_files('dash_mantine_components')
@@ -35,7 +38,7 @@ excludes = [
 ]
 
 a = Analysis(
-    ['src/deeranalysis/main.py'],
+    [os.path.join(ROOT, 'src/deeranalysis/main.py')],
     pathex=[],
     binaries=[],
     datas=datas,
@@ -50,7 +53,7 @@ a = Analysis(
 pyz = PYZ(a.pure)
 
 splash = Splash(
-    'src/deeranalysis/assets/splash.png',
+    os.path.join(ROOT, 'src/deeranalysis/assets/splash.png'),
     binaries=a.binaries,
     datas=a.datas,
     text_pos=None,
@@ -81,6 +84,6 @@ exe = EXE(
     codesign_identity=None,
     entitlements_file=None,
     exclude_binaries=False,  # Must be False for one-file
-    icon='src/deeranalysis/assets/favicon.ico',  # Add this line
+    icon=os.path.join(ROOT, 'src/deeranalysis/assets/favicon.ico'),
 )
 
