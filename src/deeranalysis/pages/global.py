@@ -194,7 +194,6 @@ def open_model_edit_modal(n_clicks, dataset_ids, fit_options,existing_overrides)
     )
     return True, model_data
 
-
 # ----- Callbacks for Updating Fit Options and Running Fit -----
 
 @callback(
@@ -204,10 +203,14 @@ def open_model_edit_modal(n_clicks, dataset_ids, fit_options,existing_overrides)
     Input({"type": 'distance-axis', "page": page_id}, 'value'),
     Input({'type': 'pathways-options', 'page': page_id}, 'value'),
     Input({'type': 'global-fitting','page': page_id}, 'value'),
-    Input({'type': 'regparam-method', 'page': page_id}, 'value'),
+    Input({"type": "regparam-method", "page": page_id}, "value"),
+    Input({"type": "regparam-search-method", "page": page_id}, "value"),
+    Input({"type": "regparam-grid-size", "page": page_id}, "value"),
+    Input({"type": "fixed-alpha", "page": page_id}, "value"),
 )
-def update_fit_options(bg_model_option,compactness,distance_axis,pathways_options,linked_params, regparam_method):
-    options = {
+def update_fit_options(bg_model_option,compactness,distance_axis,pathways_options,linked_params, 
+                       regparam_method,search_method, grid_size, fixed_alpha):
+    output = {
         'bg_model': bg_model_option,
         'compactness': compactness,
         'distance_axis': distance_axis,
@@ -215,17 +218,23 @@ def update_fit_options(bg_model_option,compactness,distance_axis,pathways_option
         'linked_params': linked_params,
         'regparam_method': regparam_method
     }
-    return options
+    
+    if search_method == 'fixed':
+        output['regparam'] = fixed_alpha
+    else:
+        output['regparam'] = regparam_method
+
+    searchrange = [1e-8,1e2]
+    if search_method == 'grid':
+        output['regparamrange'] = 10**np.linspace(np.log10(searchrange[0]),np.log10(searchrange[1]),grid_size)
+    elif search_method == 'brent':
+        output['regparamrange'] = searchrange
+    
+
+    return output
 
 
 @callback(
-    # Output({'type': 'fit-results-store-multi', 'page': page_id}, 'data'),
-    # Output({"type": "fit-plot-figures-store", "page": page_id}, 'data'),
-    # Output({"type": "fit-results-code", "page": page_id}, 'code', allow_duplicate=True),
-    # Output({"type": "gof-plot", "page": page_id}, 'figure', allow_duplicate=True),
-    # Output({"type": "dist-stats-table", "page": page_id}, 'data', allow_duplicate=True),
-    # Output({"type":"save-fit-btn","page":page_id}, 'disabled'),
-    # Output({"type":"download-fit-btn","page":page_id}, 'disabled'),
     Output({'type': 'fit-results-store-multi', 'page': page_id}, 'data'),
     Output({"type": "fit-results-code", "page": page_id}, 'code', allow_duplicate=True),
     Output({"type":"save-fit-btn","page":page_id}, 'disabled'),
@@ -260,19 +269,19 @@ def run_fit(n_clicks, dataset_id, fit_options, model_overrides):
     distance_axis = fit_options.get('distance_axis', [0, 5])
     bg_model_option = fit_options.get('bg_model', 'bg_hom3d')
     pathways_options = fit_options.get('pathways_options', ['1'])
-    regparam_option = fit_options.get('regparam_method', 'bic')
     linked_params = fit_options.get('linked_params', ['pr'])
 
     bg_model = getattr(dl, bg_model_option, dl.bg_hom3d)
     pathways = [int(p) for p in pathways_options]
-    print(pathways)
     r = np.linspace(distance_axis[0], distance_axis[1], 100) # Default range
 
     try:
         n_datasets = len(datasets)
         fit = deerlab_global_fitting(datasets,linked_params,
                                 bg_model=bg_model, r=r, pathways=pathways,
-                                model_overrides=model_overrides)
+                                model_overrides=model_overrides,
+                                regparam=fit_options.get('regparam_method', 'bic'),
+                                regparamrange=fit_options.get('regparamrange', [1e-8,1e2]),)
         fit.n_datasets = n_datasets
     except Exception as e:
         print(f"Error during fitting: {e}")

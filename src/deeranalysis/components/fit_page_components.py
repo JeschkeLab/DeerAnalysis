@@ -19,6 +19,7 @@ def fit_save_download_buttons(page_id):
 
 
 def adv_fit_options_regularisation(page_id):
+
     return dmc.Accordion(
                     dmc.AccordionItem([
                         dmc.AccordionControl("Advanced Fit Options"),
@@ -32,16 +33,74 @@ def adv_fit_options_regularisation(page_id):
             clearable=False,
             allowDeselect=False,
         ),
+        dmc.Select(
+            label = 'Search Method', 
+            description="Method for searching the optimal regularization parameter when using automatic selection",
+            id={"type": "regparam-search-method", "page": page_id},
+            data=[
+                {"value": "brent", "label": "Brent Method"},
+                {"value": "grid", "label": "Grid Search"},
+                {'value': "fixed", "label": "Fixed Value"},
+            ],
+            value='brent',
+            clearable=False,
+            allowDeselect=False,
+        ),
         dmc.NumberInput(
             label="Fixed Regularization Parameter (α):",
             id={"type": "fixed-alpha", "page": page_id},
             description="Set a fixed regularization parameter (overrides automatic selection)",
             type='text',
-            value=None,
+            value=0.1,
             step=0.001,
             allowNegative=False,
         ),
+        dmc.NumberInput(
+            label="Regularization Parameter Search Grid Size:",
+            id={"type": "regparam-grid-size", "page": page_id},
+            description="Number of points to evaluate when using grid search for automatic regularization parameter selection",
+            value=60,
+            step=5,
+            min=10,
+            disabled=True,
+        ),
+
     ],)],value='adv-options'),)
+
+@callback(
+        Output({"type": "regparam-grid-size", "page": MATCH}, "disabled"),
+        Output({"type": "fixed-alpha", "page": MATCH}, "disabled"),
+        Input({"type": "regparam-search-method", "page": MATCH}, "value"),
+        prevent_initial_call=False,
+    )
+def toggle_grid_size(search_method):
+    return search_method != 'grid', search_method != 'fixed'
+
+@callback(
+    Output({"type": "regparam-search-method", "page": MATCH}, "data"),
+    Output({"type": "regparam-search-method", "page": MATCH}, "value"),
+    Input({"type": "regparam-method", "page": MATCH}, "value"),
+    State({"type": "regparam-search-method", "page": MATCH}, "value"),
+    prevent_initial_call=False,
+)
+def reg_param_search_method_options(criteria,current_search_method):
+    if criteria in ['lr','lc']:
+        options = [
+            {"value": "grid", "label": "Grid Search"},
+            {'value': "fixed", "label": "Fixed Value"},
+        ]
+    else:
+        options = [
+            {"value": "brent", "label": "Brent Method"},
+            {"value": "grid", "label": "Grid Search"},
+            {'value': "fixed", "label": "Fixed Value"},
+        ]
+    if current_search_method not in [opt['value'] for opt in options]:
+        new_search_method = options[0]['value']
+    else:        
+        new_search_method = current_search_method
+    return options, new_search_method
+
 
 def adv_fit_options_parametric(page_id):
     return dmc.Group([
@@ -521,6 +580,8 @@ def _render_cards(outputs, metrics):
             thresholds=config["thresholds"],
         ))
     return result
+
+
 
 
 @callback(
