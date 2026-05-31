@@ -7,116 +7,170 @@ on:
   workflow_dispatch:  # Allows manual triggering via GitHub UI
 
 jobs:
-  build:
+  # Windows and macOS: standalone executables built with PyInstaller.
+  build-desktop:
     name: Build on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
-        python-version: ['3.12']
-    
+        include:
+          - os: macos-latest
+            spec: DeerAnalysis_MacOS.spec
+            python-version: '3.12'
+          - os: windows-latest
+            spec: DeerAnalysis_Win.spec
+            python-version: '3.12'
+
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
-      
+        uses: actions/checkout@v6
+
       - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python-version }}
-      
+
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install pyinstaller
           pip install -e .
-      
+
       - name: Build with PyInstaller
-        run: |
-          pyinstaller DeerAnalysis.spec
-      
+        run: pyinstaller "${{ matrix.spec }}" --distpath dist --workpath build
+        working-directory: packaging/pyinstaller
+
       - name: Get version
         id: get_version
         run: |
           VERSION=$(python -c "import tomllib; f = open('pyproject.toml', 'rb'); data = tomllib.load(f); print(data['project']['version']); f.close()")
           echo "version=$VERSION" >> $GITHUB_OUTPUT
         shell: bash
-      
+
       - name: Prepare artifact name
         id: artifact_name
         run: |
-          if [ "${{ runner.os }}" = "Linux" ]; then
-            ARTIFACT_NAME="DeerAnalysis-${{ steps.get_version.outputs.version }}-linux"
-          elif [ "${{ runner.os }}" = "macOS" ]; then
+          if [ "${{ runner.os }}" = "macOS" ]; then
             ARTIFACT_NAME="DeerAnalysis-${{ steps.get_version.outputs.version }}-macos"
           elif [ "${{ runner.os }}" = "Windows" ]; then
             ARTIFACT_NAME="DeerAnalysis-${{ steps.get_version.outputs.version }}-windows"
           fi
           echo "artifact_name=$ARTIFACT_NAME" >> $GITHUB_OUTPUT
         shell: bash
-      
-      - name: Package Linux build
-        if: runner.os == 'Linux'
-        run: |
-          cd dist
-          tar -czf ${{ steps.artifact_name.outputs.artifact_name }}.tar.gz DeerAnalysis
-      
+
       - name: Package macOS build
         if: runner.os == 'macOS'
         run: |
-          cd dist
-          zip -r ${{ steps.artifact_name.outputs.artifact_name }}.zip DeerAnalysis.app
-      
+          hdiutil create \
+            -volname "DeerAnalysis" \
+            -srcfolder packaging/pyinstaller/dist/DeerAnalysis.app \
+            -ov -format UDZO \
+            "packaging/pyinstaller/dist/${{ steps.artifact_name.outputs.artifact_name }}.dmg"
+
       - name: Package Windows build
         if: runner.os == 'Windows'
+        # The Win spec names the executable "DeerAnalysis 2026.exe".
         run: |
-          cd dist
-          Compress-Archive -Path DeerAnalysis.exe -DestinationPath ${{ steps.artifact_name.outputs.artifact_name }}.zip
+          cd packaging/pyinstaller/dist
+          Compress-Archive -Path "DeerAnalysis 2026.exe" -DestinationPath "${{ steps.artifact_name.outputs.artifact_name }}.zip"
         shell: pwsh
-      
+
       - name: Upload build artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ steps.artifact_name.outputs.artifact_name }}
           path: |
-            dist/*.tar.gz
-            dist/*.zip
+            packaging/pyinstaller/dist/*.zip
+            packaging/pyinstaller/dist/*.dmg
+          retention-days: 7
+
+  # Linux: Flatpak bundle built with flatpak-builder.
+  #
+  build-flatpak:
+    name: Build Linux Flatpak
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Install flatpak-builder
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y flatpak flatpak-builder xvfb
+          flatpak remote-add --user --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+
+      - name: Install Flatpak SDK
+        run: flatpak install --user -y --noninteractive flathub org.gnome.Platform//50 org.gnome.Sdk//50
+
+      - name: Get version
+        id: get_version
+        run: |
+          VERSION=$(python3 -c "import tomllib; f = open('pyproject.toml', 'rb'); data = tomllib.load(f); print(data['project']['version']); f.close()")
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Build Flatpak bundle
+        run: |
+          xvfb-run -a flatpak-builder \
+            --user \
+            --repo=repo \
+            --disable-rofiles-fuse \
+            --force-clean \
+            flatpak_app \
+            packaging/flatpak/io.github.JeschkeLab.DeerAnalysis.yml
+          flatpak build-bundle \
+            --runtime-repo=https://flathub.org/repo/flathub.flatpakrepo \
+            repo DeerAnalysis.flatpak io.github.JeschkeLab.DeerAnalysis
+
+      - name: Upload Flatpak artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: DeerAnalysis-${{ steps.get_version.outputs.version }}-linux
+          path: DeerAnalysis.flatpak
           retention-days: 7
 
   create_release:
     name: Create GitHub Release
-    needs: build
+    needs: [build-desktop, build-flatpak]
     runs-on: ubuntu-latest
     if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     permissions:
       contents: write
-    
+
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
-      
+        uses: actions/checkout@v6
+
       - name: Get version
         id: get_version
         run: |
           VERSION=$(python -c "import tomllib; f = open('pyproject.toml', 'rb'); data = tomllib.load(f); print(data['project']['version']); f.close()")
           echo "version=$VERSION" >> $GITHUB_OUTPUT
-      
+
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
           path: release-artifacts
-      
+
+      - name: Download DeerNet model from latest release
+        run: |
+          gh release download --repo JeschkeLab/DeerAnalysis  --pattern "deernet_models.zip" --dir release-artifacts --skip-existing \
+          || echo "Warning: DeerNet_model.zip not found in latest release, omitting from draft"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Prepare release files
         run: |
           mkdir release-files
-          find release-artifacts -type f \( -name "*.tar.gz" -o -name "*.zip" \) -exec cp {} release-files/ \;
+          find release-artifacts -type f \( -name "*.tar.gz" -o -name "*.zip" -o -name "*.dmg" -o -name "*.flatpak" \) -exec cp {} release-files/ \;
           ls -la release-files/
-      
+
       - name: Create Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: v${{ steps.get_version.outputs.version }}
           name: ${{ steps.get_version.outputs.version }}
-          draft: false
+          draft: true
           prerelease: false
           files: release-files/*
           generate_release_notes: true

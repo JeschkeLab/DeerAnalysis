@@ -188,3 +188,8 @@ deernet/
 *.db
 *.dmg
 *.app
+
+# FlatPak
+repo/
+.flatpak-builder/
+.flatpak

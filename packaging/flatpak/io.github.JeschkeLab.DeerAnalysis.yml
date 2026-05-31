@@ -1,0 +1,74 @@
+# Flatpak manifest for DeerAnalysis 2026.
+#
+# DeerAnalysis is a Dash (Flask) web app rendered in a native window via
+# pywebview. On Linux pywebview uses the GTK + WebKitGTK backend, both of
+# which are provided by the GNOME runtime. We target the current GNOME 50
+# runtime, which ships Python >= 3.12 (the app's minimum).
+#
+# This is a deliberately simple, local-build manifest: it lets pip pull
+# dependencies from PyPI at build time (--share=network). That keeps the
+# manifest tiny but is NOT accepted on Flathub, which requires fully
+# pinned/offline sources. See docsrc/dev/flatpak_package.md.
+id: io.github.JeschkeLab.DeerAnalysis
+runtime: org.gnome.Platform
+runtime-version: '50'
+sdk: org.gnome.Sdk
+command: deeranalysis
+
+finish-args:
+  # Wayland + X11 fallback so the window shows under either session.
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --share=ipc
+  # GPU acceleration for WebKit rendering.
+  - --device=dri
+  # Read/write DEER datasets and exported fits from the user's files.
+  - --filesystem=home
+  # Required even though Dash only serves localhost: WebKitGTK's network
+  # stack (libsoup) routes connections through GIO's proxy-resolver portal,
+  # which is denied in a network-isolated sandbox and breaks loading of the
+  # page's sub-resources. --share=network makes the proxy resolver work.
+  - --share=network
+
+modules:
+  - name: deeranalysis
+    buildsystem: simple
+    build-options:
+      # Allow pip to reach PyPI during the build. Local-only convenience.
+      build-args:
+        - --share=network
+    build-commands:
+      # 1. Install the app and all its dependencies into /app.
+      #    Listing the local deerlab/pyepr-esr checkouts alongside "." makes
+      #    pip build them from source and use them to satisfy deeranalysis's
+      #    deerlab>=1.1.5 / pyepr-esr>=1.0 requirements (instead of PyPI).
+      #    Remove the two ./_deps/* paths to go back to the PyPI versions.
+      - pip3 install --prefix=${FLATPAK_DEST} --no-cache-dir .
+      # 2. Overlay the source package so all non-Python assets (CSS/JS/SVG/
+      #    PNG under assets/, plus pages/ and components/) are guaranteed
+      #    present regardless of wheel data-file packaging.
+      - |
+        PYVER=$(python3 -c 'import sys;print(f"{sys.version_info.major}.{sys.version_info.minor}")')
+        cp -rT src/deeranalysis ${FLATPAK_DEST}/lib/python${PYVER}/site-packages/deeranalysis
+      # 3. Launcher. pyproject.toml defines no console script, so we run the
+      #    entry module directly; `-m` sets __name__ == "__main__".
+      - |
+        install -d ${FLATPAK_DEST}/bin
+        cat > ${FLATPAK_DEST}/bin/deeranalysis <<'EOF'
+        #!/bin/sh
+        export PYWEBVIEW_GUI=gtk
+        # Work around WebKitGTK blank-render bug on some GPU drivers.
+        export WEBKIT_DISABLE_DMABUF_RENDERER=1
+        export WEBKIT_DISABLE_COMPOSITING_MODE=1
+        exec python3 -m deeranalysis.main "$@"
+        EOF
+        chmod +x ${FLATPAK_DEST}/bin/deeranalysis
+      # 4. Desktop integration: icon, .desktop entry, AppStream metainfo.
+      - install -Dm644 src/deeranalysis/assets/favicon.svg ${FLATPAK_DEST}/share/icons/hicolor/scalable/apps/io.github.JeschkeLab.DeerAnalysis.svg
+      - install -Dm644 packaging/flatpak/io.github.JeschkeLab.DeerAnalysis.desktop ${FLATPAK_DEST}/share/applications/io.github.JeschkeLab.DeerAnalysis.desktop
+      - install -Dm644 packaging/flatpak/io.github.JeschkeLab.DeerAnalysis.metainfo.xml ${FLATPAK_DEST}/share/metainfo/io.github.JeschkeLab.DeerAnalysis.metainfo.xml
+    # Source paths are relative to this manifest (packaging/flatpak/), so the
+    # repo root is two levels up and the sibling checkouts three.
+    sources:
+      - type: dir
+        path: ../..
