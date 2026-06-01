@@ -593,4 +593,5 @@ def deernet2(dataset, model_size, providor=None,model_dir=None) -> DEERnetResult
         stats=stats,
         _summary = 'DEERnet Fit Result',
         )
+    fitresult.pathways = [1]
     return fitresult

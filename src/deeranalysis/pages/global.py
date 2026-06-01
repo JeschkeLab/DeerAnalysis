@@ -11,6 +11,7 @@ from deeranalysis.components.dataset_search_model import create_dataset_modal
 from deeranalysis.components.download_modal import create_fit_download_modal
 from deeranalysis.components.model_edit_modal import create_model_edit_modal
 
+
 import deeranalysis.components.fit_page_components as fpc
 import deeranalysis.components.fpc_global as fpcg
 from deeranalysis.utils.deerlab_options import background_models, fit_to_dict,name_dataset_from_dict,dists_stats_to_list
@@ -31,6 +32,14 @@ background_models = [
     {'label': 'Homogeneous 3D', 'value': 'bg_hom3d'},
 ]
 
+dummy_download_modal = dmc.Modal(
+    id={"type": "fit-dl-modal-not", "page": page_id},
+    title="Download Fit Results",
+    children=[
+        dmc.Text("Downloading Global Fit Results is not currently supported. Please save the fit and download each fit independently from the fits page."),
+    ],    size="lg",
+    centered=True,
+)
 layout = html.Div([
     dmc.Title("Non-Parametric Global Fitting", order=1, mb="md"),
     dmc.Divider(mb="lg"),
@@ -38,7 +47,7 @@ layout = html.Div([
         dbc.Col([
             startup_message,
             create_dataset_modal(page_id=page_id),
-            create_fit_download_modal(page_id=page_id),
+            dummy_download_modal,
             create_model_edit_modal(page_id=page_id),
             html.Div([
                 dmc.Group([dmc.MultiSelect(id={'type': 'dataset-dropdown', 'page': page_id}, label="Select a dataset", description="Between 2 and 5 dataset should selected.")],style={'flex': '1 1 0',"flexGrow":1}),
@@ -377,8 +386,7 @@ def save_fit(n_clicks, dataset_ids,dataset_store):
     return dbc.Alert("Fit saved successfully!", color="success", duration=4000)
 
 @callback(
-    Output({"type": "fit-dl-modal",'page': page_id}, "opened"),
-    Output({"type": "fit-dl-store",'page': page_id}, "data"),
+    Output({"type": "fit-dl-modal-not",'page': page_id}, "opened"),
     Input({'type':'download-fit-btn','page': page_id}, 'n_clicks'),
     State({'type':'fit-results-store-multi','page': page_id}, 'data'),
 
@@ -386,6 +394,6 @@ def save_fit(n_clicks, dataset_ids,dataset_store):
 )
 def download_fit(n_clicks, fit_store):
     if n_clicks is None or not fit_store:
-        return False, dash.no_update
+        return False
     
-    return True, fit_store
+    return True

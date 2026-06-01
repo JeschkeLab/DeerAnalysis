@@ -93,6 +93,7 @@ sidebar_content = dmc.Stack(
         create_nav_link("Parametric Fit", "/parametric", "mdi:function-variant"),
         create_nav_link("Global Fit", "/global", "mdi:globe"),
         create_nav_link("Population Fit", "/population", "mdi:people-group"),
+        create_nav_link("Background Fit", "/background", "mdi:image-filter-hdr"),
         
         dmc.Divider(my="sm"),
         

@@ -195,8 +195,10 @@ def get_dataset_by_id(dataset_id):
 def get_list_of_experiments():
     global url, apiKey
     logs = LOGS(url, apiKey,verify= False)
-    experiments = logs.experiments()
-    return convert_to_list_of_dicts(experiments)
+
+    Experiment_invent_id = logs.inventoryItems(InventoryItemRequestParameter(searchTerm="Experiment")).toList()[0].id
+    list_of_experiments = logs.inventoryItems(InventoryItemRequestParameter(childrenOfParentIds=[f'{Experiment_invent_id}'])).toList()
+    return convert_to_list_of_dicts(list_of_experiments)
 
 def get_customValues(dataset):
     custom_values = {}

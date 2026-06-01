@@ -12,6 +12,8 @@ from deeranalysis.utils.database import get_session, Dataset, Fit
 from deeranalysis.utils import create_subplot_figure, dataarray_from_database_entry
 from deeranalysis.components.dataset_search_model import create_dataset_modal
 from deeranalysis.components.model_edit_modal import create_model_edit_modal
+from deeranalysis.components.download_modal import create_fit_download_modal
+
 from deeranalysis.utils.deerlab_options import (
     regparam_options, background_models, parametric_models,
     plotly_goodness_of_fit, plotly_deerlab, fit_to_dict, dists_stats_to_list,
@@ -39,6 +41,7 @@ layout = html.Div([
     dbc.Row([
         dbc.Col([
             create_dataset_modal(page_id=page_id),
+            create_fit_download_modal(page_id=page_id),
             create_model_edit_modal(page_id=page_id),
             html.Div([
                 dmc.Select(id={'type': 'dataset-dropdown', 'page': page_id}, label="Select a dataset", style={'flex': '1 1 0'}),
@@ -185,7 +188,7 @@ def open_model_edit_modal(n_clicks, dataset_id, bg_model_name, dist_model_name,
     Output({'type': 'fit-plot-showpathways', 'page': page_id}, 'checked', allow_duplicate=True),
 
     Input({"type": "run-fit-btn", "page": page_id}, 'n_clicks'),
-    Input({'type': 'dataset-dropdown', 'page': page_id}, 'value'),
+    State({'type': 'dataset-dropdown', 'page': page_id}, 'value'),
     State({'type': 'fit-options', 'page': page_id}, 'data'),
     State({'type': 'model-params-store', 'page': page_id}, 'data'),
     running=[(Output({"type": "run-fit-btn", "page": page_id}, 'loading'), True, False)],

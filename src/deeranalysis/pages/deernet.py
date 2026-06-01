@@ -10,6 +10,8 @@ import numpy as np
 
 from deeranalysis.components.dataset_search_model import create_dataset_modal
 from deeranalysis.components.setup_modal_desktop import get_DeerAnalysis_directory
+from deeranalysis.components.download_modal import create_fit_download_modal
+
 from deeranalysis.utils.deerlab_options import  plotly_goodness_of_fit, plotly_deerlab, dists_stats_to_list, fit_to_dict,name_dataset_from_dict
 from deeranalysis.utils.database import get_session, Dataset, Fit
 from deeranalysis.utils import create_subplot_figure, dataarray_from_database_entry
@@ -28,6 +30,7 @@ layout = html.Div([
     dbc.Row([
         dbc.Col([
             create_dataset_modal(page_id=page_id),
+            create_fit_download_modal(page_id=page_id),
             html.Div([
                 dmc.Select(id={'type': 'dataset-dropdown', 'page': page_id}, label="Select a dataset", style={'flex': '1 1 0'}),
                 dmc.ActionIcon(DashIconify(icon='material-symbols:search', width=20),

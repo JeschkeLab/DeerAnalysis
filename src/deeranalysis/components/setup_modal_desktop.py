@@ -199,7 +199,7 @@ def create_setup_modal(id="setup-modal"):
                 ),
                 dmc.StepperStep(
                     label="Step 3:",
-                    description="LOGS Plugin (optional)",
+                    description=dmc.Group([dmc.Text("LOGS Plugin (optional)", size="sm"), dmc.Badge("Beta", color="orange", variant="light", size="sm")], gap="xs"),
                     children=[
                         dmc.Text("For users of the LOGS data-repository from SciY (Bruker), we have implemented a plugin to import data directly"),
                         dmc.Text("To use the LOGS plugin, you need to have a API-key for your server, and the server needs to be running and accessible."),

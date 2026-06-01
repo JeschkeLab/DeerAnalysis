@@ -491,9 +491,9 @@ def deerlab_population_fitting(datasets, model=dl.dd_gauss, n_pops=2, bg_model=d
         fit.stats[i]['SNR'] = 1/fit.noiselvl[i]
 
     if bg_model is not None:
-        fit.background = background_func_population(ts, Vmodels, fit)
+        fit.bg = background_func_population(ts, Vmodels, fit)
     else:
-        fit.background = None
+        fit.bg = None
         
 
     # fit.stats['SNR'] = 1/fit.noiselvl

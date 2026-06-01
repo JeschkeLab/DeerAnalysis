@@ -586,8 +586,8 @@ def rebuild_signal_figure_dd(store, masking_enabled):
 
 @callback(
     Output("dd-redirect", "pathname"),
-    Output({"type": "fit-dl-modal", 'page': page_id}, "opened"),
-    Output({"type": "fit-dl-store", 'page': page_id}, "data"),
+    Output({"type": "fit-dl-modal", 'page': page_id}, "opened", allow_duplicate=True),
+    Output({"type": "fit-dl-store", 'page': page_id}, "data", allow_duplicate=True),
     Input("dd-fits-table", "cellRendererData"),
     State("dd-fits-table", "rowData"),
     prevent_initial_call=True,

@@ -54,8 +54,8 @@ parametric_models = [
         {'label': 'Gaussian Worm Chain', 'value': 'dd_wormcgauss'},
         {'label': 'Random Coil', 'value': 'dd_randcoil'}
 ]
-colour_scheme_dark = ['#7C37DB','#DB7C17','#166122']
-colour_scheme_light = ['#A787D6',"#EDA659",'#67B875']
+colour_scheme_dark = ['#7C37DB','#DB7C17','#166122','#1785DB','#DB1766']
+colour_scheme_light = ['#A787D6',"#EDA659",'#67B875','#6BB5E8','#E867A8']
 
 
 
@@ -142,7 +142,7 @@ def plotly_goodness_of_fit(results=None, index=None):
     return fig
 
 
-def plotly_comparison(results, titles=None, offset=0.3, ci=95, show_ci=True):
+def plotly_comparison(results, titles=None, offset=0.3, ci=95, show_ci=True, show_bg=True):
     """
     Compares multiple fits or datasets by plotting their time domain data and distance distributions
     in a single plotly figure with two subplots.
@@ -158,6 +158,9 @@ def plotly_comparison(results, titles=None, offset=0.3, ci=95, show_ci=True):
         Confidence interval percentage to display (e.g. 95).
     show_ci : bool
         Whether to show the uncertainty bands on the distance distribution.
+    
+    show_bg : bool
+        Whether to show the background fit in the time domain plot (if available).
     """
     import plotly.graph_objects as go
     from plotly.subplots import make_subplots
@@ -188,7 +191,7 @@ def plotly_comparison(results, titles=None, offset=0.3, ci=95, show_ci=True):
             r = res.r
             P = res.P
             model_t = res.model_t if hasattr(res,'model_t') else data_t
-            background = res.background if hasattr(res,'background') else None
+            background = res.bg if hasattr(res,'bg') else None
         elif isinstance(res, dict):
             data_t = res['t']
             data_V = res['V'] + vspacing[i]
@@ -213,7 +216,7 @@ def plotly_comparison(results, titles=None, offset=0.3, ci=95, show_ci=True):
             x=data_t, y=data_V, mode='markers', name='Data',
             legendgroup=titles[i], legendgrouptitle_text=titles[i],
             marker={'color': colour_scheme_light[i]}), row=1, col=1)
-        if background is not None:
+        if background is not None and show_bg:
             fig.add_trace(go.Scatter(x=model_t, y=background, mode='lines', name='Background', line={'color':colour_scheme_dark[i],'dash':'dash'}), row=1, col=1)
         fig.add_trace(go.Scatter(x=model_t, y=data_model, mode='lines', name='Model', legendgroup=titles[i], line={'color': colour_scheme_dark[i]}), row=1, col=1)
 
@@ -226,12 +229,17 @@ def plotly_comparison(results, titles=None, offset=0.3, ci=95, show_ci=True):
     return fig
 
 def plotly_deerlab(fitresult=None, orientation='h', index=None,
-                    showPathways=False, showPopulation=False,linewidth=3):
+                    showPathways=False, showPopulation=False,linewidth=3,
+                    background_only=False):
 
     import plotly.graph_objects as go
     from plotly.subplots import make_subplots
 
-    if orientation == 'h':
+    if background_only:
+        fig = make_subplots(rows=1, cols=1, subplot_titles=["Time Domain"])
+        fig.update_xaxes(title_text="Time (µs)", row=1, col=1)
+        fig.update_yaxes(title_text="Signal (a.u.)", row=1, col=1)
+    elif orientation == 'h':
         fig = make_subplots(rows=1, cols=2, subplot_titles=["Time Domain", "Distance Distribution"], horizontal_spacing=0.1)
         fig.update_xaxes(title_text="Time (µs)", row=1, col=1)
         fig.update_yaxes(title_text="Signal (a.u.)", row=1, col=1)
@@ -245,7 +253,7 @@ def plotly_deerlab(fitresult=None, orientation='h', index=None,
         fig.update_xaxes(title_text="Distance (nm)", row=2, col=1)
         fig.update_yaxes(title_text="P(r) (nm⁻¹)", row=2, col=1)
 
-    
+
     if fitresult is None:
         return fig
 
@@ -266,12 +274,16 @@ def plotly_deerlab(fitresult=None, orientation='h', index=None,
         else:
             data_model = None
             r           = None
-        if (hasattr(fitresult,'background') and isinstance(fitresult.background, list)):
-            background = fitresult.background[idx]  
-        elif hasattr(fitresult,'background'): 
-            background = fitresult.background
+        if (hasattr(fitresult,'bg') and isinstance(fitresult.bg, list)):
+            background = fitresult.bg[idx]
+        elif hasattr(fitresult,'bg') and fitresult.bg is not None:
+            background = fitresult.bg
+        elif background_only and hasattr(fitresult, 'background') and fitresult.background is not None:
+            background = fitresult.background[idx] if isinstance(fitresult.background, list) else fitresult.background
+        elif background_only and hasattr(fitresult, 'model') and fitresult.model is not None:
+            background = fitresult.model[idx] if isinstance(fitresult.model, list) else fitresult.model
         else:
-            None
+            background = None
 
         if hasattr(fitresult, 'P') and isinstance(fitresult.P, list) and fitresult.P is not None:
             P  = fitresult.P[idx]
@@ -365,6 +377,9 @@ def plotly_deerlab(fitresult=None, orientation='h', index=None,
             Vpath = (1-np.sum(lams)+lam*dl.dipolarkernel(model_t-reftime,r)@P)
             fig.add_trace(go.Scatter(x=model_t,y=Vpath,mode='lines',name=label,line={'color':c, 'width':linewidth}),row=1,col=1)
 
+    if background_only: # If we're only showing the background, we don't need to plot the distance distribution, so we can return the figure here.
+        return fig
+
     if P is not None and showPopulation and Ps_pop is not None:
         pop_letters = [k for k in Ps_pop if k != 'sum']
         for letter in pop_letters:
@@ -381,7 +396,7 @@ def plotly_deerlab(fitresult=None, orientation='h', index=None,
         ci = (PUncert.ci(95) * P_factor) if isinstance(PUncert, dl.UQResult) else PUncert
         fig.add_trace(go.Scatter(x=r, y=ci[:,0], mode='lines', line=dict(width=0),showlegend=False, hoverinfo='skip'), row=1, col=2)
         fig.add_trace(go.Scatter(x=r, y=ci[:,1], mode='lines', line=dict(width=0,color=colour_scheme_light[i]), fill='tonexty', name='95% CI'), row=1, col=2)
-        
+
     return fig
     
 
@@ -395,13 +410,18 @@ def fit_to_dict(fit,background_only=False):
             if hasattr(fit, 'Pmodel') and fit.Pmodel is not None:
                 output['fit_type'] = 'parametric'
                 output['dist_model'] = fit.Pmodel.name
+            elif background_only:
+                output['fit_type'] = 'background'
+                output['dist_model'] = None
             else:
                 output['fit_type'] = 'non-parametric'
                 output['dist_model'] = None
 
-            if hasattr(fit,'background') and fit.background is not None:
-                output['background'] = fit.background.tolist()
-            elif hasattr(fit,'Bmodel') and fit.background is None:
+            if hasattr(fit,'bg') and fit.bg is not None:
+                output['background'] = fit.bg.tolist()
+            elif hasattr(fit,'Bmodel') and hasattr(fit,'bg')and fit.bg is None:
+                output['background'] = None
+            else:
                 output['background'] = None
             if background_only:
                 output['pathways'] = None
@@ -415,12 +435,14 @@ def fit_to_dict(fit,background_only=False):
             output['pathways'] = [1]
 
     output['t'] = fit.t.tolist() if fit.t is not None else None
-    output['model'] = fit.model.tolist() if fit.model is not None else None
     if background_only:
+        output['model'] = None
+        output['background'] = fit.model.tolist() if fit.model is not None else None
         output['P_model'] = None
         output['r'] = None
         output['PUncert'] = None
     else:
+        output['model'] = fit.model.tolist() if fit.model is not None else None
         output['P_model'] = fit.P.tolist() if fit.P is not None else None
         output['r'] = fit.r.tolist() if fit.r is not None else None
         output['PUncert'] = fit.PUncert.to_dict() if fit.PUncert is not None else None
@@ -533,40 +555,48 @@ def build_model_data(dataset, bg_model_name, pathways, r_range,
     if t.max() > 500:
         t = t / 1e3  # ns → µs
 
-    r = np.linspace(r_range[0], r_range[1], 100)
+    if r_range is not None:
+        r = np.linspace(r_range[0], r_range[1], 100)
     attrs = dataset.attrs
     seq_name = attrs.get('seq_name', '')
 
-    if seq_name == '5pDEER' or ('tau3' in attrs and seq_name != '4pDEER'):
-        exp_type = '5pDEER'
-        tau1 = attrs['tau1'] / 1e3
-        tau2 = attrs['tau2'] / 1e3
-        tau3 = attrs['tau3'] / 1e3
-        pathways = [p for p in pathways if p <= 5]
-        exp_info = dl.ex_fwd5pdeer(tau1, tau2, tau3, pathways=pathways)
-    elif seq_name == '3pDEER':
-        exp_type = '3pDEER'
-        tau1 = attrs['tau1'] / 1e3
-        pathways = [p for p in pathways if p <= 2]
-        exp_info = dl.ex_3pdeer(tau=tau1, pathways=pathways)
+    if pathways is None and r_range is None: # background only
+        if bg_model_name is None or bg_model_name == 'none':
+            raise ValueError("Background model must be specified for background-only fits.")
+        bg_model = getattr(dl, bg_model_name, None)
+        Vmodel = bg_model
+        exp_type='background'
     else:
-        # Default / 4pDEER
-        exp_type = '4pDEER'
-        tau1 = attrs.get('tau1', 400) / 1e3
-        tau2 = attrs.get('tau2', 2400) / 1e3
-        pathways = [p for p in pathways if p <= 4]
-        exp_info = dl.ex_4pdeer(tau1, tau2, pathways=pathways)
+        if seq_name == '5pDEER' or ('tau3' in attrs and seq_name != '4pDEER'):
+            exp_type = '5pDEER'
+            tau1 = attrs['tau1'] / 1e3
+            tau2 = attrs['tau2'] / 1e3
+            tau3 = attrs['tau3'] / 1e3
+            pathways = [p for p in pathways if p <= 5]
+            exp_info = dl.ex_fwd5pdeer(tau1, tau2, tau3, pathways=pathways)
+        elif seq_name == '3pDEER':
+            exp_type = '3pDEER'
+            tau1 = attrs['tau1'] / 1e3
+            pathways = [p for p in pathways if p <= 2]
+            exp_info = dl.ex_3pdeer(tau=tau1, pathways=pathways)
+        elif seq_name is not None and 'tau1' in attrs and 'tau2' in attrs:
+            # Default / 4pDEER
+            exp_type = '4pDEER'
+            tau1 = attrs.get('tau1', 400) / 1e3
+            tau2 = attrs.get('tau2', 2400) / 1e3
+            pathways = [p for p in pathways if p <= 4]
+            exp_info = dl.ex_4pdeer(tau1, tau2, pathways=pathways)
+            
+        bg_model = (
+            getattr(dl, bg_model_name, None)
+            if bg_model_name and bg_model_name != 'none'
+            else None
+        )
+        if p_model is None:
+            p_model = getattr(dl, p_model_name, None) if p_model_name else None
 
-    bg_model = (
-        getattr(dl, bg_model_name, None)
-        if bg_model_name and bg_model_name != 'none'
-        else None
-    )
-    if p_model is None:
-        p_model = getattr(dl, p_model_name, None) if p_model_name else None
-
-    Vmodel = dl.dipolarmodel(t, r, experiment=exp_info,
-                             Bmodel=bg_model, Pmodel=p_model)
+        Vmodel = dl.dipolarmodel(t, r, experiment=exp_info,
+                                Bmodel=bg_model, Pmodel=p_model)
 
     params_dict = {}
     for name in Vmodel.signature:

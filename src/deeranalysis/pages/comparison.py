@@ -1,5 +1,5 @@
 import dash
-from dash import html, dcc, callback, Input, Output, State, ALL
+from dash import html, dcc, callback, Input, Output, State, ALL, ctx
 import numpy as np
 from deeranalysis.utils.database import get_session, Dataset, Fit
 import dash_mantine_components as dmc
@@ -14,12 +14,15 @@ from deerlab import UQResult
 dash.register_page(__name__)
 
 PAGE_ID = 'comparison'
-N_SLOTS = 3
+N_SLOTS_MAX = 5
+N_SLOTS_DEFAULT = 3
 
 # AppShell: header=60, footer=40, padding="md"=16px top+bottom → 60+40+32 = 132 ≈ 140px
 _PAGE_HEIGHT = 'calc(100vh - 140px)'
 
 layout = html.Div([
+    dcc.Store(id='comp-n-slots', data=N_SLOTS_DEFAULT),
+
     # ── Hidden: modals & drawer ────────────────────────────────────────────
     create_dataset_modal(PAGE_ID),
     search_fit_modal(),
@@ -81,18 +84,37 @@ layout = html.Div([
     dmc.Divider(mb="xs"),
 
     # ── Dataset / fit selection (colour-coded) ─────────────────────────────
-    dmc.Paper(
-        dmc.Group(
+    dmc.Paper([
+        dmc.SimpleGrid(
             [
-                fit_select(page_id=PAGE_ID, index=str(i), color=colour_scheme_dark[i - 1])
-                for i in range(1, N_SLOTS + 1)
+                html.Div(
+                    fit_select(page_id=PAGE_ID, index=str(i), color=colour_scheme_dark[i - 1]),
+                    id={'type': 'slot-wrapper', 'index': str(i)},
+                    style={} if i <= N_SLOTS_DEFAULT else {'display': 'none'},
+                )
+                for i in range(1, N_SLOTS_MAX + 1)
             ],
-            align="flex-start",
-            grow=True,
+            id='comp-fit-grid',
+            cols={'base': 2, 'sm': 3, 'xl': N_SLOTS_MAX},
         ),
-        p="sm", mb="xs", withBorder=True,
-        style={'flexShrink': '0'},
-    ),
+        dmc.Group([
+            dmc.ActionIcon(
+                DashIconify(icon='material-symbols:remove', width=16),
+                id='comp-remove-slot-btn',
+                size="sm", variant="subtle",
+                disabled=True,
+            ),
+            dmc.Text(
+                id='comp-slot-count', size="xs", c="dimmed",
+                children=f"{N_SLOTS_DEFAULT} / {N_SLOTS_MAX}",
+            ),
+            dmc.ActionIcon(
+                DashIconify(icon='material-symbols:add', width=16),
+                id='comp-add-slot-btn',
+                size="sm", variant="subtle",
+            ),
+        ], gap="xs", justify="flex-end", mt="xs"),
+    ], p="sm", mb="xs", withBorder=True, style={'flexShrink': '0'}),
 
     # ── Main comparison plot (fills remaining space) ───────────────────────
     dmc.Paper(
@@ -102,7 +124,6 @@ layout = html.Div([
             style={'height': '100%', 'width': '100%'},
             config={'responsive': True,
                     'toImageButtonOptions': {'format': 'svg'},}
-            # useResizeHandler=True,
         ),
         p="xs", mb="xs", withBorder=True,
         style={'flex': '1', 'minHeight': '0'},
@@ -163,6 +184,35 @@ def toggle_stats(n_clicks, opened):
 
 
 @callback(
+    Output('comp-n-slots', 'data'),
+    Input('comp-add-slot-btn', 'n_clicks'),
+    Input('comp-remove-slot-btn', 'n_clicks'),
+    State('comp-n-slots', 'data'),
+    prevent_initial_call=True,
+)
+def update_slot_count(add_clicks, remove_clicks, n):
+    if ctx.triggered_id == 'comp-add-slot-btn':
+        return min(n + 1, N_SLOTS_MAX)
+    if ctx.triggered_id == 'comp-remove-slot-btn':
+        return max(n - 1, N_SLOTS_DEFAULT)
+    return n
+
+
+@callback(
+    Output({'type': 'slot-wrapper', 'index': ALL}, 'style'),
+    Output('comp-fit-grid', 'cols'),
+    Output('comp-add-slot-btn', 'disabled'),
+    Output('comp-remove-slot-btn', 'disabled'),
+    Output('comp-slot-count', 'children'),
+    Input('comp-n-slots', 'data'),
+)
+def update_slots_visibility(n):
+    styles = [{} if i + 1 <= n else {'display': 'none'} for i in range(N_SLOTS_MAX)]
+    cols = {'base': 2, 'sm': min(n, 3), 'xl': n}
+    return styles, cols, n >= N_SLOTS_MAX, n <= N_SLOTS_DEFAULT, f"{n} / {N_SLOTS_MAX}"
+
+
+@callback(
     Output({'type': 'dataset-dropdown', 'page': PAGE_ID, 'index': ALL}, 'data'),
     Input('url', 'pathname'),
 )
@@ -171,7 +221,7 @@ def update_dataset_dropdowns(pathname):
     datasets = session.query(Dataset).all()
     options = [{'label': ds.name, 'value': str(ds.id)} for ds in datasets]
     session.close()
-    return [options] * N_SLOTS
+    return [options] * N_SLOTS_MAX
 
 
 @callback(
@@ -194,12 +244,14 @@ def update_fit_dropdowns(dataset_ids):
     Output('comp-plot', 'figure'),
     Output('comp-stats-table', 'children'),
     Input({'type': 'fit-dropdown', 'page': PAGE_ID, 'index': ALL}, 'value'),
+    Input('comp-n-slots', 'data'),
     Input('comp-voffset-slider', 'value'),
     Input('comp-ci-select', 'value'),
     Input('comp-show-ci-toggle', 'checked'),
 )
-def compare_fits(fit_ids, offset, ci_str, show_ci):
+def compare_fits(fit_ids, n_slots, offset, ci_str, show_ci):
     ci = int(ci_str) if ci_str else 95
+    fit_ids = fit_ids[:n_slots]
 
     session = get_session()
     loaded = []
@@ -215,10 +267,11 @@ def compare_fits(fit_ids, offset, ci_str, show_ci):
     titles = [f"Dataset {i+1}" for i in range(len(data_dicts))]
 
     fig = plotly_comparison(data_dicts if data_dicts else None,
-                            titles=titles, offset=offset, ci=ci, show_ci=show_ci)
+                            titles=titles, offset=offset, ci=ci, show_ci=show_ci,
+                            show_bg=True,)
     fig.update_layout(title=None)
 
-    stats = _build_stats_tables(data_dicts, titles)
+    stats = _build_stats_tables(data_dicts, titles, n_slots)
     return fig, stats
 
 
@@ -244,10 +297,11 @@ def _fit_to_dict(dataset, fit):
     out['model_t'] = np.array(fit.t, dtype=float)
     out['dist_stats'] = fit.dist_stats or {}
     out['gof'] = fit.gof or {}
+    out['background'] = np.array(fit.background, dtype=float) if hasattr(fit,'background') and fit.background is not None else None
 
     if isinstance(fit.PUncert,dict):
         PUncert = UQResult.from_dict(_convert_lists_in_dicts_to_arrays(fit.PUncert))
-        out['PUncert'] = PUncert #.ci(95)
+        out['PUncert'] = PUncert
     else:
         out['PUncert'] = None
     return out
@@ -304,7 +358,6 @@ def _format_dist_stat(entry):
         return val
 
 
-
 def _header_cells(titles):
     cells = [dmc.TableTh("Metric")]
     for i, title in enumerate(titles):
@@ -319,7 +372,7 @@ def _header_cells(titles):
 
 def _make_time_table(data_dicts, titles):
     body_rows = []
-    
+
     for key in TIME_LABELS:
         label = TIME_LABELS[key]
         cells = [dmc.TableTd(dmc.Text(label, size="sm", fw=500))]
@@ -339,7 +392,7 @@ def _make_time_table(data_dicts, titles):
 
 def _make_dist_table(data_dicts, titles):
     body_rows = []
-    
+
     for key in KEY_STATS:
         label = STAT_LABELS[key]
         cells = [dmc.TableTd(dmc.Text(label, size="sm", fw=500))]
@@ -357,14 +410,15 @@ def _make_dist_table(data_dicts, titles):
     ], gap="xs")
 
 
-def _build_stats_tables(data_dicts, titles):
+_STATS_SPLIT_BREAKPOINT = {1: 'xs', 2: 'sm', 3: 'md', 4: 'lg', 5: 'xl'}
+
+def _build_stats_tables(data_dicts, titles, n_slots=N_SLOTS_DEFAULT):
     if not data_dicts:
         return dmc.Text("No fits selected.", c="dimmed", size="sm")
 
+    bp = _STATS_SPLIT_BREAKPOINT.get(n_slots, 'xl')
     return dmc.SimpleGrid(
         [_make_time_table(data_dicts, titles), _make_dist_table(data_dicts, titles)],
-        cols=2,
+        cols={'base': 1, bp: 2},
         spacing="md",
     )
-
-
