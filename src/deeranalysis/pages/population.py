@@ -10,6 +10,8 @@ from dash_iconify import DashIconify
 from deeranalysis.utils.database import get_session, Dataset, Fit, fit_global_datasets, fit_siblings
 from deeranalysis.utils import  dataarray_from_database_entry
 from deeranalysis.components.dataset_search_model import create_dataset_modal
+from deeranalysis.components.download_modal import create_fit_download_modal
+
 from deeranalysis.components.model_edit_modal import create_model_edit_modal
 from deeranalysis.utils.deerlab_options import regparam_options,background_models, plotly_goodness_of_fit, plotly_deerlab,dists_stats_to_list, fit_to_dict,name_dataset_from_dict
 from deeranalysis.components.fit_page_components import fit_save_download_buttons,distance_slider,adv_fit_options_parametric
@@ -37,6 +39,15 @@ parametric_models = [
 background_models = [
     {'label': 'Homogeneous 3D', 'value': 'bg_hom3d'},
 ]
+
+dummy_download_modal = dmc.Modal(
+    id={"type": "fit-dl-modal-not", "page": page_id},
+    title="Download Fit Results",
+    children=[
+        dmc.Text("Downloading Global Fit Results is not currently supported. Please save the fit and download each fit independently from the fits page."),
+    ],    size="lg",
+    centered=True,
+)
 layout = html.Div([
     dmc.Title("Multi-Population Global Fitting", order=1, mb="md"),
     dmc.Divider(mb="lg"),
@@ -47,6 +58,7 @@ layout = html.Div([
             startup_message,
             create_dataset_modal(page_id=page_id),
             create_model_edit_modal(page_id=page_id),
+            dummy_download_modal,
             html.Div([
                 dmc.Group([dmc.MultiSelect(id={'type': 'dataset-dropdown', 'page': page_id}, label="Select a dataset", description="Between 2 and 5 dataset should selected.")],style={'flex': '1 1 0',"flexGrow":1}),
                 dmc.ActionIcon(DashIconify(icon='material-symbols:search', width=20),
@@ -404,8 +416,7 @@ def save_fit(n_clicks, dataset_ids, dataset_store):
     return dbc.Alert("Fit saved successfully!", color="success", duration=4000)
 
 @callback(
-    Output({"type": "fit-dl-modal",'page': page_id}, "opened"),
-    Output({"type": "fit-dl-store",'page': page_id}, "data"),
+    Output({"type": "fit-dl-modal-not",'page': page_id}, "opened"),
     Input({'type':'download-fit-btn','page': page_id}, 'n_clicks'),
     State({'type':'fit-results-store-multi','page': page_id}, 'data'),
 
@@ -413,6 +424,6 @@ def save_fit(n_clicks, dataset_ids, dataset_store):
 )
 def download_fit(n_clicks, fit_store):
     if n_clicks is None or not fit_store:
-        return False, dash.no_update
+        return False
     
-    return True, fit_store
+    return True

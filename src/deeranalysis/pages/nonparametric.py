@@ -92,7 +92,7 @@ layout = html.Div([
             
             dmc.Button("Run Fit", id="np-run-fit-btn", color="blue",variant='outline', className="mb-2 ms-1",leftSection=DashIconify(icon='material-symbols:play-arrow', width=20)),
             dmc.Button("Save Fit", id="np-save-fit-btn", color="green",variant='outline', className="mb-2 ms-1", disabled=True, leftSection=DashIconify(icon='material-symbols:save', width=20)),
-            dmc.Button("Download", id="np-download-fit-btn", color="green",variant='outline', className="mb-2 ms-1", disabled=True, leftSection=DashIconify(icon='material-symbols:download', width=20)),
+            dmc.Button("Download", id={'type':"download-fit-btn",'page':page_id}, color="green",variant='outline', className="mb-2 ms-1", disabled=True, leftSection=DashIconify(icon='material-symbols:download', width=20)),
             html.Div(id='np-fit-status')
         ], width=3),
         
@@ -161,7 +161,7 @@ def open_model_edit_modal(n_clicks, dataset_id, bg_model_name, pathways, distanc
     Output({'type':'fit-results-store','page': page_id}, 'data', allow_duplicate=True),
     Output({"type": "fit-results-code", "page": page_id}, 'code', allow_duplicate=True),
     Output('np-save-fit-btn', 'disabled'),
-    Output('np-download-fit-btn', 'disabled'),
+    Output({'type':"download-fit-btn",'page':page_id}, 'disabled'),
     Output({'type': 'fit-plot-showpathways', 'page': page_id}, 'checked', allow_duplicate=True),
 
     Input('np-run-fit-btn', 'n_clicks'),
@@ -283,19 +283,19 @@ def save_fit(n_clicks, dataset_id,dataset_store):
     
     return dbc.Alert("Fit saved successfully!", color="success", duration=4000)
 
-@callback(
-    Output({"type": "fit-dl-modal",'page': page_id}, "opened"),
-    Output({"type": "fit-dl-store",'page': page_id}, "data"),
-    Input('np-download-fit-btn', 'n_clicks'),
-    State({'type':'fit-results-store','page': page_id}, 'data'),
+# @callback(
+#     Output({"type": "fit-dl-modal",'page': page_id}, "opened"),
+#     Output({"type": "fit-dl-store",'page': page_id}, "data"),
+#     Input('np-download-fit-btn', 'n_clicks'),
+#     State({'type':'fit-results-store','page': page_id}, 'data'),
 
-    prevent_initial_call=True
-)
-def download_fit(n_clicks, fit_store):
-    if n_clicks is None or not fit_store:
-        return False, dash.no_update
+#     prevent_initial_call=True
+# )
+# def download_fit(n_clicks, fit_store):
+#     if n_clicks is None or not fit_store:
+#         return False, dash.no_update
     
-    return True, fit_store
+#     return True, fit_store
 
 @callback(
     Output({"type": "gof-plot", "page": page_id}, 'figure', allow_duplicate=True),

@@ -14,6 +14,7 @@ import deerlab as dl
 
 from deeranalysis.utils.deerlab_normal import deerlab_background_only, deerlab_fitting
 from deeranalysis.utils.deerlab_options import background_models
+from deeranalysis.utils.deerlab_options import fit_to_dict
 
 
 # ---------------------------------------------------------------------------
@@ -262,6 +263,15 @@ class TestDeerlabFitting4pDEER:
         assert hasattr(fit, "t")
         assert len(fit.t) == len(np.arange(0.3, 0.5 + 3.5, 0.04))
 
+    def test_fit_to_dict(self, fit):
+        fit_dict = fit_to_dict(fit)
+        assert isinstance(fit_dict, dict)
+        assert fit_dict['bg_model'] == 'bg_hom3d'
+        assert fit_dict['fit_type'] == 'non-parametric'
+        assert fit_dict['engine'] == 'DeerLab'
+        assert fit_dict['pathways'] == [1]
+        assert 'background' in fit_dict and fit_dict['background'] is not None
+
 
 # ---------------------------------------------------------------------------
 # deerlab_fitting: experiment type smoke tests (3pDEER, 5pDEER)
@@ -355,3 +365,30 @@ def test_deerlab_background_only_model(bg_model_name):
     residuals = fit.model - fit.Vexp
     assert np.sqrt(np.mean(residuals**2)) < 0.1
 
+
+
+class TestDeerlabFittingBackgroundOnly:
+
+    @pytest.fixture(scope="class")
+    def fit(self):
+        return deerlab_background_only(make_bg_only_dataset("bg_hom3d"), bg_model=dl.bg_hom3d)
+
+    def test_returns_fit_object(self, fit):
+        assert fit is not None
+
+    def test_has_fitted_signal(self, fit):
+        assert hasattr(fit, "model")
+
+    def test_vfit_close_to_vexp(self, fit):
+        residuals = fit.model - fit.Vexp
+        assert np.sqrt(np.mean(residuals**2)) < 0.1
+
+    def test_fit_to_dict(self, fit):
+        fit_dict = fit_to_dict(fit, background_only=True)
+        assert isinstance(fit_dict, dict)
+        assert fit_dict['bg_model'] == 'bg_hom3d'
+        assert fit_dict['fit_type'] == 'background'
+        assert fit_dict['engine'] == 'DeerLab'
+        assert fit_dict['pathways'] is None
+        assert 'background' in fit_dict and fit_dict['background'] is not None
+        assert 'model' in fit_dict and fit_dict['model'] is None

@@ -207,71 +207,114 @@ def datasetSQL_to_file(file, dataset_entry, format_type):
     else:
         raise ValueError(f"Unsupported format type: {format_type}") 
 
+def output_to_file(file, output, format_type):
 
-
-def fitSQL_to_file(file, fit_entry,dataset_entry, format_type, uncert=True):
-
-    t = np.array(dataset_entry.t)
-    Vexp = np.array(dataset_entry.V) + 1j*np.array(dataset_entry.V_im)
-
-    Vmodel = np.array(fit_entry.model)
-    r = np.array(fit_entry.r)
-    P = np.array(fit_entry.P_model)
-    P_lb = np.array(fit_entry.P_model['lb']) if fit_entry.P_model and 'lb' in fit_entry.P_model else None
-    P_ub = np.array(fit_entry.P_model['ub']) if fit_entry.P_model and 'ub' in fit_entry.P_model else None
-
-    if fit_entry.engine == 'DeerNet':
-        # Either resample the fit to the dataset's t axis or 
-        Vt = np.array(fit_entry.t)
-        Vmodel = np.interp(t, Vt, Vmodel)
-        raise NotImplementedError("Resampling of DeerNet fits is not implemented yet. Please ensure that the fit and dataset have the same time axis before exporting.")
-        
     if format_type == 'csv':
         # Create a zip file with two CSVs: one for the time domain data and one for the distance distribution
         from zipfile import ZipFile
         import io
         time_buffer = io.StringIO()
-        dist_buffer = io.StringIO()
+        dist_buffer = None # Only create if needed later
 
         # Save time domain data
-        header = 't,V_exp_real,V_exp_imag,V_model'
-        data = column_stack((t, Vexp.real, Vexp.imag, Vmodel.real))
+        header = 't'
+        data_list = [output['t']]
+        if np.iscomplexobj(output['Vexp']):
+            header += ',V_exp_real,V_exp_imag'
+            data_list.append(output['Vexp'].real)
+            data_list.append(output['Vexp'].imag)
+        else:
+            header += ',V_exp'
+            data_list.append(output['Vexp'])
+        if 'Vmodel' in output and output['Vmodel'] is not None:
+            if np.iscomplexobj(output['Vmodel']):
+                header += ',V_model_real,V_model_imag'
+                data_list.append(output['Vmodel'].real)
+                data_list.append(output['Vmodel'].imag)
+            else:
+                header += ',V_model'
+                data_list.append(output['Vmodel'])
+        if 'bg' in output and output['bg'] is not None:
+            if np.iscomplexobj(output['bg']):
+                header += ',bg_real,bg_imag'
+                data_list.append(output['bg'].real)
+                data_list.append(output['bg'].imag)
+            else:
+                header += ',bg'
+                data_list.append(output['bg'])
+        data = column_stack(data_list)
         savetxt(time_buffer, data, delimiter=',', header=header, comments='')
 
         # Save distance distribution data
-        header = 'r,P'
-        if uncert and P_lb is not None and P_ub is not None:
-            header = 'r,P,lb,ub'
-            data = column_stack((r, P, P_lb, P_ub))
-        else:
+        if 'r' in output:
+            dist_buffer = io.StringIO()
             header = 'r,P'
-            data = column_stack((r, P))
-        savetxt(dist_buffer, data, delimiter=',', header=header, comments='')
+            data_list = [output['r'], output['P']]
+            if 'P_lb' in output and 'P_ub' in output:
+                header += ',lb,ub'
+                data_list.append(output['P_lb'])
+                data_list.append(output['P_ub'])
+            data = column_stack(data_list)
+
+            savetxt(dist_buffer, data, delimiter=',', header=header, comments='')
         
         if isinstance(file, str):
             with ZipFile(file, 'w') as zip_file:
                 zip_file.writestr(f'{file}_t.csv', time_buffer.getvalue())
-                zip_file.writestr(f'{file}_dd.csv', dist_buffer.getvalue())
+                if dist_buffer is not None:
+                    zip_file.writestr(f'{file}_dd.csv', dist_buffer.getvalue())
         else:
             with ZipFile(file, 'w') as zip_file:
                 zip_file.writestr('fit_t.csv', time_buffer.getvalue())
-                zip_file.writestr('fit_dd.csv', dist_buffer.getvalue())
+                if dist_buffer is not None:
+                    zip_file.writestr('fit_dd.csv', dist_buffer.getvalue())
 
 
     elif format_type == 'matlab':
         from scipy.io import savemat
-        output_dict = {}
-        output_dict['t'] = t.T
-        output_dict['V_exp'] = Vexp.T
-        output_dict['V_model'] = Vmodel.T
-        output_dict['r'] = r.T
-        output_dict['P'] = P.T
-        if uncert and P_lb is not None and P_ub is not None:
-            output_dict['P_uncert'] = np.array([P_lb, P_ub]).T
-            
-        savemat(file, output_dict)
+        savemat(file, output)
 
     else:
         raise ValueError(f"Unsupported format type: {format_type}")
+
+
+def FitResult_to_file(file, fitresult, format_type, uncert=True):
+
+    output = {}
+    output['t'] = fitresult.t
+    output['Vexp'] = fitresult.Vexp
+    output['Vmodel'] = fitresult.model if fitresult.model is not None else None
+
+    if hasattr(fitresult, 'bg'):
+        output['bg'] = fitresult.bg
     
+    if hasattr(fitresult, 'r') and hasattr(fitresult, 'P'):
+        output['r'] = fitresult.r
+        output['P'] = fitresult.P
+        if uncert:
+            output['P_lb'] = fitresult.PUncert.ci(95)[:,0]
+            output['P_ub'] = fitresult.PUncert.ci(95)[:,1]
+
+    output_to_file(file, output, format_type)
+
+
+
+
+def fitSQL_to_file(file, fit_entry,dataset_entry, format_type, uncert=True):
+    output = {}
+    output['t'] = np.array(dataset_entry.t)
+    output['Vexp'] = np.array(dataset_entry.V) + 1j*np.array(dataset_entry.V_im)
+
+    output['Vmodel'] = np.array(fit_entry.model)
+    output['r'] = np.array(fit_entry.r)
+    output['P'] = np.array(fit_entry.P_model)
+    output['P_lb'] = np.array(fit_entry.P_model['lb']) if fit_entry.P_model and 'lb' in fit_entry.P_model else None
+    output['P_ub'] = np.array(fit_entry.P_model['ub']) if fit_entry.P_model and 'ub' in fit_entry.P_model else None
+
+    if fit_entry.engine == 'DeerNet':
+        # Either resample the fit to the dataset's t axis or 
+        Vt = np.array(fit_entry.t)
+        output['Vmodel'] = np.interp(output['t'], Vt, output['Vmodel'])
+    
+    output_to_file(file, output, format_type)
 

@@ -57,3 +57,11 @@ def test_global_fitting_function(datasets, pathways, linked_params):
     assert hasattr(result, 'PUncert')
     PUncert = result.PUncert
     assert isinstance(PUncert, list) and len(PUncert) == n_datasets
+
+
+def test_global_fitting_export(datasets):
+    import io
+    result = deerlab_global_fitting(datasets=datasets, pathways=[1], linked_params=['pr'])
+    assert isinstance(result, dl.FitResult)
+    buf = io.BytesIO()
+    dl.save(buf, result, format='hdf5')

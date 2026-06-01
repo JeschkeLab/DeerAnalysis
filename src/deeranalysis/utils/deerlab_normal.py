@@ -463,6 +463,12 @@ def deerlab_background_only(dataset, bg_model=dl.bg_hom3d,  verbosity=0, **kwarg
 
     if np.iscomplexobj(Vexp):
         Vexp,Vexp_im,_ = dl.correctphase(Vexp,full_output=True)
+    elif remove_crossing:
+        Warning("Crossing removal only works with complex data. Skipping")
+        remove_crossing = False
+
+    Vexp /= Vexp.max()
+
     
     if "mask" in kwargs:
         mask = kwargs["mask"]

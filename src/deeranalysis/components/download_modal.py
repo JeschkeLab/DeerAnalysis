@@ -7,7 +7,7 @@ import os
 import tempfile
 import traceback
 import zipfile
-from deeranalysis.utils.io import datasetSQL_to_file, fitSQL_to_file, save_bruker_bes3t
+from deeranalysis.utils.io import datasetSQL_to_file, fitSQL_to_file, save_bruker_bes3t,FitResult_to_file
 from deeranalysis.utils.database import get_session, Dataset, Fit
 from deerlab import save, json_loads
 
@@ -26,11 +26,12 @@ EXTENSIONS = {
     "hdf5":   ".h5",
     "matlab": ".mat",
     "csv":    ".csv",
+    "dl-hdf5": ".h5",
 }
 
 FIT_DOWNLOAD_FORMAT_OPTIONS = [
     {"value": "dl-hdf5",   "label": "DeerLab - HDF5 (.h5)"},
-    {"value": "hdf5",   "label": "HDF5 (.h5)"},
+    # {"value": "hdf5",   "label": "HDF5 (.h5)"},
     {"value": "matlab", "label": "Matlab (.mat)"},
     {"value": "csv",    "label": "CSV (.csv)"},
 ]
@@ -182,7 +183,7 @@ def create_fit_download_modal(page_id="fit-download-modal"):
                             label="File format",
                             description="Choose the format for the exported fit result.",
                             data=FIT_DOWNLOAD_FORMAT_OPTIONS,
-                            value="hdf5",
+                            value="dl-hdf5",
                             allowDeselect=False,
                             w="100%",
                             style={"flex": 1},
@@ -205,17 +206,17 @@ def create_fit_download_modal(page_id="fit-download-modal"):
                         w="100%",
                         style={"display": "none"} if _is_pywebview() else None,
                     ),
-                    dmc.Checkbox(
-                        id={"type": "fit-dl-include-uncert", "page": page_id},
-                        label="Include uncertainty estimates (if available)",
-                        value=True,
-                    ),
-                    dmc.Checkbox(
-                        id={"type": "fit-dl-resample_deernet", "page": page_id},
-                        label="Resample the DeerNet fit to the original dataset's time axis (if applicable)",
-                        value=True,
+                    # dmc.Checkbox(
+                    #     id={"type": "fit-dl-include-uncert", "page": page_id},
+                    #     label="Include uncertainty estimates (if available)",
+                    #     value=True,
+                    # ),
+                    # dmc.Checkbox(
+                    #     id={"type": "fit-dl-resample_deernet", "page": page_id},
+                    #     label="Resample the DeerNet fit to the original dataset's time axis (if applicable)",
+                    #     value=True,
                         
-                    ),
+                    # ),
                     dcc.Download(id={"type": "fit-dl-download", "page": page_id}),
                     dmc.Group(
                         [
@@ -314,7 +315,6 @@ def _open_fit_info_modal(n_clicks):
     prevent_initial_call=True,
 )
 def _download_dataset(n_clicks, dataset_id, fmt, filename):
-    print(f"Triggered dataset download callback with dataset_id={dataset_id}, fmt={fmt}, filename={filename}")
     if not n_clicks or dataset_id is None:
         print("Download callback triggered without clicks or dataset_id")
         return dash.no_update, dash.no_update, dash.no_update
@@ -416,92 +416,141 @@ def _download_dataset(n_clicks, dataset_id, fmt, filename):
     prevent_initial_call=True,
 )
 def _download_fit(n_clicks, fit_id, fmt, filename):
-    print(f"Triggered fit download callback with fit_id={fit_id}, fmt={fmt}, filename={filename}")
     if not n_clicks or fit_id is None:
-        return dash.no_update, dash.no_update
+        return dash.no_update, dash.no_update, dash.no_update
 
     filename = (filename or "fit_result").strip() or "fit_result"
     ext = EXTENSIONS.get(fmt, "")
     full_name = filename + ext
 
-    session = get_session()
-    fit_entry = session.query(Fit).filter_by(id=fit_id).first()
-    dataset_entry = session.query(Dataset).filter_by(id=fit_entry.dataset_id).first()
-    session.close()
-
-    if fmt == "dl-hdf5":
-        # Check that the data entry in the fit_entry is not None
-        if fit_entry.data is None:
-            alert = dmc.Alert(
-                "No data available for this fit result. Cannot export to DeerLab HDF5 format.",
-                color="red",
-                variant="filled",
-            )
-            return dash.no_update, True, alert
-        
-        full_name = filename + ext
-        buf = io.BytesIO()
+    if isinstance(fit_id, dict): # In-memory fits, i.e. from the fit_page. 
         try: 
-            fitResult = json_loads(fit_entry.data)
+            fitResult = json_loads(fit_id['data'])
         except Exception as e:
             alert = dmc.Alert(
-                f"Failed to parse fit data for DeerLab HDF5 export: {str(e)}",
-                color="red",
-                variant="filled",
-            )
-            return dash.no_update, True, alert
-
-        try:
-            save(buf, fitResult, format='hdf5')
-        except Exception as e:
-            alert = dmc.Alert(
-                f"DeerLab HDF5 export failed: {str(e)}",
-                color="red",
-                variant="filled",
-            )
-            return dash.no_update, True, alert
-
-    
-    elif fmt == "hdf5":
-        full_name = filename + ext
-        buf = io.BytesIO()
-        try:
-            fitSQL_to_file(buf, fit_entry,dataset_entry, fmt, uncert=True)
-        except Exception as e:
-            alert = dmc.Alert(
-                f"HDF5 export failed: {str(e)}",
-                color="red",
-                variant="filled",
-            )
-            return dash.no_update, True, alert
-    elif fmt == "matlab":
-        full_name = filename + ext
-        buf = io.BytesIO()
-        try:
-            fitSQL_to_file(buf, fit_entry,dataset_entry, fmt, uncert=True)
-        except Exception as e:
-            alert = dmc.Alert(
-                f"MATLAB export failed: {str(e)}",
-                color="red",
-                variant="filled",
-            )
-            return dash.no_update, True, alert
-
-    elif fmt == "csv":
-        buf = io.BytesIO()
-        full_name = filename + ".zip" # We will create a zip file containing the CSVs
-        try:
-            fitSQL_to_file(buf, fit_entry,dataset_entry, fmt, uncert=True)
-        except Exception as e:
-            print(e)
-            traceback.print_tb(e.__traceback__)
-            alert = dmc.Alert(
-                f"CSV export failed: {str(e)}",
+                f"Failed to parse fit data: {str(e)}",
                 color="red",
                 variant="filled",
             )
             return dash.no_update, True, alert
         
+        if isinstance(fitResult.t,list) and fmt != "dl-hdf5":
+            alert = dmc.Alert(
+                f"Global fits can only be exported in the DeerLab HDF5 format, here. Otherwise, please save the fits and export each independently from the fits page.",
+                color="red",
+                variant="filled",
+            )
+            return dash.no_update, True, alert
+        
+        if fmt == "dl-hdf5":
+            full_name = filename + ext
+            buf = io.BytesIO()
+
+            try:
+                save(buf, fitResult, format='hdf5')
+            except Exception as e:
+                print(traceback.format_exc())
+                alert = dmc.Alert(
+                    f"DeerLab HDF5 export failed: {str(e)}",
+                    color="red",
+                    variant="filled",
+                )
+                return dash.no_update, True, alert
+        elif fmt == "matlab":
+            full_name = filename + ext
+            buf = io.BytesIO()
+            try:
+                FitResult_to_file(buf, fitResult, fmt, uncert=True)
+            except Exception as e:
+                alert = dmc.Alert(
+                    f"MATLAB export failed: {str(e)}",
+                    color="red",
+                    variant="filled",
+                )
+                return dash.no_update, True, alert
+
+        elif fmt == "csv":
+            buf = io.BytesIO()
+            full_name = filename + ".zip" # We will create a zip file containing the CSVs
+            try:
+                FitResult_to_file(buf, fitResult, fmt, uncert=True)
+            except Exception as e:
+                print(e)
+                traceback.print_tb(e.__traceback__)
+                alert = dmc.Alert(
+                    f"CSV export failed: {str(e)}",
+                    color="red",
+                    variant="filled",
+                )
+                return dash.no_update, True, alert
+
+    else:
+
+        session = get_session()
+        fit_entry = session.query(Fit).filter_by(id=fit_id).first()
+        dataset_entry = session.query(Dataset).filter_by(id=fit_entry.dataset_id).first()
+        session.close()
+
+        if fmt == "dl-hdf5":
+            # Check that the data entry in the fit_entry is not None
+            if fit_entry.data is None:
+                alert = dmc.Alert(
+                    "No data available for this fit result. Cannot export to DeerLab HDF5 format.",
+                    color="red",
+                    variant="filled",
+                )
+                return dash.no_update, True, alert
+            
+            full_name = filename + ext
+            buf = io.BytesIO()
+            try: 
+                fitResult = json_loads(fit_entry.data)
+            except Exception as e:
+                alert = dmc.Alert(
+                    f"Failed to parse fit data for DeerLab HDF5 export: {str(e)}",
+                    color="red",
+                    variant="filled",
+                )
+                return dash.no_update, True, alert
+
+            try:
+                save(buf, fitResult, format='hdf5')
+            except Exception as e:
+                alert = dmc.Alert(
+                    f"DeerLab HDF5 export failed: {str(e)}",
+                    color="red",
+                    variant="filled",
+                )
+                return dash.no_update, True, alert
+
+        elif fmt == "matlab":
+            full_name = filename + ext
+            buf = io.BytesIO()
+            try:
+                fitSQL_to_file(buf, fit_entry,dataset_entry, fmt, uncert=True)
+            except Exception as e:
+                alert = dmc.Alert(
+                    f"MATLAB export failed: {str(e)}",
+                    color="red",
+                    variant="filled",
+                )
+                return dash.no_update, True, alert
+
+        elif fmt == "csv":
+            buf = io.BytesIO()
+            full_name = filename + ".zip" # We will create a zip file containing the CSVs
+            try:
+                fitSQL_to_file(buf, fit_entry,dataset_entry, fmt, uncert=True)
+            except Exception as e:
+                print(e)
+                traceback.print_tb(e.__traceback__)
+                alert = dmc.Alert(
+                    f"CSV export failed: {str(e)}",
+                    color="red",
+                    variant="filled",
+                )
+                return dash.no_update, True, alert
+            
 
     if _is_pywebview():
         _save_file_native(buf.getvalue(), full_name)

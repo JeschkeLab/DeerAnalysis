@@ -181,78 +181,78 @@ layout = dmc.Container([
                 ]
             ),
             
-            # DeerLab Settings
-            dmc.AccordionItem(
-                value="deerlab",
-                children=[
-                    dmc.AccordionControl(
-                        "DeerLab Settings",
-                        icon=DashIconify(icon="mdi:chart-bell-curve", width=20)
-                    ),
-                    dmc.AccordionPanel([
-                        dmc.Stack([
-                            dmc.NumberInput(
-                                id="config-dl-max-iterations",
-                                label="Maximum Iterations",
-                                description="Maximum number of iterations for fitting algorithms",
-                                value=10000,
-                                min=100,
-                                max=1000000,
-                                step=1000,
-                                mb="sm",
-                                allowDecimal=False
-                            ),
-                            dmc.NumberInput(
-                                id="config-dl-tolerance",
-                                label="Convergence Tolerance",
-                                description="Tolerance for convergence criteria",
-                                value=1e-6,
-                                min=1e-10,
-                                max=1e-3,
-                                step=1e-7,
-                                decimalScale=10,
-                                mb="sm"
-                            ),
-                            dmc.Select(
-                                id="config-dl-regparam-method",
-                                label="Default Regularization Parameter Method",
-                                description="Method for selecting regularization parameter",
-                                data=[
-                                    {"value": "aic", "label": "AIC (Akaike Information Criterion)"},
-                                    {"value": "bic", "label": "BIC (Bayesian Information Criterion)"},
-                                    {"value": "cv", "label": "Cross-Validation"},
-                                    {"value": "gcv", "label": "Generalized Cross-Validation"},
-                                ],
-                                value="bic",
-                                mb="sm"
-                            ),
-                            dmc.Select(
-                                id='config-dl-nnls-backend',
-                                label='Default NNLS Backend',
-                                description='Default solver used to solve a non-negative least-squares problem',
-                                data=[
-                                    {'value': 'qp', 'label': 'quadprog'},
-                                    {'value': 'cvx', 'label': 'cvxopt'},
-                                    {'value': 'fnnls', 'label': 'fast NNLS'},
-                                ],
-                                value='qp',
-                                mb='sm'     
-                            ),
-                            dmc.NumberInput(
-                                id="config-dl-bootstrap-samples",
-                                label="Default Bootstrap Samples",
-                                description="Number of bootstrap samples for uncertainty analysis",
-                                value=50,
-                                min=10,
-                                max=1000,
-                                step=10,
-                                allowDecimal=False,
-                                mb="sm"
-                            ),
-                        ])
-                    ])
-                ]
-            ),
+            # # DeerLab Settings
+            # dmc.AccordionItem(
+            #     value="deerlab",
+            #     children=[
+            #         dmc.AccordionControl(
+            #             "DeerLab Settings",
+            #             icon=DashIconify(icon="mdi:chart-bell-curve", width=20)
+            #         ),
+            #         dmc.AccordionPanel([
+            #             dmc.Stack([
+            #                 dmc.NumberInput(
+            #                     id="config-dl-max-iterations",
+            #                     label="Maximum Iterations",
+            #                     description="Maximum number of iterations for fitting algorithms",
+            #                     value=10000,
+            #                     min=100,
+            #                     max=1000000,
+            #                     step=1000,
+            #                     mb="sm",
+            #                     allowDecimal=False
+            #                 ),
+            #                 dmc.NumberInput(
+            #                     id="config-dl-tolerance",
+            #                     label="Convergence Tolerance",
+            #                     description="Tolerance for convergence criteria",
+            #                     value=1e-6,
+            #                     min=1e-10,
+            #                     max=1e-3,
+            #                     step=1e-7,
+            #                     decimalScale=10,
+            #                     mb="sm"
+            #                 ),
+            #                 dmc.Select(
+            #                     id="config-dl-regparam-method",
+            #                     label="Default Regularization Parameter Method",
+            #                     description="Method for selecting regularization parameter",
+            #                     data=[
+            #                         {"value": "aic", "label": "AIC (Akaike Information Criterion)"},
+            #                         {"value": "bic", "label": "BIC (Bayesian Information Criterion)"},
+            #                         {"value": "cv", "label": "Cross-Validation"},
+            #                         {"value": "gcv", "label": "Generalized Cross-Validation"},
+            #                     ],
+            #                     value="bic",
+            #                     mb="sm"
+            #                 ),
+            #                 dmc.Select(
+            #                     id='config-dl-nnls-backend',
+            #                     label='Default NNLS Backend',
+            #                     description='Default solver used to solve a non-negative least-squares problem',
+            #                     data=[
+            #                         {'value': 'qp', 'label': 'quadprog'},
+            #                         {'value': 'cvx', 'label': 'cvxopt'},
+            #                         {'value': 'fnnls', 'label': 'fast NNLS'},
+            #                     ],
+            #                     value='qp',
+            #                     mb='sm'     
+            #                 ),
+            #                 dmc.NumberInput(
+            #                     id="config-dl-bootstrap-samples",
+            #                     label="Default Bootstrap Samples",
+            #                     description="Number of bootstrap samples for uncertainty analysis",
+            #                     value=50,
+            #                     min=10,
+            #                     max=1000,
+            #                     step=10,
+            #                     allowDecimal=False,
+            #                     mb="sm"
+            #                 ),
+            #             ])
+            #         ])
+            #     ]
+            # ),
             
             # DeerNet Settings
             dmc.AccordionItem(

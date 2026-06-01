@@ -4,7 +4,7 @@ from deeranalysis.utils.deerlab_options import regparam_options, plotly_deerlab,
 from deeranalysis.utils.database import get_session, Dataset
 from deeranalysis.utils import dataarray_from_database_entry
 
-from dash import dcc, html, callback, Input, Output, State, ALL, MATCH
+from dash import dcc, html, callback, Input, Output, State, ALL, MATCH, no_update
 import deerlab as dl
 import numpy as np
 
@@ -195,17 +195,19 @@ def fit_results_tabs(*tabs):
 
 
 
-def fit_plot(page_id):
+def fit_plot(page_id, background_only=False):
+    switch_style = {'display': 'none'} if background_only else None
     return dmc.Paper([
         dmc.Group([
             dmc.Text("Dataset:", size="md", id={"type": "fit-plot-dataset-label", "page": page_id}, mb=0),
             dmc.Switch(id={'type': 'fit-plot-showpathways','page':page_id},
                        onLabel="ON", offLabel="OFF",
                        label="Show Pathways", labelPosition='left',
-                       size="lg",pr='lg'),
+                       size="lg",pr='lg',
+                       style=switch_style),
         ],justify="space-between"),
         dcc.Graph(id={"type": "fit-plot", "page": page_id},
-                figure=plotly_deerlab(None),
+                figure=plotly_deerlab(None, background_only=background_only),
                 style={'height': '100%'},
                 config={'responsive': True})
                 ],
@@ -262,21 +264,26 @@ def plot_dataset(dataset_id):
     prevent_initial_call=True,
 )
 def toggle_pathways(show_pathways, fit_dict):
+    import dash
+    outputs_list = dash.callback_context.outputs_list
+    page_id = outputs_list[0]['id'].get('page') if outputs_list else None
+    background_only = (page_id == 'background')
+
     if not fit_dict:
-        return plotly_deerlab(None), True
+        return plotly_deerlab(None, background_only=background_only), True
     if 'data' not in fit_dict:
-        return plotly_deerlab(fitresult=fit_dict), True
+        return plotly_deerlab(fitresult=fit_dict, background_only=background_only), True
     fit = dl.json_loads(fit_dict['data'])
     if not hasattr(fit, 'pathways') or fit.pathways is None or len(fit.pathways) == 1:
         show_pathways = False
         pathway_option = False
     else:
         pathway_option = True
-    return plotly_deerlab(fitresult=fit, showPathways=show_pathways or False), not pathway_option
+    return plotly_deerlab(fitresult=fit, showPathways=show_pathways or False, background_only=background_only), not pathway_option
 
 
 def pathway_input(page_id):
-    tooltip_msg = "Select which pathways to include in the fit. These will be applied to all datasets, if they are feasible for the corresponding experiment. If no pathways are selected, the fit will be background only."
+    tooltip_msg = "Select which pathways to include in the fit. These will be applied to all datasets, if they are feasible for the corresponding experiment."
     return dmc.Tooltip(dmc.CheckboxGroup(
                 id={'type': 'pathways-options', 'page': page_id},
                 label="Pathways to include:",
@@ -290,6 +297,20 @@ def pathway_input(page_id):
                 ]),
                 value=['1'], # Default selected pathways
             ),label=tooltip_msg, position="left", withArrow=True, transitionProps={"duration": 0},multiline=True,w="15%")
+
+@callback(
+    Output({"type": "fit-dl-modal",'page': MATCH}, "opened", allow_duplicate=True),
+    Output({"type": "fit-dl-store",'page': MATCH}, "data", allow_duplicate=True),
+    Input({"type":'download-fit-btn','page': MATCH}, 'n_clicks'),
+    State({'type':'fit-results-store','page': MATCH}, 'data'),
+    prevent_initial_call=True
+)
+def download_fit(n_clicks, fit_store):
+    if n_clicks is None or not fit_store:
+        return False, no_update
+    
+    return True, fit_store
+
 
 # ---------------------------------------------------------------------------
 # Overview Tab Components, Cards and Callbacks
