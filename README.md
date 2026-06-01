@@ -2,6 +2,7 @@
 
 ![GitHub Release](https://img.shields.io/github/v/release/JeschkeLab/DeerAnalysis?include_prereleases)
 ![GitHub Downloads (all assets, all releases)](https://img.shields.io/github/downloads/JeschkeLab/DeerAnalysis/total)
+![GitHub Downloads (specific asset, all releases)](https://img.shields.io/github/downloads/JeschkeLab/DeerAnalysis/deernet_models.zip?displayAssetName=true)
 ![GitHub License](https://img.shields.io/github/license/JeschkeLab/DeerAnalysis)
 
 
