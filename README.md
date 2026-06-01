@@ -26,6 +26,8 @@ In the 2026 release, DeerAnalysis moved to a modern Python and Javascript based 
 
 DeerAnalysis 2026 is avaliable in pre-compiled binaries for Windows, Mac and Linux. The latest release can be found on the [GitHub releases page](https://github.com/JeschkeLab/DeerAnalysis/releases/latest). There is **no** need to install Python or any dependencies, simply download the latest release for your operating system and run the executable.
 
+The Windows and MacOS versions are released unsigned, so you may need to bypass security warnings when running the installer or executable for the first time. On MacOS, you may need to allow the app in System Preferences > Security & Privacy after trying to run it.
+
 ### Linux (Flatpak)
 
 On Linux, DeerAnalysis is distributed as a [Flatpak](https://flatpak.org/) bundle. Download `DeerAnalysis.flatpak` from the [releases page](https://github.com/JeschkeLab/DeerAnalysis/releases/latest) and install it:

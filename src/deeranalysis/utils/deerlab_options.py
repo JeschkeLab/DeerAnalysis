@@ -186,19 +186,20 @@ def plotly_comparison(results, titles=None, offset=0.3, ci=95, show_ci=True, sho
         if isinstance(res, dl.FitResult):
             data_t = res.dataset.t.values
             data_V = res.Vexp + vspacing[i]
-            data_model = res.model + vspacing[i]
-            PUncert = res.PUncert.ci(ci) if show_ci else None
-            r = res.r
-            P = res.P
+            data_model = (res.model + vspacing[i]) if res.model is not None else None
+            r = res.r if hasattr(res, 'r') else None
+            P = res.P if hasattr(res, 'P') else None
+            PUncert = (res.PUncert.ci(ci) if show_ci else None) if (hasattr(res, 'PUncert') and res.PUncert is not None and P is not None) else None
             model_t = res.model_t if hasattr(res,'model_t') else data_t
             background = res.bg if hasattr(res,'bg') else None
         elif isinstance(res, dict):
             data_t = res['t']
             data_V = res['V'] + vspacing[i]
-            data_model = res['model'] + vspacing[i]
-            r = res['r']
-            P = res['P']
-            if 'PUncert' in res and res['PUncert'] is not None and show_ci:
+            raw_model = res.get('model')
+            data_model = (raw_model + vspacing[i]) if raw_model is not None else None
+            r = res.get('r')
+            P = res.get('P')
+            if 'PUncert' in res and res['PUncert'] is not None and show_ci and P is not None:
                 if isinstance(res['PUncert'], dl.UQResult):
                     PUncert = res['PUncert'].ci(ci)
                 else:
@@ -206,25 +207,28 @@ def plotly_comparison(results, titles=None, offset=0.3, ci=95, show_ci=True, sho
             else:
                 PUncert = None
             model_t = res['model_t'] if 'model_t' in res else data_t
-            background = res['background'] if 'background' in res else None
+            background = res.get('background')
         else:
             raise ValueError("Each fit result must be either a dl.FitResult, xr.DataArray or a dict. Invalid type: {}".format(type(res)))
-        
-        if len(model_t) != len(data_model):
+
+        if data_model is not None and len(model_t) != len(data_model):
             raise ValueError(f"Length of model_t ({len(model_t)}) does not match length of data_model ({len(data_model)}). Please ensure that model_t and model have the same length.")
         fig.add_trace(go.Scatter(
             x=data_t, y=data_V, mode='markers', name='Data',
             legendgroup=titles[i], legendgrouptitle_text=titles[i],
             marker={'color': colour_scheme_light[i]}), row=1, col=1)
         if background is not None and show_bg:
-            fig.add_trace(go.Scatter(x=model_t, y=background, mode='lines', name='Background', line={'color':colour_scheme_dark[i],'dash':'dash'}), row=1, col=1)
-        fig.add_trace(go.Scatter(x=model_t, y=data_model, mode='lines', name='Model', legendgroup=titles[i], line={'color': colour_scheme_dark[i]}), row=1, col=1)
+            bg_y = background + vspacing[i]
+            fig.add_trace(go.Scatter(x=model_t, y=bg_y, mode='lines', name='Background', legendgroup=titles[i], line={'color':colour_scheme_dark[i],'dash':'dash'}), row=1, col=1)
+        if data_model is not None:
+            fig.add_trace(go.Scatter(x=model_t, y=data_model, mode='lines', name='Model', legendgroup=titles[i], line={'color': colour_scheme_dark[i]}), row=1, col=1)
 
-        fig.add_trace(go.Scatter(x=r, y=P, mode='lines', name='P(r)', legendgroup=titles[i], line={'color': colour_scheme_dark[i]}), row=1, col=2)
-        if PUncert is not None:
-            ci_label = f"{ci}% CI"
-            fig.add_trace(go.Scatter(x=r, y=PUncert[:, 0], mode='lines', line=dict(width=0), legendgroup=titles[i], showlegend=False, hoverinfo='skip'), row=1, col=2)
-            fig.add_trace(go.Scatter(x=r, y=PUncert[:, 1], mode='lines', line=dict(width=0, color=colour_scheme_light[i]), legendgroup=titles[i], fill='tonexty', name=ci_label), row=1, col=2)
+        if r is not None and P is not None:
+            fig.add_trace(go.Scatter(x=r, y=P, mode='lines', name='P(r)', legendgroup=titles[i], line={'color': colour_scheme_dark[i]}), row=1, col=2)
+            if PUncert is not None:
+                ci_label = f"{ci}% CI"
+                fig.add_trace(go.Scatter(x=r, y=PUncert[:, 0], mode='lines', line=dict(width=0), legendgroup=titles[i], showlegend=False, hoverinfo='skip'), row=1, col=2)
+                fig.add_trace(go.Scatter(x=r, y=PUncert[:, 1], mode='lines', line=dict(width=0, color=colour_scheme_light[i]), legendgroup=titles[i], fill='tonexty', name=ci_label), row=1, col=2)
 
     return fig
 
@@ -500,15 +504,19 @@ def name_dataset_from_dict(dataset_dict):
         el1 = f"{dataset_dict['dist_model']}"
     elif dataset_dict['fit_type'] == 'Population':
         el1 = f"Population Fit"
+    elif dataset_dict['fit_type'] == 'background':
+        el1 = f"{dataset_dict['bg_model']} Background Fit"
     else:
         el1 = f"Non-Parametric"
 
     if dataset_dict['pathways'] is not None:
         el2 = str([f"{p}" for p in dataset_dict['pathways']])
+        return f"{el1}-{el2}"
     else:
         el2 = ""
+        return f"{el1}"
 
-    return f"{el1}-{el2}"
+    
 
 
 def _safe_float(val):

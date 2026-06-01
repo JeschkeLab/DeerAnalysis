@@ -291,19 +291,29 @@ def _fit_to_dict(dataset, fit):
     out['t'] = np.array(dataset.t, dtype=float)
     out['V'] = np.array(dataset.V, dtype=float)
     out['V'] /= out['V'].max()
-    out['model'] = np.array(fit.model, dtype=float)
-    out['r'] = np.array(fit.r, dtype=float)
-    out['P'] = np.array(fit.P_model, dtype=float)
     out['model_t'] = np.array(fit.t, dtype=float)
     out['dist_stats'] = fit.dist_stats or {}
     out['gof'] = fit.gof or {}
-    out['background'] = np.array(fit.background, dtype=float) if hasattr(fit,'background') and fit.background is not None else None
 
-    if isinstance(fit.PUncert,dict):
-        PUncert = UQResult.from_dict(_convert_lists_in_dicts_to_arrays(fit.PUncert))
-        out['PUncert'] = PUncert
-    else:
+    background_only = getattr(fit, 'fit_type', None) == 'background'
+
+    if background_only:
+        out['model'] = None
+        out['r'] = None
+        out['P'] = None
         out['PUncert'] = None
+        bg_data = fit.background if hasattr(fit, 'background') and fit.background is not None else fit.model
+        out['background'] = np.array(bg_data, dtype=float) if bg_data is not None else None
+    else:
+        out['model'] = np.array(fit.model, dtype=float) if fit.model is not None else None
+        out['r'] = np.array(fit.r, dtype=float) if fit.r is not None else None
+        out['P'] = np.array(fit.P_model, dtype=float) if fit.P_model is not None else None
+        out['background'] = np.array(fit.background, dtype=float) if hasattr(fit, 'background') and fit.background is not None else None
+        if isinstance(fit.PUncert, dict):
+            PUncert = UQResult.from_dict(_convert_lists_in_dicts_to_arrays(fit.PUncert))
+            out['PUncert'] = PUncert
+        else:
+            out['PUncert'] = None
     return out
 
 
