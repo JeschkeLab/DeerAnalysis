@@ -54,8 +54,8 @@ parametric_models = [
         {'label': 'Gaussian Worm Chain', 'value': 'dd_wormcgauss'},
         {'label': 'Random Coil', 'value': 'dd_randcoil'}
 ]
-colour_scheme_dark = ['#7C37DB','#DB7C17','#166122']
-colour_scheme_light = ['#A787D6',"#EDA659",'#67B875']
+colour_scheme_dark = ['#7C37DB','#DB7C17','#166122','#1785DB','#DB1766']
+colour_scheme_light = ['#A787D6',"#EDA659",'#67B875','#6BB5E8','#E867A8']
 
 
 
