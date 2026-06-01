@@ -142,7 +142,7 @@ def plotly_goodness_of_fit(results=None, index=None):
     return fig
 
 
-def plotly_comparison(results, titles=None, offset=0.3, ci=95, show_ci=True):
+def plotly_comparison(results, titles=None, offset=0.3, ci=95, show_ci=True, show_bg=True):
     """
     Compares multiple fits or datasets by plotting their time domain data and distance distributions
     in a single plotly figure with two subplots.
@@ -158,6 +158,9 @@ def plotly_comparison(results, titles=None, offset=0.3, ci=95, show_ci=True):
         Confidence interval percentage to display (e.g. 95).
     show_ci : bool
         Whether to show the uncertainty bands on the distance distribution.
+    
+    show_bg : bool
+        Whether to show the background fit in the time domain plot (if available).
     """
     import plotly.graph_objects as go
     from plotly.subplots import make_subplots
@@ -188,7 +191,7 @@ def plotly_comparison(results, titles=None, offset=0.3, ci=95, show_ci=True):
             r = res.r
             P = res.P
             model_t = res.model_t if hasattr(res,'model_t') else data_t
-            background = res.background if hasattr(res,'background') else None
+            background = res.bg if hasattr(res,'bg') else None
         elif isinstance(res, dict):
             data_t = res['t']
             data_V = res['V'] + vspacing[i]
@@ -213,7 +216,7 @@ def plotly_comparison(results, titles=None, offset=0.3, ci=95, show_ci=True):
             x=data_t, y=data_V, mode='markers', name='Data',
             legendgroup=titles[i], legendgrouptitle_text=titles[i],
             marker={'color': colour_scheme_light[i]}), row=1, col=1)
-        if background is not None:
+        if background is not None and show_bg:
             fig.add_trace(go.Scatter(x=model_t, y=background, mode='lines', name='Background', line={'color':colour_scheme_dark[i],'dash':'dash'}), row=1, col=1)
         fig.add_trace(go.Scatter(x=model_t, y=data_model, mode='lines', name='Model', legendgroup=titles[i], line={'color': colour_scheme_dark[i]}), row=1, col=1)
 
@@ -266,12 +269,12 @@ def plotly_deerlab(fitresult=None, orientation='h', index=None,
         else:
             data_model = None
             r           = None
-        if (hasattr(fitresult,'background') and isinstance(fitresult.background, list)):
-            background = fitresult.background[idx]  
-        elif hasattr(fitresult,'background'): 
-            background = fitresult.background
+        if (hasattr(fitresult,'bg') and isinstance(fitresult.bg, list)):
+            background = fitresult.bg[idx]  
+        elif hasattr(fitresult,'bg'): 
+            background = fitresult.bg
         else:
-            None
+            background = None
 
         if hasattr(fitresult, 'P') and isinstance(fitresult.P, list) and fitresult.P is not None:
             P  = fitresult.P[idx]
@@ -399,9 +402,9 @@ def fit_to_dict(fit,background_only=False):
                 output['fit_type'] = 'non-parametric'
                 output['dist_model'] = None
 
-            if hasattr(fit,'background') and fit.background is not None:
-                output['background'] = fit.background.tolist()
-            elif hasattr(fit,'Bmodel') and fit.background is None:
+            if hasattr(fit,'bg') and fit.bg is not None:
+                output['background'] = fit.bg.tolist()
+            elif hasattr(fit,'Bmodel') and fit.bg is None:
                 output['background'] = None
             if background_only:
                 output['pathways'] = None

@@ -267,7 +267,8 @@ def compare_fits(fit_ids, n_slots, offset, ci_str, show_ci):
     titles = [f"Dataset {i+1}" for i in range(len(data_dicts))]
 
     fig = plotly_comparison(data_dicts if data_dicts else None,
-                            titles=titles, offset=offset, ci=ci, show_ci=show_ci)
+                            titles=titles, offset=offset, ci=ci, show_ci=show_ci,
+                            show_bg=True,)
     fig.update_layout(title=None)
 
     stats = _build_stats_tables(data_dicts, titles, n_slots)
@@ -296,6 +297,7 @@ def _fit_to_dict(dataset, fit):
     out['model_t'] = np.array(fit.t, dtype=float)
     out['dist_stats'] = fit.dist_stats or {}
     out['gof'] = fit.gof or {}
+    out['background'] = np.array(fit.background, dtype=float) if hasattr(fit,'background') and fit.background is not None else None
 
     if isinstance(fit.PUncert,dict):
         PUncert = UQResult.from_dict(_convert_lists_in_dicts_to_arrays(fit.PUncert))

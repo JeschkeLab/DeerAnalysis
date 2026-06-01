@@ -364,9 +364,9 @@ def deerlab_fitting(dataset, compactness=True, model=None, exp_type='5pDEER', ve
     fit.pathways=pathways
 
     if bg_model is not None:
-        fit.background = background_func(t, fit)
+        fit.bg = background_func(t, fit)
     else:
-        fit.background = None
+        fit.bg = None
     fit.stats['MNR'] = MNR
     fit.stats['SNR'] = 1/fit.noiselvl
     fit.stats['lam'] = fit.lam

@@ -281,27 +281,27 @@ layout = dmc.Container([
                                 value="512",
                                 mb="sm"
                             ),
-                            dmc.Select(
-                                id="config-dn-uncertainty-type",
-                                label="Default Uncertainty Type",
-                                description="Default method for uncertainty quantification",
-                                data=[
-                                    {"value": "net", "label": "Network Ensemble"},
-                                    {"value": "boot", "label": "Bootstrap"},
-                                ],
-                                value="net",
-                                mb="sm"
-                            ),
-                            dmc.NumberInput(
-                                id="config-dn-ensemble-size",
-                                label="Ensemble Size",
-                                description="Number of networks in ensemble for uncertainty",
-                                value=10,
-                                min=5,
-                                max=50,
-                                step=5,
-                                mb="sm"
-                            ),
+                            # dmc.Select(
+                            #     id="config-dn-uncertainty-type",
+                            #     label="Default Uncertainty Type",
+                            #     description="Default method for uncertainty quantification",
+                            #     data=[
+                            #         {"value": "net", "label": "Network Ensemble"},
+                            #         {"value": "boot", "label": "Bootstrap"},
+                            #     ],
+                            #     value="net",
+                            #     mb="sm"
+                            # ),
+                            # dmc.NumberInput(
+                            #     id="config-dn-ensemble-size",
+                            #     label="Ensemble Size",
+                            #     description="Number of networks in ensemble for uncertainty",
+                            #     value=10,
+                            #     min=5,
+                            #     max=50,
+                            #     step=5,
+                            #     mb="sm"
+                            # ),
                             # dmc.Switch(
                             #     id="config-dn-gpu-acceleration",
                             #     label="GPU Acceleration",
@@ -310,13 +310,13 @@ layout = dmc.Container([
                             #     size="md",
                             #     mb="sm"
                             # ),
-                            dmc.TextInput(
-                                id="config-dn-model-path",
-                                label="Custom Model Path",
-                                description="Path to custom DeerNet models (optional)",
-                                placeholder="/path/to/models",
-                                mb="sm"
-                            ),
+                            # dmc.TextInput(
+                            #     id="config-dn-model-path",
+                            #     label="Custom Model Path",
+                            #     description="Path to custom DeerNet models (optional)",
+                            #     placeholder="/path/to/models",
+                            #     mb="sm"
+                            # ),
                         ])
                     ])
                 ]

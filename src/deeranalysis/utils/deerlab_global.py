@@ -245,7 +245,7 @@ def deerlab_global_fitting(datasets,linked_params,bg_model=dl.bg_hom3d, verbosit
     fit.Vexp = Vs
     fit.t = ts
     fit.pathways =  [pathways for i in range(Nsignals)]
-    fit.background = background_func_global(ts,Vmodels,fit)
+    fit.bg = background_func_global(ts,Vmodels,fit)
     fit.P, fit.PUncert = extract_global_P(fit)
 
     if 'mod-depth' in linked_params:
