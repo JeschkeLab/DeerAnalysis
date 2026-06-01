@@ -29,7 +29,10 @@ layout = dmc.Container([
     dcc.Store(id='logs-connected', data=False),
     dcc.Store(id='logs-datasets-store', data=[]),
     dmc.Group([
-        dmc.Title("LOGS Data Import", order=1),
+        dmc.Group([
+            dmc.Title("LOGS Data Import", order=1),
+            dmc.Badge("Beta", color="orange", variant="light", size="lg"),
+        ], gap="xs"),
         dmc.ActionIcon(
             DashIconify(icon="mdi:refresh", width=20),
             id="logs-refresh-btn",
