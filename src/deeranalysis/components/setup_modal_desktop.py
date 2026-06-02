@@ -65,12 +65,14 @@ def download_deernet_models():
         print(f"Could not get DeerAnalysis version: {e}")
         _version = "latest"
 
-    URL = rf"https://github.com/JeschkeLab/DeerAnalysis/releases/download/v{_version}/deernet_models.zip"
-    print(f"Downloading DeerNet models from {URL}...")
+    URL_version = rf"https://github.com/JeschkeLab/DeerAnalysis/releases/download/V{_version}/deernet_models.zip"
+    URL_latest = r"https://github.com/JeschkeLab/DeerAnalysis/releases/latest/download/deernet_models.zip"
 
     # download the file and save it to the deernet directory
     import requests
-    response = requests.get(URL)
+    response = requests.get(URL_version)
+    if response.status_code != 200:
+        response = requests.get(URL_latest)
     if response.status_code == 200:
         with open(os.path.join(deernet_dir, "deernet_models.zip"), "wb") as f:
             f.write(response.content)
