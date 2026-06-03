@@ -317,6 +317,7 @@ def background_func_global(ts,Vmodels,fit):
     Bmodel = fit.bg_model
     physical_model = 'lam' in Bmodel.signature
     backgrounds = []
+    P_scale = fit.P_scale if hasattr(fit, 'P_scale') else 1
 
     for i, (t, Vmodel) in enumerate(zip(ts, Vmodels)):
         suffix = f"_{i+1}"
@@ -370,6 +371,6 @@ def background_func_global(ts,Vmodels,fit):
             else:
                 prod *= Bmodel(t=t-reftime, **Bmodel_params)
             scale += -1 * lam
-        backgrounds.append(scale * prod)
+        backgrounds.append(scale * prod*P_scale)
 
     return backgrounds
