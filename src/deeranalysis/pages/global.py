@@ -357,18 +357,39 @@ def save_fit(n_clicks, dataset_ids,dataset_store):
         print(f"No fit results to save or no dataset selected.")
         return dash.no_update
 
-    new_fits = []   
+    new_fits = []
     session = get_session()
 
+    fit_name = name_dataset_from_dict(dataset_store)
+    # Fields shared across all per-dataset Fit rows
+    shared = {
+        'engine':            dataset_store.get('engine'),
+        'fit_type':          dataset_store.get('fit_type'),
+        'bg_model':          dataset_store.get('bg_model'),
+        'dist_model':        dataset_store.get('dist_model'),
+        'r':                 dataset_store.get('r'),
+        'pathways':          dataset_store.get('pathways'),
+        'model_description': dataset_store.get('model_description'),
+        'data':              dataset_store.get('data'),
+    }
+
+    gof_list = dataset_store.get('gof', [None] * len(dataset_ids))
+    background_list = dataset_store.get('background', [None] * len(dataset_ids))
     for i, ds_id in enumerate(dataset_ids):
-        
         new_fit = Fit(
             dataset_id=ds_id,
-            name=name_dataset_from_dict(dataset_store[i]),
-            **dataset_store[i],
+            name=fit_name,
+            t=dataset_store['t'][i],
+            model=dataset_store['model'][i],
+            P_model=dataset_store['P_model'][i],
+            PUncert=dataset_store['PUncert'][i],
+            background=background_list[i],
+            gof=gof_list[i],
+            **shared,
         )
         session.add(new_fit)
         new_fits.append(new_fit)
+
     session.flush()
     for fit in new_fits:
         session.execute(fit_global_datasets.insert().values([
@@ -382,7 +403,7 @@ def save_fit(n_clicks, dataset_ids,dataset_store):
 
     session.commit()
     session.close()
-    
+
     return dbc.Alert("Fit saved successfully!", color="success", duration=4000)
 
 @callback(
