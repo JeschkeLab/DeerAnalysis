@@ -488,7 +488,20 @@ def deerlab_population_fitting(datasets, model=dl.dd_gauss, n_pops=2, bg_model=d
     fit.pathways = [pathways for i in range(Nsignals)]
 
     for i in range(len(fit.stats)):
-        fit.stats[i]['SNR'] = 1/fit.noiselvl[i]
+        suffix = f'_{i+1}'
+        p_ways = fit.pathways[i]
+        if len(p_ways) == 1:
+            lam_i = getattr(fit, f'mod{suffix}')
+        else:
+            lam_i = 0
+            for p in p_ways:
+                if isinstance(p, list):
+                    lam_i += getattr(fit, f'lam{p[0]}{p[1]}{suffix}')
+                elif hasattr(fit, f'lam{p}{suffix}'):
+                    lam_i += getattr(fit, f'lam{p}{suffix}')
+        fit.stats[i]['SNR'] = 1 / fit.noiselvl[i]
+        fit.stats[i]['lam'] = lam_i
+        fit.stats[i]['MNR'] = lam_i / fit.noiselvl[i]
 
     if bg_model is not None:
         fit.bg = background_func_population(ts, Vmodels, fit)

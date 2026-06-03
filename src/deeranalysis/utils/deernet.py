@@ -570,7 +570,7 @@ def deernet2(dataset, model_size, providor=None,model_dir=None) -> DEERnetResult
 
     stats = {}
     stats['rmsd'] = np.sqrt(np.mean(residuals**2))
-    stats['r2'] = 1 - np.sum((residuals)**2)/np.sum((modelUncert.mean-np.mean(modelUncert.mean))**2)
+    stats['R2'] = 1 - np.sum((residuals)**2)/np.sum((modelUncert.mean-np.mean(modelUncert.mean))**2)
     MNR = dataset.mdpths_av[0][0] / noiselvl
     stats['MNR'] = MNR
     stats['SNR'] = 1/ noiselvl 

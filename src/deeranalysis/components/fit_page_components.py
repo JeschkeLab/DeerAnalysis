@@ -346,7 +346,7 @@ def pathway_input(page_id):
     return dmc.Tooltip(dmc.CheckboxGroup(
                 id={'type': 'pathways-options', 'page': page_id},
                 label="Pathways to include:",
-                description="Select no pathways for a background-only fit.",
+                description="These pathways will be applied to all datasets, if they are fesiable for the corresponding experiment.",
                 children=dmc.Group([
                     dmc.Checkbox(value='1', label='1'),
                     dmc.Checkbox(value='2', label='2'),
@@ -377,7 +377,7 @@ def download_fit(n_clicks, fit_store):
 
 
 METRIC_CONFIG = {
-    "mnr":       {"title": "MNR",  "description": "Mean Noise Ratio",           "thresholds": {"direction": "higher_better", "good": 50,   "moderate": 20}},
+    "mnr":       {"title": "MNR",  "description": "Modulation Noise Ratio",           "thresholds": {"direction": "higher_better", "good": 50,   "moderate": 20}},
     "chi2":      {"title": "Chi²", "description": "Reduced Chi-squared",         "thresholds": {"direction": "lower_better",  "good": 1.5,  "moderate": 3}},
     "rmsd":      {"title": "RMSD", "description": "Root Mean Square Deviation",  "thresholds": {"direction": "lower_better",  "good": 0.01, "moderate": 0.02}},
     "lambda":    {"title": "λ",    "description": "Modulation Depth",            "thresholds": None},
@@ -449,7 +449,7 @@ def overview_tab(page_id):
     The thresholds are defined in the function overview_card.
     
     Displayed Cards:
-    - MNR: Mean Noise Ratio, with thresholds for good (>50), moderate (20-50), and poor (<20) fit quality
+    - MNR: Modulation Noise Ratio, with thresholds for good (>50), moderate (20-50), and poor (<20) fit quality
     - Chi2: reduced Chi-squared statistic, with thresholds for good (<1.5), moderate (1.5-3), and poor (>3) fit quality
     - RMSD: Root Mean Square Deviation, with thresholds for good (<0.05), moderate (0.05-0.1), and poor (>0.1) fit quality
     - Modulation Depth, lambda: no specific thresholds, just displays the value and uncertainty if available
@@ -553,11 +553,16 @@ def _extract_overview_metrics(store_data,page_number=None):
     if not store_data:
         return {}
 
+    if isinstance(store_data, list):
+        store_data = store_data[page_number] if page_number is not None else store_data[0]
+
     gof = store_data.get('gof') or {}
     dist_stats = store_data.get('dist_stats') or {}
-    if page_number is not None and isinstance(gof, list) and isinstance(dist_stats, list):
-        gof = gof[page_number]
-        dist_stats = dist_stats[page_number]
+    if page_number is not None:
+        if isinstance(gof, list):
+            gof = gof[page_number] if page_number < len(gof) else {}
+        if isinstance(dist_stats, list):
+            dist_stats = dist_stats[page_number] if page_number < len(dist_stats) else {}
 
     def _gof(key, *aliases):
         for k in (key,) + aliases:
