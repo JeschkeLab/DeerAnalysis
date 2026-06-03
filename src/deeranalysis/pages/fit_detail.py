@@ -570,6 +570,7 @@ def _fits_and_dataset_to_dict(dataset, fit=None):
     output['model_t'] = np.array(fit.t, dtype=float)
     output['r'] = np.array(fit.r, dtype=float)
     output['P'] = np.array(fit.P_model, dtype=float)
+    output['background'] = np.array(fit.background, dtype=float) if fit.background is not None else None
     if isinstance(fit.PUncert,dict):
         PUncert = UQResult.from_dict(_convert_lists_in_dicts_to_arrays(fit.PUncert))
         try:
