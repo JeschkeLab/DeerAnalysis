@@ -313,7 +313,7 @@ def fit_to_dict(fit, n_datasets):
     output['t'] = [fit.t[i].tolist() for i in range(n_datasets)] if fit.t is not None else None
     output['V'] = [fit.Vexp[i].tolist() for i in range(n_datasets)] if fit.Vexp is not None else None
     output['model'] = [fit.model[i].tolist() for i in range(n_datasets)] if fit.model is not None else None
-    output['background'] = [fit.background[i].tolist() for i in range(n_datasets)] if fit.background is not None else [None] * n_datasets
+    output['background'] = [fit.bg[i].tolist() for i in range(n_datasets)] if fit.bg is not None else [None] * n_datasets
     output['P_model'] = [Prs[i]['sum'].tolist() for i in range(n_datasets)]
     output['PUncert'] = [PUQs[i]['UQs']['sum'].to_dict() for i in range(n_datasets)]
     output['gof'] = [fit.stats[i] for i in range(n_datasets)]

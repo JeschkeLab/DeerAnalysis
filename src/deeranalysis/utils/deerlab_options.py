@@ -191,7 +191,7 @@ def plotly_comparison(results, titles=None, offset=0.3, ci=95, show_ci=True, sho
             P = res.P if hasattr(res, 'P') else None
             PUncert = (res.PUncert.ci(ci) if show_ci else None) if (hasattr(res, 'PUncert') and res.PUncert is not None and P is not None) else None
             model_t = res.model_t if hasattr(res,'model_t') else data_t
-            background = res.bg if hasattr(res,'bg') else None
+            background = res.bg + vspacing[i] if hasattr(res,'bg') else None
         elif isinstance(res, dict):
             data_t = res['t']
             data_V = res['V'] + vspacing[i]
@@ -207,7 +207,7 @@ def plotly_comparison(results, titles=None, offset=0.3, ci=95, show_ci=True, sho
             else:
                 PUncert = None
             model_t = res['model_t'] if 'model_t' in res else data_t
-            background = res.get('background')
+            background = res.get('background') + vspacing[i] if 'background' in res and res['background'] is not None else None
         else:
             raise ValueError("Each fit result must be either a dl.FitResult, xr.DataArray or a dict. Invalid type: {}".format(type(res)))
 
@@ -218,8 +218,7 @@ def plotly_comparison(results, titles=None, offset=0.3, ci=95, show_ci=True, sho
             legendgroup=titles[i], legendgrouptitle_text=titles[i],
             marker={'color': colour_scheme_light[i]}), row=1, col=1)
         if background is not None and show_bg:
-            bg_y = background + vspacing[i]
-            fig.add_trace(go.Scatter(x=model_t, y=bg_y, mode='lines', name='Background', legendgroup=titles[i], line={'color':colour_scheme_dark[i],'dash':'dash'}), row=1, col=1)
+            fig.add_trace(go.Scatter(x=model_t, y=background, mode='lines', name='Background', legendgroup=titles[i],legendgrouptitle_text=titles[i], line={'color':colour_scheme_dark[i],'dash':'dash'}), row=1, col=1)
         if data_model is not None:
             fig.add_trace(go.Scatter(x=model_t, y=data_model, mode='lines', name='Model', legendgroup=titles[i], line={'color': colour_scheme_dark[i]}), row=1, col=1)
 
@@ -310,16 +309,20 @@ def plotly_deerlab(fitresult=None, orientation='h', index=None,
             P = None
             PUncert = None
 
+
         if hasattr(fitresult,"mod") and showPathways:
             raise ValueError("showPathway requires multi-pathway fitting")
         elif hasattr(fitresult,"pathways") and showPathways and not showPopulation:
-            if len(fitresult.pathways)==1:
-                lams = [getattr(fitresult,f"mod")]
-                reftimes = [getattr(fitresult,f"reftime")]
+            pathways_for_idx = fitresult.pathways[idx] if isinstance(fitresult.pathways[0], list) else fitresult.pathways
+            is_multi_dataset = isinstance(fitresult.pathways[0], list)
+            dataset_suffix = f"_{idx+1}" if is_multi_dataset else ""
+            if len(pathways_for_idx)==1:
+                lams = [getattr(fitresult,f"mod{dataset_suffix}")]
+                reftimes = [getattr(fitresult,f"reftime{dataset_suffix}")]
             else:
-                lams           = [getattr(fitresult,f"lam{i}") for i in fitresult.pathways]
-                reftimes       = [getattr(fitresult,f"reftime{i}") for i in fitresult.pathways]
-            pathway_labels = [f'Pathway #{i}' for i in fitresult.pathways]
+                lams           = [getattr(fitresult,f"lam{i}{dataset_suffix}") for i in pathways_for_idx]
+                reftimes       = [getattr(fitresult,f"reftime{i}{dataset_suffix}") for i in pathways_for_idx]
+            pathway_labels = [f'Pathway #{i}' for i in pathways_for_idx]
             cmap           = colors.qualitative.T10
         elif hasattr(fitresult,"pathways") and showPathways and showPopulation:
             if len(fitresult.pathways[idx])==1:
@@ -412,13 +415,13 @@ def fit_to_dict(fit,background_only=False):
             output['engine'] = 'DeerLab'
             output['bg_model'] = fit.Bmodel.name if fit.Bmodel else None
             if hasattr(fit, 'Pmodel') and fit.Pmodel is not None:
-                output['fit_type'] = 'parametric'
+                output['fit_type'] = 'Parametric'
                 output['dist_model'] = fit.Pmodel.name
             elif background_only:
-                output['fit_type'] = 'background'
+                output['fit_type'] = 'Background'
                 output['dist_model'] = None
             else:
-                output['fit_type'] = 'non-parametric'
+                output['fit_type'] = 'Non-Parametric'
                 output['dist_model'] = None
 
             if hasattr(fit,'bg') and fit.bg is not None:
@@ -437,6 +440,7 @@ def fit_to_dict(fit,background_only=False):
             output['engine'] = 'DeerNet'
             output['dist_model'] = None
             output['pathways'] = [1]
+            output['background'] = fit.bg.tolist() if hasattr(fit,'bg') and fit.bg is not None else None
 
     output['t'] = fit.t.tolist() if fit.t is not None else None
     if background_only:
@@ -500,11 +504,13 @@ def name_dataset_from_dict(dataset_dict):
 
     if dataset_dict['fit_type'] == 'Neural Network':
         el1 = f"DeerNet"
-    elif dataset_dict['fit_type'] == 'parametric':
+    elif dataset_dict['fit_type'] == 'Parametric':
         el1 = f"{dataset_dict['dist_model']}"
     elif dataset_dict['fit_type'] == 'Population':
         el1 = f"Population Fit"
-    elif dataset_dict['fit_type'] == 'background':
+    elif dataset_dict['fit_type'] == 'Non-Parametric Global':
+        el1 = f"Global Fit"
+    elif dataset_dict['fit_type'] == 'Background':
         el1 = f"{dataset_dict['bg_model']} Background Fit"
     else:
         el1 = f"Non-Parametric"
