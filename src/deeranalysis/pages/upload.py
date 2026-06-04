@@ -262,7 +262,7 @@ def handle_file_upload(contents_list, filenames_list):
         'masked_indices': [],
     }
     delays_data = [{'parameter': k, 'value': v} for k, v in delays.items()]
-    delays_data = df.check_delays('4pDEER',delays_data)
+    delays_data, store_data = df.check_delays('4pDEER',delays_data,store_data)
     return store_data, metadata_children, long_values_store, delays_data, dataarray.attrs.get('title', ''), tmin, alert, dash.no_update, dash.no_update
 
 

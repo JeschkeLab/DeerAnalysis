@@ -16,6 +16,7 @@ from deeranalysis.utils.database import get_session, Dataset,check_delays
 from deeranalysis.utils import create_subplot_figure
 from deeranalysis.components.metadata_table import build_metadata_section,build_delays_table, metadata_long_values_model,build_delays_AGgrid,delays_columnDefs
 from deeranalysis.components.download_modal import create_fit_download_modal, create_dataset_download_modal
+from deeranalysis.utils.deerlab_options import experiment_type_options
 
 from deeranalysis.components.data_viewer import plot_upload,data_viewer_layout
 dash.register_page(__name__, path_template="/dataset/<dataset_id>")
@@ -177,7 +178,7 @@ def layout(dataset_id=None):
                                 id="dd-exp",
                                 label="Experiment",
                                 value=dataset.exp or "Unknown",
-                                data=["4pDEER", "5pDEER", "3pDEER", "RIDME", "Unknown"],
+                                data=experiment_type_options,
                                 allowDeselect=False,
                                 disabled=True,
                             ),

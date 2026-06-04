@@ -33,11 +33,13 @@ def update_tmin(tmin, dataset_store):
 # ---------------------------------------------------------------------------
 @callback(
     Output({'type': 'delays-grid', 'page': MATCH}, 'rowData', allow_duplicate=True),
+    Output({'type': 'dataset-store', 'page': MATCH}, 'data', allow_duplicate=True),
     Input({'type': 'experiment-type-dropdown', 'page': MATCH}, 'value'),
     State({'type': 'delays-grid', 'page': MATCH}, 'rowData'),
+    State({'type': 'dataset-store', 'page': MATCH}, 'data'),
     prevent_initial_call=True,
 )
-def check_delays(exp_type, delays_row_data):
+def check_delays(exp_type, delays_row_data, dataset_store):
     def _get_required(options, value):
         opt = next((o for o in options if o.get('value') == value), None)
         return opt.get('delays') if opt else []
@@ -48,7 +50,10 @@ def check_delays(exp_type, delays_row_data):
     for delay in required:
         if delay not in delays:
             new_delays[delay] = 0
-    return [{'parameter': k, 'value': v} for k, v in new_delays.items()]
+
+    delays_dict =[{'parameter': k, 'value': v} for k, v in new_delays.items()]
+    dataset_store['delays'] = new_delays
+    return delays_dict, dataset_store
 
 @callback(
     Output({'type': 'dataset-store', 'page': MATCH}, 'data', allow_duplicate=True),
