@@ -235,6 +235,9 @@ def handle_file_upload(contents_list, filenames_list):
             delays = get_delays_dict(dataarray)
             tmin = dataarray.attrs.get('deadtime', 0)
 
+            if dataarray.ndim ==2:
+                dataarray = dataarray.sum('Y')
+
         elif file_format == 'hdf5':
             decoded = base64.b64decode(contents_list[0].split(',')[1])
             dataarray = pyepr.eprload(io.BytesIO(decoded), type='HDF5')
