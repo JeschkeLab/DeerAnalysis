@@ -3,7 +3,9 @@ import time
 import webview
 import os
 import sys
+import base64
 from pathlib import Path
+from urllib.parse import unquote
 
 #os.environ['PYWEBVIEW_GUI'] = 'cocoa'  # force macOS backend
 os.environ['DEERANALYSIS_PYWEBVIEW'] = '1'
@@ -62,6 +64,44 @@ def _splash_html():
 
 SPLASH_HTML = _splash_html()
 
+class FigureSaveApi:
+    """Bridges Plotly's modebar download button to a native save dialog."""
+
+    def __init__(self):
+        self.window = None
+
+    def save_figure(self, data_url, suggested_name='figure', fmt='svg'):
+        if self.window is None:
+            return None
+        safe = ''.join(c for c in (suggested_name or 'figure')
+                       if c.isalnum() or c in ('-', '_', ' ', '.')).strip() or 'figure'
+        fmt = fmt if fmt in ('svg', 'png') else 'svg'
+        file_types = (f'{fmt.upper()} file (*.{fmt})',)
+        result = self.window.create_file_dialog(
+            webview.FileDialog.SAVE,
+            save_filename=f'{safe}.{fmt}',
+            file_types=file_types,
+        )
+        if not result:
+            return None
+        path = result[0] if isinstance(result, (list, tuple)) else result
+        if not os.path.splitext(path)[1]:
+            path += f'.{fmt}'
+        if not data_url or ',' not in data_url:
+            return None
+        header, encoded = data_url.split(',', 1)
+        if ';base64' in header:
+            payload = base64.b64decode(encoded)
+        else:
+            payload = unquote(encoded).encode('utf-8')
+        with open(path, 'wb') as f:
+            f.write(payload)
+        return path
+
+
+figure_api = FigureSaveApi()
+
+
 def run_dash():
     app.run(port=PORT, debug=False, use_reloader=False)
 
@@ -92,7 +132,9 @@ if __name__ == "__main__":
         resizable=True,
         fullscreen=False,
         min_size=(800, 600),
+        js_api=figure_api,
     )
+    figure_api.window = window
     
     # Start a thread that waits for Dash and then swaps the content
     threading.Thread(target=wait_for_dash, args=(window,), daemon=True).start()
