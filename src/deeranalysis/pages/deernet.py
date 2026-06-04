@@ -12,7 +12,7 @@ from deeranalysis.components.dataset_search_model import create_dataset_modal
 from deeranalysis.components.setup_modal_desktop import get_DeerAnalysis_directory
 from deeranalysis.components.download_modal import create_fit_download_modal
 
-from deeranalysis.utils.deerlab_options import  plotly_goodness_of_fit, plotly_deerlab, dists_stats_to_list, fit_to_dict,name_dataset_from_dict
+from deeranalysis.utils.deerlab_options import  plotly_goodness_of_fit, plotly_deerlab, dists_stats_to_list, fit_to_dict,name_dataset_from_dict, plotly_dipolar_spectrum
 from deeranalysis.utils.database import get_session, Dataset, Fit
 from deeranalysis.utils import create_subplot_figure, dataarray_from_database_entry
 from deeranalysis.utils.deernet import deernet,deernet2
@@ -80,6 +80,7 @@ layout = html.Div([
                     fpc.overview_tab(page_id),
                     fpc.goodness_of_fit_tab(page_id),
                     fpc.dist_stats_tab(page_id),
+                    fpc.dipolar_spectrum_tab(page_id),
                 ),
                 ], style={'display': 'flex', 'flexDirection': 'column', 'height': 'calc(100vh - 160px)', 'gap': '12px'})
         ], width=9), # dbc.col
@@ -198,6 +199,7 @@ def save_fit(n_clicks, dataset_id,dataset_store):
 @callback(
     Output({"type": "gof-plot", "page": page_id}, 'figure', allow_duplicate=True),
     Output({"type": "dist-stats-table", "page": page_id}, 'data', allow_duplicate=True),
+    Output({"type": "dip-spectrum-plot", "page": page_id}, 'figure', allow_duplicate=True),
     Input({'type': 'fit-results-store', 'page': page_id}, 'data'),
     prevent_initial_call=True
 )
@@ -207,6 +209,7 @@ def update_plots_tables(fit_dict):
         return dash.no_update
     fit = dl.json_loads(fit_dict['data'])
     gof_fig = plotly_goodness_of_fit(fit)
+    dip_spectrum_fig = plotly_dipolar_spectrum(fit)
 
     dist_stats_dict = fit_dict['dist_stats']
     dist_stats_output = {
@@ -216,4 +219,4 @@ def update_plots_tables(fit_dict):
             for k, v in dist_stats_dict.items()
         ]
     }
-    return gof_fig, dist_stats_output
+    return gof_fig, dist_stats_output,dip_spectrum_fig

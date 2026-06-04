@@ -710,3 +710,52 @@ def plotly_lcurve(fitresult=None, orientation='h'):
             hovertemplate='Residual Norm: %{x:.3e}<br>Solution Norm: %{y:.3e}<br>α: %{customdata:.3e}<extra></extra>'
         ), row=r2, col=c2)
     return fig
+
+def plotly_dipolar_spectrum(fitresult=None, index=None, linewidth=3):
+    """Returns a plotly figure with the Pake pattern data."""
+
+    import plotly.graph_objects as go
+    from plotly.subplots import make_subplots
+
+    fig = make_subplots(rows=1, cols=1, subplot_titles=["Dipolar Spectrum (Background Divided)"], horizontal_spacing=0.1)
+    fig.update_xaxes(title_text="Frequency (MHz)", row=1, col=1)
+    fig.update_yaxes(title_text="Intensity (a.u.)", row=1, col=1)
+
+    if fitresult is None:
+        return fig
+
+    if isinstance(fitresult, dl.FitResult):
+        idx = index if index is not None else 0
+
+        data_t     = fitresult.t[idx]     if isinstance(fitresult.t, list)     else fitresult.t
+        data_V     = fitresult.Vexp[idx]  if isinstance(fitresult.Vexp, list)  else fitresult.Vexp
+        model_t    = data_t
+
+        if hasattr(fitresult, 'model'):
+            data_model = fitresult.model[idx] if isinstance(fitresult.model, list) else fitresult.model
+
+        if (hasattr(fitresult,'bg') and isinstance(fitresult.bg, list)):
+            background = fitresult.bg[idx]
+        elif hasattr(fitresult,'bg') and fitresult.bg is not None:
+            background = fitresult.bg
+        else:
+            background = None
+    else:
+        raise ValueError("fitresult must be either a DeerLab FitResult object or an xarray DataArray, not {}".format(type(fitresult)))
+
+
+    data_V_bg = data_V / background -1 if background is not None else data_V
+    data_model_bg = data_model / background -1 if background is not None and data_model is not None else data_model
+
+    data_V_bg_fft = np.fft.fftshift(np.fft.fft(data_V_bg))
+    data_freqs = np.fft.fftshift(np.fft.fftfreq(len(data_t), d=(data_t[1]-data_t[0])))
+    model_V_bg_fft = np.fft.fftshift(np.fft.fft(data_model_bg)) if data_model_bg is not None else None
+    model_freqs = data_freqs if data_model_bg is not None else None
+    
+    fig.add_trace(go.Scatter(x=data_freqs, y=np.abs(data_V_bg_fft), mode='markers', name='Data', line={'color':colour_scheme_light[0], 'width':linewidth}), row=1, col=1)
+    if data_model_bg is not None:
+        fig.add_trace(go.Scatter(x=model_freqs, y=np.abs(model_V_bg_fft), mode='lines', name='Model', line={'color':colour_scheme_dark[0], 'width':linewidth}), row=1, col=1)
+
+    fig.update_xaxes(range=[-15, 15], row=1, col=1)
+
+    return fig

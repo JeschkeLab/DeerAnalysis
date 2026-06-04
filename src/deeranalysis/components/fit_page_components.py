@@ -1,6 +1,6 @@
 import dash_mantine_components as dmc
 from dash_iconify import DashIconify
-from deeranalysis.utils.deerlab_options import regparam_options, plotly_deerlab, plotly_goodness_of_fit,plotly_lcurve
+from deeranalysis.utils.deerlab_options import regparam_options, plotly_deerlab, plotly_goodness_of_fit,plotly_lcurve,plotly_dipolar_spectrum
 from deeranalysis.utils.database import get_session, Dataset
 from deeranalysis.utils import dataarray_from_database_entry
 
@@ -226,6 +226,17 @@ def L_curve_tab(page_id):
     ], style={'flex': '1', 'display': 'flex', 'flexDirection': 'column', 'minHeight': 0})
     return tabstab, panel
 
+def dipolar_spectrum_tab(page_id):
+    tabstab = dmc.TabsTab("Dipolar Spectrum", value="dip-spectrum")
+    panel = dmc.TabsPanel(value="dip-spectrum", children=[
+        dcc.Graph(
+            id={"type": "dip-spectrum-plot", "page": page_id},
+            figure=plotly_dipolar_spectrum(None),
+            style={'height': '100%'},
+            config={'responsive': True},
+        )
+    ], style={'flex': '1', 'display': 'flex', 'flexDirection': 'column', 'minHeight': 0})
+    return tabstab, panel
 
 def fit_results_tabs(*tabs):
     """

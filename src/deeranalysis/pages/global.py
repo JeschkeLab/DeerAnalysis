@@ -112,7 +112,9 @@ layout = html.Div([
                     fpcg.overview_tab_global(page_id),
                     fpc.fit_results_tab(page_id),
                     fpcg.goodness_of_fit_tab_pagination(page_id),
-                    fpc.dist_stats_tab(page_id),
+                    fpcg.dist_stats_tab_pagination(page_id),
+                    fpcg.l_curve_pagination(page_id),
+                    fpcg.dipolar_spectrum_tab_pagination(page_id),
                 ),
                 ], style={'display': 'flex', 'flexDirection': 'column', 'height': 'calc(100vh - 160px)', 'gap': '12px'})
         ], width=9) # dbc.col
