@@ -83,7 +83,7 @@ layout = html.Div([
                     DashIconify(icon="material-symbols:upload-file-outline", width=36, color="var(--mantine-color-blue-6)"),
                     dmc.Stack([
                         dmc.Text("Drag and drop files or click to select", size="sm", fw=500),
-                        dmc.Text(".DSC/.DTA, .h5, .csv  —  select both .DSC and .DTA together", size="xs", c="dimmed"),
+                        dmc.Text(".DSC/.DTA, .h5, .csv, .txt, .dat  —  select both .DSC and .DTA together", size="xs", c="dimmed"),
                     ], gap=2),
                 ], px="md", py="sm"),
                 style={
@@ -213,7 +213,7 @@ def handle_file_upload(contents_list, filenames_list):
             return *no_update_9[:6], alert, dash.no_update, dash.no_update
         elif filenames_list[0].endswith('.h5'):
             file_format = 'hdf5'
-        elif filenames_list[0].endswith('.csv'):
+        elif filenames_list[0].endswith('.csv') or filenames_list[0].endswith('.txt') or filenames_list[0].endswith('.dat'):
             csv_store = {'content': contents_list[0], 'filename': filenames_list[0]}
             return *no_update_9[:7], csv_store, True
         else:
