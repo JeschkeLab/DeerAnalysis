@@ -235,7 +235,7 @@ def update_fit_options(bg_model_option,compactness,distance_axis,pathways_option
     else:
         output['regparam'] = regparam_method
 
-    searchrange = [1e-8,1e2]
+    searchrange = [1e-8,1e3]
     if search_method == 'grid':
         output['regparamrange'] = 10**np.linspace(np.log10(searchrange[0]),np.log10(searchrange[1]),grid_size)
     elif search_method == 'brent':
