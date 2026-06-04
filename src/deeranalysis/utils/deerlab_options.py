@@ -593,13 +593,38 @@ def build_model_data(dataset, bg_model_name, pathways, r_range,
             tau1 = attrs['tau1'] / 1e3
             pathways = [p for p in pathways if p <= 2]
             exp_info = dl.ex_3pdeer(tau=tau1, pathways=pathways)
-        elif seq_name is not None and 'tau1' in attrs and 'tau2' in attrs:
+        elif seq_name == '4pDEER':
             # Default / 4pDEER
             exp_type = '4pDEER'
             tau1 = attrs.get('tau1', 400) / 1e3
             tau2 = attrs.get('tau2', 2400) / 1e3
             pathways = [p for p in pathways if p <= 4]
             exp_info = dl.ex_4pdeer(tau1, tau2, pathways=pathways)
+        elif seq_name == 'single':
+            exp_type = 'single'
+            exp_info = None
+        elif seq_name == 'ridme':
+            exp_type = 'ridme'
+            tau1 = attrs['tau1'] / 1e3
+            tau2 = attrs['tau2'] / 1e3 
+            pathways = [p for p in pathways if p <= 2]
+            exp_info = dl.ex_ridme(tau=tau1, tau2=tau2, pathways=pathways)
+        elif seq_name == 'dqc':
+            exp_type = 'dqc'
+            tau1 = attrs['tau1'] / 1e3
+            tau2 = attrs['tau2'] / 1e3 
+            tau3 = attrs['tau3'] / 1e3 
+            pathways = [p for p in pathways if p <= 2]
+            exp_info = dl.ex_dqc(tau=tau1, tau2=tau2, tau3=tau3, pathways=pathways)
+        elif seq_name == 'sifter':
+            exp_type = 'sifter'
+            tau1 = attrs['tau1'] / 1e3
+            tau2 = attrs['tau2'] / 1e3 
+            pathways = [p for p in pathways if p <= 2]
+            exp_info = dl.ex_sifter(tau=tau1, tau2=tau2, pathways=pathways)
+        else:
+            raise ValueError(f"Could not determine experiment type from dataset attributes. seq_name: {seq_name}, required tau values: {['tau1', 'tau2', 'tau3']}")
+
             
         bg_model = (
             getattr(dl, bg_model_name, None)

@@ -144,7 +144,8 @@ def open_model_edit_modal(n_clicks, dataset_id, bg_model_name, pathways, distanc
     session.close()
 
     pathways_int = [int(p) for p in pathways] if pathways else [1]
-    model_data = build_model_data(dataset, bg_model_name, pathways_int, distance_axis, existing_overrides)
+    model_data = build_model_data(dataset, bg_model_name, pathways_int, 
+                                  distance_axis, existing_overrides=existing_overrides)
     return True, model_data
 
 
@@ -224,6 +225,8 @@ def run_fit(n_clicks, dataset_id, bg_model_option, compactness, distance_axis, p
                 mask=mask,
                 **adv_options)
         except Exception as e:
+            import traceback
+            print(traceback.format_exc())
             print(f"Error during fitting: {e}")
             return dash.no_update, f"Error during fitting: {e}", True, True, False
         

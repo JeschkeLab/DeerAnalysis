@@ -3,6 +3,9 @@ import dash_mantine_components as dmc
 from dash import html, dcc, callback, Output, Input, State, no_update, MATCH, ALL, ctx
 import deerlab as dl
 from dash_iconify import DashIconify
+from deeranalysis.components.scientific_number_input import (
+    ScientificNumberInput, parse_sci, format_sci,
+)
 
 
 exp_model_links = {
@@ -16,6 +19,11 @@ exp_model_links = {
 b_model_links = {
     'bg_hom3d': 'https://jeschkelab.github.io/DeerLab/_autosummary/deerlab.bg_hom3d.html',
     'bg_exp': 'https://jeschkelab.github.io/DeerLab/_autosummary/deerlab.bg_exp.html',
+    'bg_hom3dex': 'https://jeschkelab.github.io/DeerLab/_autosummary/deerlab.bg_hom3dex.html',
+    'bg_hom3dex': 'https://jeschkelab.github.io/DeerLab/_autosummary/deerlab.bg_hom3dex.html',
+    'bg_hom3dex': 'https://jeschkelab.github.io/DeerLab/_autosummary/deerlab.bg_hom3dex.html',
+    'bg_hom3dex': 'https://jeschkelab.github.io/DeerLab/_autosummary/deerlab.bg_hom3dex.html',
+
 }
 
 p_model_links = {
@@ -42,9 +50,10 @@ def model_link_buttons(exp_type, bg_model, p_model):
             return dmc.Anchor(btn, href=href, target="_blank", underline="never")
         return btn
 
+    base_path = 'https://jeschkelab.github.io/DeerLab/_autosummary/deerlab.{model}.html'
     return [
-        make_btn("Experiment Model", exp_model_links.get(exp_type)),
-        make_btn("Background Model", b_model_links.get(bg_model)),
+        make_btn("Experiment Model", base_path.format(model=exp_type) if (exp_type and exp_type != 'single') else None),
+        make_btn("Background Model", base_path.format(model=bg_model) if bg_model else None),
         make_btn("Distance Distribution Model", p_model_links.get(p_model)),
     ]
 
@@ -60,13 +69,21 @@ def _make_bound_input(value, bound_id, step, suffix, precision):
         'page': bound_id['page'],
     }
     return dmc.Group([
-        dmc.NumberInput(
+        # dmc.NumberInput(
+        #     value=None if is_inf else value,
+        #     id=bound_id,
+        #     size="xs", step=step, suffix=suffix, decimalScale=precision,
+        #     disabled=is_inf,
+        #     placeholder=inf_label if is_inf else None,
+        #     style={"flex": 1, "minWidth": 70},
+        # ),
+        ScientificNumberInput(
             value=None if is_inf else value,
             id=bound_id,
-            size="xs", step=step, suffix=suffix, decimalScale=precision,
+            step=step, suffix=suffix, min=None, max=None,
             disabled=is_inf,
             placeholder=inf_label if is_inf else None,
-            style={"flex": 1, "minWidth": 70},
+            style={"flex": 1, "minWidth": 70},   
         ),
         dmc.Tooltip(
             dmc.ActionIcon(
@@ -99,10 +116,16 @@ def create_table_row_from_dict(name, param_data, page_id):
 
     return dmc.TableTr([
         dmc.TableTd(name),
-        dmc.TableTd(dmc.NumberInput(
+        # dmc.TableTd(dmc.NumberInput(
+        #     value=param_data.get('par0'),
+        #     id={'type': 'param-par0', 'name': name, 'page': page_id},
+        #     size="xs", step=step, suffix=suffix, decimalScale=precision,
+        # )),
+        dmc.TableTd(ScientificNumberInput(
             value=param_data.get('par0'),
             id={'type': 'param-par0', 'name': name, 'page': page_id},
-            size="xs", step=step, suffix=suffix, decimalScale=precision,
+            step=step, suffix=suffix, min=None, max=None,
+            size="xs",
         )),
         dmc.TableTd(_make_bound_input(
             param_data.get('lb'),
@@ -226,9 +249,9 @@ def save_model_params(n_clicks, par0_vals, lb_vals, ub_vals, frozen_vals):
 
     errors = []
     for i in range(len(param_names)):
-        par0 = par0_vals[i] if i < len(par0_vals) else None
-        lb = lb_vals[i] if i < len(lb_vals) else None
-        ub = ub_vals[i] if i < len(ub_vals) else None
+        par0 = parse_sci(par0_vals[i]) if i < len(par0_vals) else None
+        lb = parse_sci(lb_vals[i]) if i < len(lb_vals) else None
+        ub = parse_sci(ub_vals[i]) if i < len(ub_vals) else None
         if par0 is not None and ((lb is not None and par0 < lb) or (ub is not None and par0 > ub)):
             errors.append("Must be between lb and ub")
         else:
@@ -240,9 +263,9 @@ def save_model_params(n_clicks, par0_vals, lb_vals, ub_vals, frozen_vals):
     overrides = {}
     for i, name in enumerate(param_names):
         overrides[name] = {
-            'par0': par0_vals[i] if i < len(par0_vals) else None,
-            'lb': lb_vals[i] if i < len(lb_vals) else None,
-            'ub': ub_vals[i] if i < len(ub_vals) else None,
+            'par0': parse_sci(par0_vals[i]) if i < len(par0_vals) else None,
+            'lb': parse_sci(lb_vals[i]) if i < len(lb_vals) else None,
+            'ub': parse_sci(ub_vals[i]) if i < len(ub_vals) else None,
             'frozen': frozen_vals[i] if i < len(frozen_vals) else False,
         }
 
