@@ -50,6 +50,19 @@ def check_delays(exp_type, delays_row_data):
             new_delays[delay] = 0
     return [{'parameter': k, 'value': v} for k, v in new_delays.items()]
 
+@callback(
+    Output({'type': 'dataset-store', 'page': MATCH}, 'data', allow_duplicate=True),
+    Input({'type': 'delays-grid', 'page': MATCH}, 'cellValueChanged'),
+    State({'type': 'delays-grid', 'page': MATCH}, 'rowData'),
+    State({'type': 'dataset-store', 'page': MATCH}, 'data'),
+    prevent_initial_call=True,
+)
+def update_delays(_, delays_row_data, dataset_store):
+    if dataset_store is None or delays_row_data is None:
+        return dash.no_update
+    delays = {row['parameter']: row['value'] for row in delays_row_data}
+    dataset_store['delays'] = delays
+    return dataset_store
 
 # ---------------------------------------------------------------------------
 # Store / experiment type change → check tmin plausibility

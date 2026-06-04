@@ -15,7 +15,7 @@ from deeranalysis.components.metadata_table import build_metadata_section_datarr
 from deeranalysis.components.data_viewer import data_viewer_layout, plot_upload
 from deeranalysis.utils.deerlab_options import experiment_type_options
 from deeranalysis.utils.csv_loader import parse_csv_raw, build_csv_store
-import deeranalysis.components.dataset_form  # registers shared MATCH callbacks
+import deeranalysis.components.dataset_form as df # registers shared MATCH callbacks
 
 dash.register_page(__name__)
 page_id = 'upload'
@@ -262,6 +262,7 @@ def handle_file_upload(contents_list, filenames_list):
         'masked_indices': [],
     }
     delays_data = [{'parameter': k, 'value': v} for k, v in delays.items()]
+    delays_data = df.check_delays('4pDEER',delays_data)
     return store_data, metadata_children, long_values_store, delays_data, dataarray.attrs.get('title', ''), tmin, alert, dash.no_update, dash.no_update
 
 

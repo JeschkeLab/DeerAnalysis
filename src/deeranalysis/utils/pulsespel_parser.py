@@ -66,10 +66,12 @@ def search_variable(var_dict, search_terms, variable_type,one_item=False):
     return found_items
 
 
-def extract_value_ns(var_dict):
+def extract_value_ns(var_dict,default=None):
 
     keys = list(var_dict.keys())
-    if len(keys) == 0:
+    if len(keys) == 0 and default is not None:
+        return default
+    elif len(keys) == 0:
         raise ValueError("No matching variable found in var_dict.")
     elif len(keys)  == 1:
         key = keys[0]
@@ -95,12 +97,12 @@ def parse_PulseSpel(def_text):
         return {}
     var_dict = PulseSpelDef_to_dict(def_text)
     tau1_dict = search_variable(var_dict, 'tau1', 'delay',one_item=True)
-    tau1 = extract_value_ns(tau1_dict)
+    tau1 = extract_value_ns(tau1_dict,default=0.0)
     
     tau2_dict = search_variable(var_dict, 'tau2', 'delay',one_item=True)
-    tau2 = extract_value_ns(tau2_dict)
+    tau2 = extract_value_ns(tau2_dict,default=0.0)
     deadtime_dict = search_variable(var_dict, ['deadtime','zerotime','tmin'], 'delay',one_item=True)
-    deadtime = extract_value_ns(deadtime_dict)
+    deadtime = extract_value_ns(deadtime_dict,default=0.0)
 
     return {'tau1': tau1,
             'tau2': tau2,
