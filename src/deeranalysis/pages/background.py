@@ -113,10 +113,11 @@ def open_model_edit_modal(n_clicks, dataset_id, bg_model_name, existing_override
 
 @callback(
     Output({'type': 'fit-options', 'page': page_id}, 'data'),
-    Input({'type': 'bg_model', 'page': page_id}, 'value'),
+    Input({'type': 'bg-model', 'page': page_id}, 'value'),
     prevent_initial_call=True
 )
 def update_fit_options(bg_model_option):
+    print(f"Selected background model: {bg_model_option}")
     return {
         'bg_model': bg_model_option,
     }
@@ -157,7 +158,6 @@ def run_fit(n_clicks, dataset_id, fit_options, model_params):
 
     bg_model_option = fit_options.get('bg_model', 'bg_hom3d') if fit_options else 'bg_hom3d'
     Bmodel = getattr(dl, bg_model_option, dl.bg_hom3d)
-
     try:
         fit = deerlab_background_only(dataset, bg_model=Bmodel, mask=mask, model_overrides=model_params)
     except Exception as e:
