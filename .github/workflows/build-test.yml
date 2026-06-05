@@ -97,7 +97,7 @@ jobs:
 
       - name: Install Flatpak SDK
         run: flatpak install --user -y --noninteractive flathub org.gnome.Platform//50 org.gnome.Sdk//50
-        
+
       - name: Get version
         id: get_version
         run: |
@@ -113,7 +113,9 @@ jobs:
             --force-clean \
             flatpak_app \
             packaging/flatpak/io.github.JeschkeLab.DeerAnalysis.yml
-
+          flatpak build-bundle \
+            --runtime-repo=https://flathub.org/repo/flathub.flatpakrepo \
+            repo DeerAnalysis.flatpak io.github.JeschkeLab.DeerAnalysis
       - name: Upload Flatpak artifact
         uses: actions/upload-artifact@v7
         with:

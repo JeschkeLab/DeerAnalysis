@@ -65,7 +65,7 @@ def download_deernet_models():
         print(f"Could not get DeerAnalysis version: {e}")
         _version = "latest"
 
-    URL_version = rf"https://github.com/JeschkeLab/DeerAnalysis/releases/download/V{_version}/deernet_models.zip"
+    URL_version = rf"https://github.com/JeschkeLab/DeerAnalysis/releases/download/v{_version}/deernet_models.zip"
     URL_latest = r"https://github.com/JeschkeLab/DeerAnalysis/releases/latest/download/deernet_models.zip"
 
     # download the file and save it to the deernet directory
