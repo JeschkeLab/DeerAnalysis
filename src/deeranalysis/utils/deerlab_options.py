@@ -73,7 +73,7 @@ def resolve_plot_template(color_scheme=None, plot_theme=None):
         return f"{plot_theme}+compact"
     return "plotly_dark+compact" if color_scheme == "dark" else "plotly_white+compact"
 
-def plotly_goodness_of_fit(results=None, index=None):
+def plotly_goodness_of_fit(results=None, index=None, legend_pos = 'right'):
     """
     Returns a plotly version of the goodness of fit plot for a DeerLab fit result object `dl.plot(gof=True)`.
 
@@ -138,6 +138,16 @@ def plotly_goodness_of_fit(results=None, index=None):
     fig.update_xaxes(range=[-0.5, maxLag],title_text="Lags", row=1, col=3)
     fig.update_yaxes(visible=False, row=1, col=3)
 
+    if legend_pos == 'bottom':
+        fig.update_layout(showlegend=True,
+                            legend=dict(orientation="h",
+                                        yanchor="bottom",
+                                        y=-0.35,
+))
+    else:
+        fig.update_layout(showlegend=True,
+                        legend=dict(orientation="v",
+                                    yanchor="right",))
 
     return fig
 

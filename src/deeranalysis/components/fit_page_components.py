@@ -149,7 +149,8 @@ def fit_results_tab(page_id):
         dmc.CodeHighlight(
             id={"type": "fit-results-code", "page": page_id},
             code=DEFAULT_FIT_RESULTS_CODE,
-            language="bash",
+            language="plaintext",
+            withCopyButton=True,
         )
     ], style={'flex': '1', 'minHeight': 0, 'overflow': 'auto'})
     return tabstab, panel

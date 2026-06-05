@@ -16,14 +16,19 @@ import json
 
 from deeranalysis.utils.database import get_session, Dataset,check_delays, Fit,fit_global_datasets
 from deeranalysis.utils import create_subplot_figure,plotly_deerlab
+from deeranalysis.utils.deerlab_options import plotly_goodness_of_fit, plotly_lcurve, plotly_dipolar_spectrum
 from deeranalysis.components.metadata_table import build_metadata_section,build_delays_table, metadata_long_values_model,build_delays_AGgrid,delays_columnDefs
 from deeranalysis.components.download_modal import create_fit_download_modal
 
+import deerlab as dl
 from deerlab.classes import UQResult
 dash.register_page(__name__, path_template="/fit/<fit_id>")
 page_id = "fit-detail"
 
-
+# Title-sized styling for the fit-name input lives in assets/dmc.css under #fd-fit-name —
+# scoping by id beats Mantine's .mantine-Input-input rule on specificity without !important.
+_TITLE_READONLY_STYLES = {"input": {"cursor": "default", "opacity": 1}}
+_TITLE_EDIT_STYLES     = {}
 
 
 def layout(fit_id=None):
@@ -52,33 +57,34 @@ def layout(fit_id=None):
         create_fit_download_modal(page_id=page_id),
 
         # ---- header ---------------------------------------------------------
+        # dmc.Breadcrumbs(
+        #     children=[
+        #         dmc.Anchor("Datasets", href="/", underline=False),
+        #         dmc.Anchor(f"Dataset {ds_id}", href=f"/dataset/{ds_id}", underline=False),
+        #         dmc.Anchor(f"Fit-{fit_id}", href=f"/fit/{fit_id}", underline=False),
+        #     ],
+        #     separator="->",
+        #     mb="xs",
+        # ),
         dmc.Group([
-                dmc.Breadcrumbs(
-                    children=[
-                        dmc.Anchor("Datasets", href="/", underline=False),
-                        dmc.Anchor(f"Dataset {ds_id}", href=f"/dataset/{ds_id}", underline=False),
-                        dmc.Anchor(f"Fit - {fit_id}", href=f"/fit/{fit_id}", underline=False),
-
-                    ],
-                    separator="->",
+            dmc.Anchor(
+                dmc.ActionIcon(
+                    DashIconify(icon="mdi:arrow-left", width=20),
+                    variant="subtle",
+                    size="lg",
+                    # title="Back to Datasets",
                 ),
+                href=f"/dataset/{ds_id}",
+                underline=False,
+            ),
             dmc.TextInput(
                 id="fd-fit-name",
                 value=fit.name or "",
                 readOnly=True,
                 variant="unstyled",
-                styles={
-                    "input": {
-                        "fontSize": "2.5rem",  # Matches dmc.Title order=1
-                        "fontWeight": 700,
-                        "color": "#212529",
-                        "opacity": 1,
-                        "cursor": "default",
-                        "lineHeight": 1.2,
-                        "letterSpacing": "-0.02em",
-                        "marginBottom": "0.5rem"
-                    }
-                },
+                size="lg",
+                style={"minWidth": "300px", "width": f"calc({len(fit.name or '') + 3}ch)"},
+                styles=_TITLE_READONLY_STYLES,
             ),
             dmc.ActionIcon(
                 DashIconify(icon="mdi:pencil", width=18),
@@ -99,7 +105,7 @@ def layout(fit_id=None):
                 color="red",
                 id="fd-delete-btn",
             ),
-        ], mb="md"),
+        ], align="center", mb="md"),
         dmc.Divider(mb="md"),
 
         # ---- notification area ----------------------------------------------
@@ -112,11 +118,14 @@ def layout(fit_id=None):
                 _fit_description(fit),
                 _fit_gof_stats(fit),
                 _fit_dist_stats(fit),
-            ], width=6),
+                _global_datasets(fit),
+            ], width=5),
             dbc.Col([
             _fit_plot(fit,dataset),
-            _global_datasets(fit)
-            ], width=6)
+            _fit_gof_plot(fit),
+            _fit_pake_plot(fit),
+            _fit_lcurve_plot(fit),
+            ], width=7)
         ])
     ], style={"padding": "20px"})
 
@@ -276,9 +285,10 @@ def _fit_description(fit):
             ),
         ], justify="space-between", mb="sm"),
         dmc.Collapse(
-            dmc.CodeHighlight(fit.model_description or "No description provided.", language="bash"),
+            dmc.CodeHighlight(fit.model_description or "No description provided.", language="plaintext",withCopyButton=True,),
             id="fd-description-collapse",
             opened=True,
+            
         ),
     ], p="md", mb="md", withBorder=True, radius="md")
 
@@ -437,39 +447,27 @@ def _global_datasets(fit):
     prevent_initial_call=True,
 )
 def toggle_name_edit(n_clicks, is_readonly, fit_name, fit_id):
-    title_styles = {
-        "input": {
-            "fontSize": "2.5rem",
-            "fontWeight": 700,
-            "color": "#212529",
-            "opacity": 1,
-            "cursor": "default",
-            "lineHeight": 1.2,
-            "letterSpacing": "-0.02em",
-            # "marginBottom": "0.5rem",
-        }
-    }
-    edit_styles = {
-        "input": {
-            "fontSize": "2.5rem",
-            "fontWeight": 700,
-            "color": "#212529",
-            "lineHeight": 1.2,
-            "letterSpacing": "-0.02em",
-            # "marginBottom": "0.5rem",
-        }
-    }
     if is_readonly:
-        return False, "default", edit_styles, DashIconify(icon="mdi:check", width=18)
+        return False, "default", _TITLE_EDIT_STYLES, DashIconify(icon="mdi:check", width=18)
     else:
-        # Edit the fit name in the database
         session = get_session()
         fit = session.query(Fit).filter_by(id=fit_id).first()
         fit.name = fit_name
         session.commit()
         session.close()
+        return True, "unstyled", _TITLE_READONLY_STYLES, DashIconify(icon="mdi:pencil", width=18)
 
-        return True, "unstyled", title_styles, DashIconify(icon="mdi:pencil", width=18)
+
+clientside_callback(
+    """
+    function(value) {
+        var len = value ? value.length : 5;
+        return {minWidth: '200px', width: 'calc((' + (len + 3) + ') * 1ch)'};
+    }
+    """,
+    Output("fd-fit-name", "style"),
+    Input("fd-fit-name", "value"),
+)
 
 @callback(
     Output("fd-description-collapse", "opened"),
@@ -582,6 +580,115 @@ def _fits_and_dataset_to_dict(dataset, fit=None):
         output['PUncert'] = None
 
     return output
+
+def _load_fitresult(fit):
+    """Reconstruct a DeerLab FitResult from the stored JSON blob, or return None."""
+    if not fit.data:
+        return None
+    try:
+        return dl.json_loads(fit.data)
+    except Exception:
+        return None
+
+
+def _fit_gof_plot(fit):
+    fitresult = _load_fitresult(fit)
+    fig = plotly_goodness_of_fit(fitresult, legend_pos='bottom')
+    content = dcc.Graph(figure=fig, config={"displayModeBar": False})
+    return dmc.Paper([
+        dmc.Group([
+            dmc.Title("Goodness-of-Fit Plot", order=4, mb="sm"),
+            dmc.Button(
+                DashIconify(icon="tabler:chevron-down"),
+                id="fd-gof-plot-toggle",
+                variant="subtle",
+                color="gray",
+                size="sm",
+                p=0,
+            ),
+        ], justify="space-between", mb="sm"),
+        dmc.Collapse(content, id="fd-gof-plot-collapse", opened=True),
+    ], p="md", mb="md", withBorder=True, radius="md")
+
+
+def _fit_pake_plot(fit):
+    if not fit.background:
+        return html.Div()
+    fitresult = _load_fitresult(fit)
+    if fitresult is None:
+        return html.Div()
+    try:
+        fig = plotly_dipolar_spectrum(fitresult)
+    except Exception:
+        return html.Div()
+    content = dcc.Graph(figure=fig, config={"displayModeBar": False})
+    return dmc.Paper([
+        dmc.Group([
+            dmc.Title("Pake Pattern (Dipolar Spectrum)", order=4, mb="sm"),
+            dmc.Button(
+                DashIconify(icon="tabler:chevron-down"),
+                id="fd-pake-toggle",
+                variant="subtle",
+                color="gray",
+                size="sm",
+                p=0,
+            ),
+        ], justify="space-between", mb="sm"),
+        dmc.Collapse(content, id="fd-pake-collapse", opened=True),
+    ], p="md", mb="md", withBorder=True, radius="md")
+
+
+def _fit_lcurve_plot(fit):
+    fitresult = _load_fitresult(fit)
+    if fitresult is None or not hasattr(fitresult, 'regparam_stats') or fitresult.regparam_stats is None:
+        return html.Div()
+    fig = plotly_lcurve(fitresult)
+    content = dcc.Graph(figure=fig, config={"displayModeBar": False})
+    return dmc.Paper([
+        dmc.Group([
+            dmc.Title("L-Curve", order=4, mb="sm"),
+            dmc.Button(
+                DashIconify(icon="tabler:chevron-down"),
+                id="fd-lcurve-toggle",
+                variant="subtle",
+                color="gray",
+                size="sm",
+                p=0,
+            ),
+        ], justify="space-between", mb="sm"),
+        dmc.Collapse(content, id="fd-lcurve-collapse", opened=True),
+    ], p="md", mb="md", withBorder=True, radius="md")
+
+
+@callback(
+    Output("fd-gof-plot-collapse", "opened"),
+    Input("fd-gof-plot-toggle", "n_clicks"),
+    State("fd-gof-plot-collapse", "opened"),
+    prevent_initial_call=True,
+)
+def toggle_gof_plot_collapse(n_clicks, opened):
+    return not opened
+
+
+@callback(
+    Output("fd-pake-collapse", "opened"),
+    Input("fd-pake-toggle", "n_clicks"),
+    State("fd-pake-collapse", "opened"),
+    prevent_initial_call=True,
+)
+def toggle_pake_collapse(n_clicks, opened):
+    return not opened
+
+
+@callback(
+    Output("fd-lcurve-collapse", "opened"),
+    Input("fd-lcurve-toggle", "n_clicks"),
+    State("fd-lcurve-collapse", "opened"),
+    prevent_initial_call=True,
+)
+def toggle_lcurve_collapse(n_clicks, opened):
+    return not opened
+
 
 # ---- Download and Deletion Callbacks -------------------------------------------------------
 

@@ -129,7 +129,7 @@ def layout(dataset_id=None):
                 href="/",
                 underline=False,
             ),
-            dmc.Title(dataset.name, order=1),
+            dmc.Title(dataset.name, order=2),
             dmc.Space(style={"flex": 1}),
             dmc.Button(
                 "Download",
