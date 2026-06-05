@@ -28,9 +28,6 @@ DeerAnalysis 2026 is avaliable in pre-compiled binaries for Windows, Mac and Lin
 
 The Windows and MacOS versions are released unsigned, so you may need to bypass security warnings when running the installer or executable for the first time. On MacOS, you may need to allow the app in System Preferences > Security & Privacy after trying to run it.
 
-### Windows (Intel Processors)
-Windows users who have an Intel processor are recommended to download the Intel oneAPI Math Kernel Library (MKL) as well. This is a free library that provides optimised implementations of many mathematical functions, including those used in DeerAnalysis. Download the latest version of MKL from the [Intel oneAPI website](https://www.intel.com/content/www/us/en/developer/tools/oneapi/onemkl-download.html) and install it before running DeerAnalysis for the best performance. Speed-up can be 5-10x for large datasets and complex fits.
-
 ### Linux (Flatpak)
 
 On Linux, DeerAnalysis is distributed as a [Flatpak](https://flatpak.org/) bundle. Download `DeerAnalysis.flatpak` from the [releases page](https://github.com/JeschkeLab/DeerAnalysis/releases/latest) and install it:
