@@ -7,8 +7,9 @@ from importlib.metadata import version as get_version
 import sys
 from deeranalysis.utils.logs_plugin import get_logs_api_db, set_logs_api_key
 from deeranalysis.utils.database import get_appearance_settings, save_appearance_settings
-
+from deerlab import show_config
 dash.register_page(__name__, path='/config')
+page_id= 'config'
 
 
 try:
@@ -26,6 +27,33 @@ try:
 except Exception:
     _current_deerlab_version = "unknown"
 
+dl_confg = show_config('dicts')
+try:
+    numpy_blas_info = dl_confg['numpy']['BLAS']
+except Exception:
+    numpy_blas_info = 'unknown'
+
+try:
+    CPU_cores = dl_confg['cpu_cores']
+except Exception:
+    CPU_cores = 'unknown'
+
+BLAS_info_text = """
+The BLAS (Basic Linear Algebra Subprograms) engine used by NumPy can significantly impact the performance of linear algebra operations, which are used extensively in DeerLab and DeerAnalysis.
+Using the right BLAS implementation can significantly speed up computations however, the options depend on your OS and processor architecture.
+
+- **MacOS:**
+MacOS use the Accelerate framework by default, which is optimized for Apple hardware. This is normally the best choice for Mac users.
+
+- **Windows and Linux:**
+    -**Intel Processors:** If you have an Intel CPU, MKL (Math Kernel Library) is often the best choice. 
+      This is a free library that provides optimised implementations of many mathematical functions, including those used in DeerAnalysis. 
+      Download the latest version of MKL from the [Intel oneAPI website](https://www.intel.com/content/www/us/en/developer/tools/oneapi/onemkl-download.html) and install it before running DeerAnalysis for the best performance.
+    
+    -**AMD Processors:** For AMD CPUs, OpenBLAS is a good option. It is an open-source BLAS library that performs well on a variety of hardware, and is the default BLAS. 
+
+
+"""
 
 
 layout = dmc.Container([
@@ -36,6 +64,17 @@ layout = dmc.Container([
         multiple=True,
         value=["about","general"],
         children=[
+            dmc.Modal(
+                id={"type": "BLAS-Engine-Info", "page": page_id},
+                title=dmc.Text("BLAS Linear Algenbra Engine", fw=600, size="lg"),
+                size="50%",
+                opened=False,
+                children=[
+                    dmc.TypographyStylesProvider(
+                        dcc.Markdown(BLAS_info_text, dangerously_allow_html=False, link_target="_blank", id="default"),
+                    ),
+                ],
+            ),
             # About / Version
             dmc.AccordionItem(
                 value="about",
@@ -72,6 +111,23 @@ layout = dmc.Container([
                             dmc.Group([
                                 dmc.Text("DeerLab version", size="sm", w=160, c="dimmed"),
                                 dmc.Badge(_current_deerlab_version, color="blue", variant="light"),
+                            ], gap="xs"),
+                            dmc.Group([
+                                dmc.Text("Numpy BLAS Engine", size="sm", w=160, c="dimmed"),
+                                dmc.Badge(numpy_blas_info, color="blue", variant="light"),
+                                dmc.Button(
+                                    DashIconify(icon="mdi:information-outline",width=20,height=20,),
+                                    id={"type": "config-blas-info-btn", "page": page_id},
+                                    variant="subtle",
+                                    color="blue",
+                                    # title="Format information",
+                                    mt=2,
+                                    p=0,
+                                ),
+                            ], gap="xs"),
+                            dmc.Group([
+                                dmc.Text("Number of CPU Cores", size="sm", w=160, c="dimmed"),
+                                dmc.Badge(CPU_cores, color="blue", variant="light"),
                             ], gap="xs"),
                         ], gap="sm"),
                     ]),
@@ -406,6 +462,15 @@ clientside_callback(
         prevent_initial_call=True,
     )
 
+@callback(
+    Output({"type": "BLAS-Engine-Info", "page": page_id}, "opened", allow_duplicate=True),
+    Input({"type": "config-blas-info-btn", "page": page_id}, "n_clicks"),
+    prevent_initial_call=True,
+)
+def _open_fit_info_modal(n_clicks):
+    return True if n_clicks else dash.no_update
+
+
 # Callbacks for saving and resetting configuration
 @callback(
     Output("config-notification", "action"),
@@ -568,3 +633,4 @@ def close_db_reset_modal(n_clicks_cancel, n_clicks_confirm):
         return False  # Close the modal if cancel is clicked
     
     return dash.no_update  # Do not change modal state for other cases
+
