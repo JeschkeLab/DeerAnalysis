@@ -5,7 +5,7 @@ import numpy as np
 from numpy import savetxt, column_stack
 
 from deeranalysis.utils import dataarray_from_database_entry
-
+import deerlab as dl
 
 def save_bruker_bes3t(filename, x, data, title='', mw_freq=np.nan):
     """Save data in Bruker BES3T format (.DTA + .DSC files).
@@ -250,7 +250,7 @@ def output_to_file(file, output, format_type):
             dist_buffer = io.StringIO()
             header = 'r,P'
             data_list = [output['r'], output['P']]
-            if 'P_lb' in output and 'P_ub' in output:
+            if 'P_lb' in output and 'P_ub' in output and output['P_lb'] is not None and output['P_ub'] is not None:
                 header += ',lb,ub'
                 data_list.append(output['P_lb'])
                 data_list.append(output['P_ub'])
@@ -298,6 +298,14 @@ def FitResult_to_file(file, fitresult, format_type, uncert=True):
     output_to_file(file, output, format_type)
 
 
+def _convert_lists_in_dicts_to_arrays(d):
+    """Recursively convert lists in a dict to numpy arrays."""
+    if isinstance(d, dict):
+        return {k: _convert_lists_in_dicts_to_arrays(v) for k, v in d.items()}
+    elif isinstance(d, list):
+        return np.array(d)
+    else:
+        return d
 
 
 def fitSQL_to_file(file, fit_entry,dataset_entry, format_type, uncert=True):
@@ -308,13 +316,18 @@ def fitSQL_to_file(file, fit_entry,dataset_entry, format_type, uncert=True):
     output['Vmodel'] = np.array(fit_entry.model)
     output['r'] = np.array(fit_entry.r)
     output['P'] = np.array(fit_entry.P_model)
-    output['P_lb'] = np.array(fit_entry.P_model['lb']) if fit_entry.P_model and 'lb' in fit_entry.P_model else None
-    output['P_ub'] = np.array(fit_entry.P_model['ub']) if fit_entry.P_model and 'ub' in fit_entry.P_model else None
+    if isinstance(fit_entry.PUncert, dict): #
+        PUncert = PUncert = dl.UQResult.from_dict(_convert_lists_in_dicts_to_arrays(fit_entry.PUncert))
+        output['P_lb'] = np.array(PUncert.ci(95)[:,0])
+        output['P_ub'] = np.array(PUncert.ci(95)[:,1])
 
+    output['bg'] = np.array(fit_entry.background) if fit_entry.background is not None else None
     if fit_entry.engine == 'DeerNet':
         # Either resample the fit to the dataset's t axis or 
         Vt = np.array(fit_entry.t)
         output['Vmodel'] = np.interp(output['t'], Vt, output['Vmodel'])
+        if output['bg'] is not None:
+            output['bg'] = np.interp(output['t'], Vt, output['bg'])
     
     output_to_file(file, output, format_type)
 

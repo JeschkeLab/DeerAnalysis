@@ -4,7 +4,7 @@
 
 import dash_mantine_components as dmc
 from dash_iconify import DashIconify
-from deeranalysis.utils.deerlab_options import regparam_options, plotly_deerlab, plotly_goodness_of_fit,plotly_lcurve
+from deeranalysis.utils.deerlab_options import regparam_options, plotly_deerlab, plotly_goodness_of_fit,plotly_lcurve,plotly_dipolar_spectrum
 from deeranalysis.utils.database import get_session, Dataset
 from deeranalysis.utils import dataarray_from_database_entry
 from deeranalysis.utils.deerlab_population import determine_pop_P
@@ -169,17 +169,89 @@ def dist_stats_tab_pagination(page_id):
     Input({"type": "fit-plot-pagination", "page": MATCH}, "value"),
     prevent_initial_call=True,
 )
-def update_multi_dist_stats_table(fit_results_data:list,page_value):
+def update_multi_dist_stats_table(fit_results_data,page_value):
     if fit_results_data is None:
         return plotly_goodness_of_fit()
     
-    if 'data' not in fit_results_data:
-        return plotly_goodness_of_fit()
-    
-    fit = dl.json_loads(fit_results_data['data'])
-    
+    if 'dist_stats' not in fit_results_data:
+        return {"head": ["Statistic", "Value", "Confidence Interval (95%)"], "body": []}
     
 
+    dist_stats_dict = fit_results_data['dist_stats'][page_value-1]
+    dist_stats_output = {
+        "head": ["Statistic", "Value", "Confidence Interval (95%)"],
+        "body": [
+            [k, f"{v['value']:.3f}", f"[{v['ci'][0]:.3f}, {v['ci'][1]:.3f}]" if v['ci'] else "N/A"]
+            for k, v in dist_stats_dict.items()
+        ]
+    }
+
+    return dist_stats_output
+    
+    
+    
+def dipolar_spectrum_tab_pagination(page_id):
+
+    tabstab = dmc.TabsTab("Dipolar Spectrum", value="dip-spectrum")
+    panel = dmc.TabsPanel(value="dip-spectrum", children=[
+        
+        dcc.Graph(
+            id={"type": "dip-spectrum-plot-multi", "page": page_id},
+            figure=plotly_dipolar_spectrum(),
+            style={'height': '100%'},
+            config={'responsive': True},
+        ),
+    ], style={'flex': '1', 'display': 'flex', 'flexDirection': 'column', 'minHeight': 0})
+    return tabstab, panel
+
+@callback(
+    Output({"type": "dip-spectrum-plot-multi", "page": MATCH}, "figure"),
+    Input({'type': 'fit-results-store-multi', 'page': MATCH}, 'data'),
+    Input({"type": "fit-plot-pagination", "page": MATCH}, "value"),
+    prevent_initial_call=True,
+)
+def update_multi_dipolar_spectrum_plot(fit_result_data,page_value):
+    if fit_result_data is None:
+        return plotly_dipolar_spectrum()
+    
+    if 'data' not in fit_result_data:
+        return plotly_dipolar_spectrum()
+    
+    fit = dl.json_loads(fit_result_data['data'])
+    fig = plotly_dipolar_spectrum(fit,index=page_value-1)
+    return fig
+
+
+def l_curve_pagination(page_id):
+
+    tabstab = dmc.TabsTab("L-Curve", value="l-curve")
+    panel = dmc.TabsPanel(value="l-curve", children=[
+        
+        dcc.Graph(
+            id={"type": "l-curve-plot-multi", "page": page_id},
+            figure=plotly_lcurve(),
+            style={'height': '100%'},
+            config={'responsive': True},
+        ),
+    ], style={'flex': '1', 'display': 'flex', 'flexDirection': 'column', 'minHeight': 0})
+    return tabstab, panel
+
+@callback(
+    Output({"type": "l-curve-plot-multi", "page": MATCH}, "figure"),
+    Input({'type': 'fit-results-store-multi', 'page': MATCH}, 'data'),
+    Input({"type": "fit-plot-pagination", "page": MATCH}, "value"),
+    prevent_initial_call=True,
+)
+def update_multi_l_curve_plot(fit_result_data,page_value):
+    if fit_result_data is None:
+        return plotly_lcurve()
+    
+    if 'data' not in fit_result_data:
+        return plotly_lcurve()
+    
+    fit = dl.json_loads(fit_result_data['data'])
+    fig = plotly_lcurve(fit)
+    return fig
 
 # --------------------------------------------------------------
 # Overview pagation component for population fits

@@ -1,0 +1,124 @@
+name: Build Test
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build-desktop:
+    name: Build on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: macos-latest
+            spec: DeerAnalysis_MacOS.spec
+            python-version: '3.12'
+          - os: windows-latest
+            spec: DeerAnalysis_Win.spec
+            python-version: '3.12'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pyinstaller
+          pip install -e .
+
+      - name: Build with PyInstaller
+        run: pyinstaller "${{ matrix.spec }}" --distpath dist --workpath build
+        working-directory: packaging/pyinstaller
+      
+      - name: Get version
+        id: get_version
+        run: |
+          VERSION=$(python -c "import tomllib; f = open('pyproject.toml', 'rb'); data = tomllib.load(f); print(data['project']['version']); f.close()")
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+        shell: bash
+
+      - name: Prepare artifact name
+        id: artifact_name
+        run: |
+          if [ "${{ runner.os }}" = "macOS" ]; then
+            ARTIFACT_NAME="DeerAnalysis-${{ steps.get_version.outputs.version }}-macos"
+          elif [ "${{ runner.os }}" = "Windows" ]; then
+            ARTIFACT_NAME="DeerAnalysis-${{ steps.get_version.outputs.version }}-windows"
+          fi
+          echo "artifact_name=$ARTIFACT_NAME" >> $GITHUB_OUTPUT
+        shell: bash
+
+      - name: Package macOS build
+        if: runner.os == 'macOS'
+        run: |
+          hdiutil create \
+            -volname "DeerAnalysis" \
+            -srcfolder packaging/pyinstaller/dist/DeerAnalysis.app \
+            -ov -format UDZO \
+            "packaging/pyinstaller/dist/${{ steps.artifact_name.outputs.artifact_name }}.dmg"
+
+      - name: Package Windows build
+        if: runner.os == 'Windows'
+        # The Win spec names the executable "DeerAnalysis 2026.exe".
+        run: |
+          cd packaging/pyinstaller/dist
+          Compress-Archive -Path "DeerAnalysis 2026.exe" -DestinationPath "${{ steps.artifact_name.outputs.artifact_name }}.zip"
+        shell: pwsh
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ steps.artifact_name.outputs.artifact_name }}
+          path: |
+            packaging/pyinstaller/dist/*.zip
+            packaging/pyinstaller/dist/*.dmg
+          retention-days: 1
+
+  build-flatpak:
+    name: Build Linux Flatpak
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Install flatpak-builder
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y flatpak flatpak-builder xvfb
+          flatpak remote-add --user --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+
+      - name: Install Flatpak SDK
+        run: flatpak install --user -y --noninteractive flathub org.gnome.Platform//50 org.gnome.Sdk//50
+
+      - name: Get version
+        id: get_version
+        run: |
+          VERSION=$(python3 -c "import tomllib; f = open('pyproject.toml', 'rb'); data = tomllib.load(f); print(data['project']['version']); f.close()")
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Build Flatpak bundle
+        run: |
+          xvfb-run -a flatpak-builder \
+            --user \
+            --repo=repo \
+            --disable-rofiles-fuse \
+            --force-clean \
+            flatpak_app \
+            packaging/flatpak/io.github.JeschkeLab.DeerAnalysis.yml
+          flatpak build-bundle \
+            --runtime-repo=https://flathub.org/repo/flathub.flatpakrepo \
+            repo DeerAnalysis.flatpak io.github.JeschkeLab.DeerAnalysis
+      - name: Upload Flatpak artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: DeerAnalysis-${{ steps.get_version.outputs.version }}-linux
+          path: DeerAnalysis.flatpak
+          retention-days: 1

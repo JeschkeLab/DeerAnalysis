@@ -79,3 +79,20 @@ html[data-mantine-color-scheme="dark"] .ag-theme-alpine {
     width: 28px;
     height: 28px;
 }
+
+/* ── Fit detail: title-sized TextInput ──────────────────────────────────────
+   The fit-name TextInput on the fit detail page should render as a page title.
+   Mantine's `.mantine-Input-input { font-size: var(--input-fz) }` rule (class
+   specificity) beats the styles-prop class at equal weight, so we scope by id
+   (#fd-fit-name) to win on specificity without !important.
+
+   font-size is tied to --input-height so the text scales with the size prop
+   (size="lg" → ~50px box → ~42px text) and fills the input box rather than
+   floating in a sea of whitespace. */
+#fd-fit-name {
+    font-size: calc(var(--input-height) * 0.85);
+    line-height: 1;
+    font-weight: var(--mantine-heading-font-weight, 700);
+    letter-spacing: -0.02em;
+    padding: 0;
+}

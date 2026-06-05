@@ -73,7 +73,7 @@ def resolve_plot_template(color_scheme=None, plot_theme=None):
         return f"{plot_theme}+compact"
     return "plotly_dark+compact" if color_scheme == "dark" else "plotly_white+compact"
 
-def plotly_goodness_of_fit(results=None, index=None):
+def plotly_goodness_of_fit(results=None, index=None, legend_pos = 'right'):
     """
     Returns a plotly version of the goodness of fit plot for a DeerLab fit result object `dl.plot(gof=True)`.
 
@@ -138,6 +138,18 @@ def plotly_goodness_of_fit(results=None, index=None):
     fig.update_xaxes(range=[-0.5, maxLag],title_text="Lags", row=1, col=3)
     fig.update_yaxes(visible=False, row=1, col=3)
 
+    if legend_pos == 'bottom':
+        fig.update_layout(showlegend=True,
+                            legend=dict(orientation="h",
+                                        yanchor="bottom",
+                                        xanchor="center",
+                                        y=-0.35,
+))
+    else:
+        fig.update_layout(showlegend=True,
+                        legend=dict(orientation="v",
+                                    yanchor="top",
+                                    xanchor="right",))
 
     return fig
 
@@ -593,13 +605,38 @@ def build_model_data(dataset, bg_model_name, pathways, r_range,
             tau1 = attrs['tau1'] / 1e3
             pathways = [p for p in pathways if p <= 2]
             exp_info = dl.ex_3pdeer(tau=tau1, pathways=pathways)
-        elif seq_name is not None and 'tau1' in attrs and 'tau2' in attrs:
+        elif seq_name == '4pDEER':
             # Default / 4pDEER
             exp_type = '4pDEER'
             tau1 = attrs.get('tau1', 400) / 1e3
             tau2 = attrs.get('tau2', 2400) / 1e3
             pathways = [p for p in pathways if p <= 4]
             exp_info = dl.ex_4pdeer(tau1, tau2, pathways=pathways)
+        elif seq_name == 'single':
+            exp_type = 'single'
+            exp_info = None
+        elif seq_name == 'ridme':
+            exp_type = 'ridme'
+            tau1 = attrs['tau1'] / 1e3
+            tau2 = attrs['tau2'] / 1e3 
+            pathways = [p for p in pathways if p <= 2]
+            exp_info = dl.ex_ridme(tau=tau1, tau2=tau2, pathways=pathways)
+        elif seq_name == 'dqc':
+            exp_type = 'dqc'
+            tau1 = attrs['tau1'] / 1e3
+            tau2 = attrs['tau2'] / 1e3 
+            tau3 = attrs['tau3'] / 1e3 
+            pathways = [p for p in pathways if p <= 2]
+            exp_info = dl.ex_dqc(tau=tau1, tau2=tau2, tau3=tau3, pathways=pathways)
+        elif seq_name == 'sifter':
+            exp_type = 'sifter'
+            tau1 = attrs['tau1'] / 1e3
+            tau2 = attrs['tau2'] / 1e3 
+            pathways = [p for p in pathways if p <= 2]
+            exp_info = dl.ex_sifter(tau=tau1, tau2=tau2, pathways=pathways)
+        else:
+            raise ValueError(f"Could not determine experiment type from dataset attributes. seq_name: {seq_name}, required tau values: {['tau1', 'tau2', 'tau3']}")
+
             
         bg_model = (
             getattr(dl, bg_model_name, None)
@@ -709,4 +746,53 @@ def plotly_lcurve(fitresult=None, orientation='h'):
             customdata=[alphas_lcurve[selected_idx_lcurve]],
             hovertemplate='Residual Norm: %{x:.3e}<br>Solution Norm: %{y:.3e}<br>α: %{customdata:.3e}<extra></extra>'
         ), row=r2, col=c2)
+    return fig
+
+def plotly_dipolar_spectrum(fitresult=None, index=None, linewidth=3):
+    """Returns a plotly figure with the Pake pattern data."""
+
+    import plotly.graph_objects as go
+    from plotly.subplots import make_subplots
+
+    fig = make_subplots(rows=1, cols=1, subplot_titles=["Dipolar Spectrum (Background Divided)"], horizontal_spacing=0.1)
+    fig.update_xaxes(title_text="Frequency (MHz)", row=1, col=1)
+    fig.update_yaxes(title_text="Intensity (a.u.)", row=1, col=1)
+
+    if fitresult is None:
+        return fig
+
+    if isinstance(fitresult, dl.FitResult):
+        idx = index if index is not None else 0
+
+        data_t     = fitresult.t[idx]     if isinstance(fitresult.t, list)     else fitresult.t
+        data_V     = fitresult.Vexp[idx]  if isinstance(fitresult.Vexp, list)  else fitresult.Vexp
+        model_t    = data_t
+
+        if hasattr(fitresult, 'model'):
+            data_model = fitresult.model[idx] if isinstance(fitresult.model, list) else fitresult.model
+
+        if (hasattr(fitresult,'bg') and isinstance(fitresult.bg, list)):
+            background = fitresult.bg[idx]
+        elif hasattr(fitresult,'bg') and fitresult.bg is not None:
+            background = fitresult.bg
+        else:
+            background = None
+    else:
+        raise ValueError("fitresult must be either a DeerLab FitResult object or an xarray DataArray, not {}".format(type(fitresult)))
+
+
+    data_V_bg = data_V / background -1 if background is not None else data_V
+    data_model_bg = data_model / background -1 if background is not None and data_model is not None else data_model
+
+    data_V_bg_fft = np.fft.fftshift(np.fft.fft(data_V_bg))
+    data_freqs = np.fft.fftshift(np.fft.fftfreq(len(data_t), d=(data_t[1]-data_t[0])))
+    model_V_bg_fft = np.fft.fftshift(np.fft.fft(data_model_bg)) if data_model_bg is not None else None
+    model_freqs = data_freqs if data_model_bg is not None else None
+    
+    fig.add_trace(go.Scatter(x=data_freqs, y=np.abs(data_V_bg_fft), mode='markers', name='Data', line={'color':colour_scheme_light[0], 'width':linewidth}), row=1, col=1)
+    if data_model_bg is not None:
+        fig.add_trace(go.Scatter(x=model_freqs, y=np.abs(model_V_bg_fft), mode='lines', name='Model', line={'color':colour_scheme_dark[0], 'width':linewidth}), row=1, col=1)
+
+    fig.update_xaxes(range=[-15, 15], row=1, col=1)
+
     return fig

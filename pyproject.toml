@@ -1,6 +1,6 @@
 [project]
 name = "deeranalysis"
-version = "2026.0.1"
+version = "2026.0.2"
 description = "A graphical fitting and data managment tool for DEER spectroscopy, using DeerLab and DeerNet as fitting engines."
 authors = [
     {name = "Hugo Karas",email = "hkaras@ethz.ch"}

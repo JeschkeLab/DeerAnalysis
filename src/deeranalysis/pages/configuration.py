@@ -7,8 +7,9 @@ from importlib.metadata import version as get_version
 import sys
 from deeranalysis.utils.logs_plugin import get_logs_api_db, set_logs_api_key
 from deeranalysis.utils.database import get_appearance_settings, save_appearance_settings
-
+from deerlab import show_config
 dash.register_page(__name__, path='/config')
+page_id= 'config'
 
 
 try:
@@ -406,6 +407,7 @@ clientside_callback(
         prevent_initial_call=True,
     )
 
+
 # Callbacks for saving and resetting configuration
 @callback(
     Output("config-notification", "action"),
@@ -568,3 +570,4 @@ def close_db_reset_modal(n_clicks_cancel, n_clicks_confirm):
         return False  # Close the modal if cancel is clicked
     
     return dash.no_update  # Do not change modal state for other cases
+

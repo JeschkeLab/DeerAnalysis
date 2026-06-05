@@ -112,7 +112,9 @@ layout = html.Div([
                     fpcg.overview_tab_global(page_id),
                     fpc.fit_results_tab(page_id),
                     fpcg.goodness_of_fit_tab_pagination(page_id),
-                    fpc.dist_stats_tab(page_id),
+                    fpcg.dist_stats_tab_pagination(page_id),
+                    fpcg.l_curve_pagination(page_id),
+                    fpcg.dipolar_spectrum_tab_pagination(page_id),
                 ),
                 ], style={'display': 'flex', 'flexDirection': 'column', 'height': 'calc(100vh - 160px)', 'gap': '12px'})
         ], width=9) # dbc.col
@@ -233,7 +235,7 @@ def update_fit_options(bg_model_option,compactness,distance_axis,pathways_option
     else:
         output['regparam'] = regparam_method
 
-    searchrange = [1e-8,1e2]
+    searchrange = [1e-8,1e3]
     if search_method == 'grid':
         output['regparamrange'] = 10**np.linspace(np.log10(searchrange[0]),np.log10(searchrange[1]),grid_size)
     elif search_method == 'brent':

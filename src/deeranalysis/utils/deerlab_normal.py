@@ -297,9 +297,9 @@ def deerlab_fitting(dataset, compactness=True, model=None, exp_type='5pDEER', ve
                 param = getattr(Vmodel, param_name)
                 if not hasattr(param, 'set'):
                     continue
-                lb = param_data.get('lb')
-                ub = param_data.get('ub')
-                par0 = param_data.get('par0')
+                lb = float(param_data.get('lb'))
+                ub = float(param_data.get('ub'))
+                par0 = float(param_data.get('par0'))
                 frozen = param_data.get('frozen', False)
                 if lb is not None and ub is not None:
                     param.set(lb=lb, ub=ub)
