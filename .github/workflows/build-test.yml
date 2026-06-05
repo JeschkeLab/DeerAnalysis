@@ -36,6 +36,24 @@ jobs:
       - name: Build with PyInstaller
         run: pyinstaller "${{ matrix.spec }}" --distpath dist --workpath build
         working-directory: packaging/pyinstaller
+      
+      - name: Get version
+        id: get_version
+        run: |
+          VERSION=$(python -c "import tomllib; f = open('pyproject.toml', 'rb'); data = tomllib.load(f); print(data['project']['version']); f.close()")
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+        shell: bash
+
+      - name: Prepare artifact name
+        id: artifact_name
+        run: |
+          if [ "${{ runner.os }}" = "macOS" ]; then
+            ARTIFACT_NAME="DeerAnalysis-${{ steps.get_version.outputs.version }}-macos"
+          elif [ "${{ runner.os }}" = "Windows" ]; then
+            ARTIFACT_NAME="DeerAnalysis-${{ steps.get_version.outputs.version }}-windows"
+          fi
+          echo "artifact_name=$ARTIFACT_NAME" >> $GITHUB_OUTPUT
+        shell: bash
 
       - name: Package macOS build
         if: runner.os == 'macOS'
@@ -79,6 +97,12 @@ jobs:
 
       - name: Install Flatpak SDK
         run: flatpak install --user -y --noninteractive flathub org.gnome.Platform//50 org.gnome.Sdk//50
+        
+      - name: Get version
+        id: get_version
+        run: |
+          VERSION=$(python3 -c "import tomllib; f = open('pyproject.toml', 'rb'); data = tomllib.load(f); print(data['project']['version']); f.close()")
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
 
       - name: Build Flatpak bundle
         run: |
