@@ -37,6 +37,32 @@ jobs:
         run: pyinstaller "${{ matrix.spec }}" --distpath dist --workpath build
         working-directory: packaging/pyinstaller
 
+      - name: Package macOS build
+        if: runner.os == 'macOS'
+        run: |
+          hdiutil create \
+            -volname "DeerAnalysis" \
+            -srcfolder packaging/pyinstaller/dist/DeerAnalysis.app \
+            -ov -format UDZO \
+            "packaging/pyinstaller/dist/${{ steps.artifact_name.outputs.artifact_name }}.dmg"
+
+      - name: Package Windows build
+        if: runner.os == 'Windows'
+        # The Win spec names the executable "DeerAnalysis 2026.exe".
+        run: |
+          cd packaging/pyinstaller/dist
+          Compress-Archive -Path "DeerAnalysis 2026.exe" -DestinationPath "${{ steps.artifact_name.outputs.artifact_name }}.zip"
+        shell: pwsh
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ steps.artifact_name.outputs.artifact_name }}
+          path: |
+            packaging/pyinstaller/dist/*.zip
+            packaging/pyinstaller/dist/*.dmg
+          retention-days: 1
+
   build-flatpak:
     name: Build Linux Flatpak
     runs-on: ubuntu-latest
@@ -63,3 +89,10 @@ jobs:
             --force-clean \
             flatpak_app \
             packaging/flatpak/io.github.JeschkeLab.DeerAnalysis.yml
+
+      - name: Upload Flatpak artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: DeerAnalysis-${{ steps.get_version.outputs.version }}-linux
+          path: DeerAnalysis.flatpak
+          retention-days: 1
