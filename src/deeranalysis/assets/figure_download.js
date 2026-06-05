@@ -64,12 +64,20 @@
         picker.querySelector('#pywv-save-svg').addEventListener('click', function (e) {
             e.stopPropagation();
             dismiss();
-            window.pywebview.api.save_figure(svgUrl, name, 'svg');
+            fetch('/save-figure', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({data_url: svgUrl, suggested_name: name, fmt: 'svg'})
+            });
         });
         picker.querySelector('#pywv-save-png').addEventListener('click', function (e) {
             e.stopPropagation();
             dismiss();
-            window.pywebview.api.save_figure(pngUrl, name, 'png');
+            fetch('/save-figure', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({data_url: pngUrl, suggested_name: name, fmt: 'png'})
+            });
         });
 
         document.body.appendChild(overlay);
@@ -83,10 +91,10 @@
         if (!btn || !isDownloadButton(btn)) return;
         var gd = btn.closest('.js-plotly-plot') || btn.closest('.plot-container');
         if (!gd || !window.Plotly) return;
-        if (!window.pywebview || !window.pywebview.api || !window.pywebview.api.save_figure) {
-            window.alert('Figure download unavailable: pywebview API not loaded.');
-            return;
-        }
+        if (!window.DEERANALYSIS_PYWEBVIEW) {
+            window.alert('Figure download unavailable: not running in pywebview.');
+             return;
+         }
 
         e.preventDefault();
         e.stopImmediatePropagation();

@@ -6,6 +6,7 @@ import sys
 import base64
 from pathlib import Path
 from urllib.parse import unquote
+from flask import request as _flask_request, jsonify as _jsonify
 
 #os.environ['PYWEBVIEW_GUI'] = 'cocoa'  # force macOS backend
 os.environ['DEERANALYSIS_PYWEBVIEW'] = '1'
@@ -102,6 +103,17 @@ class FigureSaveApi:
 figure_api = FigureSaveApi()
 
 
+@app.server.route('/save-figure', methods=['POST'])
+def _save_figure_route():
+    data = _flask_request.get_json(force=True, silent=True) or {}
+    result = figure_api.save_figure(
+        data.get('data_url', ''),
+        data.get('suggested_name', 'figure'),
+        data.get('fmt', 'svg'),
+    )
+    return _jsonify({'path': result})
+
+
 def run_dash():
     app.run(port=PORT, debug=False, use_reloader=False)
 
@@ -132,11 +144,15 @@ if __name__ == "__main__":
         resizable=True,
         fullscreen=False,
         min_size=(800, 600),
-        js_api=figure_api,
     )
     figure_api.window = window
     
     # Start a thread that waits for Dash and then swaps the content
     threading.Thread(target=wait_for_dash, args=(window,), daemon=True).start()
+
+    # After create_window, inject the pywebview flag on every page load:
+    def _on_loaded():
+        window.evaluate_js('window.DEERANALYSIS_PYWEBVIEW = true;')
+    window.events.loaded += _on_loaded
 
     webview.start()

@@ -142,12 +142,14 @@ def plotly_goodness_of_fit(results=None, index=None, legend_pos = 'right'):
         fig.update_layout(showlegend=True,
                             legend=dict(orientation="h",
                                         yanchor="bottom",
+                                        xanchor="center",
                                         y=-0.35,
 ))
     else:
         fig.update_layout(showlegend=True,
                         legend=dict(orientation="v",
-                                    yanchor="right",))
+                                    yanchor="top",
+                                    xanchor="right",))
 
     return fig
 
