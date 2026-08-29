@@ -240,7 +240,7 @@ def deerlab_fitting(dataset, compactness=True, model=None, exp_type='5pDEER', ve
     elif exp_type == "3pDEER":
         experimentInfo = dl.ex_3pdeer(tau=tau1,pathways=pathways,pulselength=pulselength)
     elif exp_type == "RIDME":
-        experimentInfo = dl.ex_ridme(tau=tau1,tau2=tau2,pathways=pathways,pulselength=pulselength)
+        experimentInfo = dl.ex_ridme(tau1=tau1,tau2=tau2,pathways=pathways,pulselength=pulselength)
     elif exp_type == "SIFTER":
         experimentInfo = dl.ex_sifter(tau1=tau1,tau2=tau2,pathways=pathways,pulselength=pulselength)
     elif exp_type == "DQC":

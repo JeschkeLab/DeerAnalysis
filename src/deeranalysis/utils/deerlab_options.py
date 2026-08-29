@@ -620,7 +620,7 @@ def build_model_data(dataset, bg_model_name, pathways, r_range,
             tau1 = attrs['tau1'] / 1e3
             tau2 = attrs['tau2'] / 1e3 
             pathways = [p for p in pathways if p <= 2]
-            exp_info = dl.ex_ridme(tau=tau1, tau2=tau2, pathways=pathways)
+            exp_info = dl.ex_ridme(tau1=tau1, tau2=tau2, pathways=pathways)
         elif seq_name == 'dqc':
             exp_type = 'dqc'
             tau1 = attrs['tau1'] / 1e3
