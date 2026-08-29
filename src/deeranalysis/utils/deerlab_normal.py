@@ -248,7 +248,7 @@ def deerlab_fitting(dataset, compactness=True, model=None, exp_type='5pDEER', ve
     elif exp_type == "single":
         experimentInfo = None
     else:
-        raise ValueError(f"Experiment type {exp_type} not recognized. Please specify a valid experiment type (e.g., '4pDEER', '5pDEER', '3pDEER').")
+        raise ValueError(f"Experiment type {exp_type} not recognized. Please specify a valid experiment type (e.g., '4pDEER', '5pDEER', '3pDEER', 'RIDME', 'SIFTER', 'DQC', 'single').")
 
     if 'r' in kwargs:
         r = kwargs.pop('r')
