@@ -130,8 +130,8 @@ def _build_signal_figure(dataset_store, correct_phase, masking_enabled):
 
 
 @callback(
-    Output({"type": "metadata-value-modal", 'page': page_id}, "opened"),
-    Output({"type": "metadata-value-modal-text", 'page': page_id}, "value"),
+    Output({"type": "metadata-value-modal", 'page': page_id}, "opened", allow_duplicate=True),
+    Output({"type": "metadata-value-modal-text", 'page': page_id}, "value", allow_duplicate=True),
     Input({"type": "metadata-show-btn", "key": dash.ALL}, "n_clicks"),
     State({"type": "metadata-modal-store", "page": page_id}, "data"),
     prevent_initial_call=True,

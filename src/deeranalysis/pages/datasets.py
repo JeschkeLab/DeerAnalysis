@@ -270,8 +270,8 @@ def populate_details(selected_rows):
 
 
 @callback(
-    Output({"type": "metadata-value-modal",'page': page_id}, "opened"),
-    Output({"type":"metadata-value-modal-text",'page': page_id}, "value"),
+    Output({"type": "metadata-value-modal",'page': page_id}, "opened", allow_duplicate=True),
+    Output({"type":"metadata-value-modal-text",'page': page_id}, "value", allow_duplicate=True),
     Input({"type": "metadata-show-btn", "key": dash.ALL}, "n_clicks"),
     State("metadata-modal-store", "data"),
     prevent_initial_call=True,
