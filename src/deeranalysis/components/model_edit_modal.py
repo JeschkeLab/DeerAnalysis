@@ -12,8 +12,8 @@ exp_model_links = {
     '3pDEER': 'https://jeschkelab.github.io/DeerLab/_autosummary/deerlab.ex_3pdeer.html',
     '4pDEER': 'https://jeschkelab.github.io/DeerLab/_autosummary/deerlab.ex_4pdeer.html',
     '5pDEER': 'https://jeschkelab.github.io/DeerLab/_autosummary/deerlab.ex_fwd5pdeer.html',
-    'dqc': 'https://jeschkelab.github.io/DeerLab/_autosummary/deerlab.ex_dqc.html',
-    'ridme': 'https://jeschkelab.github.io/DeerLab/_autosummary/deerlab.ex_ridme.html',
+    'DQC': 'https://jeschkelab.github.io/DeerLab/_autosummary/deerlab.ex_dqc.html',
+    'RIDME': 'https://jeschkelab.github.io/DeerLab/_autosummary/deerlab.ex_ridme.html',
 }
 
 b_model_links = {
@@ -52,8 +52,8 @@ def model_link_buttons(exp_type, bg_model, p_model):
 
     base_path = 'https://jeschkelab.github.io/DeerLab/_autosummary/deerlab.{model}.html'
     return [
-        make_btn("Experiment Model", base_path.format(model=exp_type) if (exp_type and exp_type != 'single') else None),
-        make_btn("Background Model", base_path.format(model=bg_model) if bg_model else None),
+        make_btn("Experiment Model", exp_model_links.get(exp_type, None) if (exp_type and exp_type != 'single') else None),
+        make_btn("Background Model", b_model_links.get(bg_model, None)),
         make_btn("Distance Distribution Model", p_model_links.get(p_model)),
     ]
 

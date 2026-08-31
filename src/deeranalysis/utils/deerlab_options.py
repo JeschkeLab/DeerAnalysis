@@ -14,7 +14,7 @@ regparam_options = [
 ]
 
 experiment_type_options = [
-     {"label": "Single Pathway", "value": "single", "max_pathways": 1, "delays": []},
+     {"label": "Single Pathway", "value": "single", "max_pathways": 1, "delays": [], 'link': None},
     {"label": "4-pulse DEER", "value": "4pDEER", "max_pathways": 4, "delays": ['tau1', 'tau2']},
     {"label": "3-pulse DEER", "value": "3pDEER", "max_pathways": 3, "delays": ['tau1']},
     {"label": "5-pulse DEER", "value": "5pDEER", "max_pathways": 5, "delays": ['tau1', 'tau2', 'tau3']},
@@ -593,7 +593,7 @@ def build_model_data(dataset, bg_model_name, pathways, r_range,
         Vmodel = bg_model
         exp_type='background'
     else:
-        if seq_name == '5pDEER' or ('tau3' in attrs and seq_name != '4pDEER'):
+        if seq_name == '5pDEER':
             exp_type = '5pDEER'
             tau1 = attrs['tau1'] / 1e3
             tau2 = attrs['tau2'] / 1e3
@@ -615,21 +615,21 @@ def build_model_data(dataset, bg_model_name, pathways, r_range,
         elif seq_name == 'single':
             exp_type = 'single'
             exp_info = None
-        elif seq_name == 'ridme':
-            exp_type = 'ridme'
+        elif seq_name == 'RIDME':
+            exp_type = 'RIDME'
             tau1 = attrs['tau1'] / 1e3
             tau2 = attrs['tau2'] / 1e3 
             pathways = [p for p in pathways if p <= 2]
-            exp_info = dl.ex_ridme(tau=tau1, tau2=tau2, pathways=pathways)
-        elif seq_name == 'dqc':
-            exp_type = 'dqc'
+            exp_info = dl.ex_ridme(tau1=tau1, tau2=tau2, pathways=pathways)
+        elif seq_name == 'DQC':
+            exp_type = 'DQC'
             tau1 = attrs['tau1'] / 1e3
             tau2 = attrs['tau2'] / 1e3 
             tau3 = attrs['tau3'] / 1e3 
             pathways = [p for p in pathways if p <= 2]
-            exp_info = dl.ex_dqc(tau=tau1, tau2=tau2, tau3=tau3, pathways=pathways)
-        elif seq_name == 'sifter':
-            exp_type = 'sifter'
+            exp_info = dl.ex_dqc(tau1=tau1, tau2=tau2, tau3=tau3, pathways=pathways)
+        elif seq_name == 'SIFTER':
+            exp_type = 'SIFTER'
             tau1 = attrs['tau1'] / 1e3
             tau2 = attrs['tau2'] / 1e3 
             pathways = [p for p in pathways if p <= 2]

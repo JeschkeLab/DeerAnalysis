@@ -333,7 +333,8 @@ TIME_LABELS = {
     'SNR': 'SNR',
     'MNR': 'MNR',
     'rmsd': 'RMSD',
-    'R2': 'R²',}
+    'R2': 'R²',
+    'lam': 'Mod. Depth.',}
 
 def _compute_stat(metric, dd):
     try:
