@@ -32,7 +32,8 @@ def create_dataset_AGgrid(id="datasets_grid"):
         ),style={"height": "50vh", "marginBottom": "10px"})
     return grid
 
-def create_dataset_modal(page_id):
+def create_dataset_modal(page_id, select_btn_id=None):
+    select_btn_id = select_btn_id or {'type': 'select-dataset-btn', 'page': page_id}
     return html.Div([
         dmc.Modal(
             title="Search Datasets",
@@ -47,7 +48,7 @@ def create_dataset_modal(page_id):
                 ),
                 create_dataset_AGgrid("dataset_table"),
                 dmc.Group(
-                    [dmc.Button("Select Dataset", id={'type': 'select-dataset-btn', 'page': page_id})],
+                    [dmc.Button("Select Dataset", id=select_btn_id)],
                     justify="flex-end",
                     className="mt-2"
                 ),
