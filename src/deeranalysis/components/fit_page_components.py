@@ -117,7 +117,7 @@ def distance_slider(page_id):
     return dmc.Stack([dmc.Text("Distance Axis (nm): ", size="sm", fw=500, mb=4),
         dcc.RangeSlider(
                 id= {"type": "distance-axis", "page": page_id},
-                min=1.5,
+                min=1.25,
                 max=12,
                 step=0.25,
                 value=[1.75, 6],
@@ -358,7 +358,7 @@ def pathway_input(page_id):
     return dmc.Tooltip(dmc.CheckboxGroup(
                 id={'type': 'pathways-options', 'page': page_id},
                 label="Pathways to include:",
-                description="These pathways will be applied to all datasets, if they are fesiable for the corresponding experiment.",
+                description="These pathways will be applied to all datasets, if they are feasible for the corresponding experiment.",
                 children=dmc.Group([
                     dmc.Checkbox(value='1', label='1'),
                     dmc.Checkbox(value='2', label='2'),
