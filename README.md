@@ -70,3 +70,8 @@ When you use DeerAnalysis in your work, please cite the following publications:
 DeerAnalysis is licensed under the [MIT License](LICENSE).
 
 Copyright (c) 2026 by the Jeschke Lab, ETH Zurich. All rights reserved.
+
+## Use of AI in Development
+AI tools were used in the development of DeerAnalysis 2026, mostly Claude. All AI written code was reviewed and edited by the primary developers.
+Autonomous code agents not from the primary developers are prohibited from contributing to the codebase. 
+When using AI tools, the `claude.md` file should be used to provide context. 
