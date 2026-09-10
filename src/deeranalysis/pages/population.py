@@ -18,7 +18,8 @@ from deeranalysis.components.fit_page_components import fit_save_download_button
 import deeranalysis.components.fit_page_components as fpc
 import deeranalysis.components.fpc_global as fpcg
 
-from deeranalysis.utils.deerlab_population import deerlab_population_fitting, determine_pop_P, build_population_model_data
+from deeranalysis.utils.deerlab_population import build_population_model_data
+from deeranalysis.utils.job_tracking import create_job, get_job
 
 dash.register_page(__name__)
 
@@ -111,9 +112,12 @@ layout = html.Div([
             dmc.Button("Edit Dipolar Model", id={'type': 'open-model-edit-btn', 'page': page_id}, color="blue", variant='outline', className="mb-2 ms-1", leftSection=DashIconify(icon='material-symbols:edit', width=20)),
             
             dmc.Space(h=10),
-            
+            fpc.bootstrap_controls(page_id),
+            dmc.Space(h=10),
+
             fit_save_download_buttons(page_id),
-            html.Div(id={'type':'fit-status','page': page_id})
+            html.Div(id={'type':'fit-status','page': page_id}),
+            fpc.queued_jobs_panel(page_id),
         ], width=3),
         
         dbc.Col([
@@ -230,122 +234,89 @@ def open_model_edit_modal(n_clicks, dataset_ids, bg_model_name, dd_model_name,
 
 
 @callback(
-    Output({'type': 'fit-results-store-multi', 'page': page_id}, 'data'),
-    Output({"type": "fit-results-code", "page": page_id}, 'code', allow_duplicate=True),
-    Output({"type":"save-fit-btn","page":page_id}, 'disabled'),
-    Output({"type":"download-fit-btn","page":page_id}, 'disabled'),
-
+    Output({'type':'fit-status','page': page_id}, 'children', allow_duplicate=True),
+    Output({'type': 'pending-auto-load', 'page': page_id}, 'data', allow_duplicate=True),
     Input({"type":"run-fit-btn","page":page_id}, 'n_clicks'),
     State({'type': 'dataset-dropdown', 'page': page_id}, 'value'),
     State({'type': 'fit_options', 'page': page_id}, 'data'),
     State({'type': 'model-params-store', 'page': page_id}, 'data'),
-    running=[(Output({"type":"run-fit-btn","page":page_id}, 'loading'), True, False)],
+    State({"type": "bootstrap-toggle", "page": page_id}, 'checked'),
+    State({"type": "bootstrap-samples", "page": page_id}, 'value'),
     prevent_initial_call=True
 )
-def run_fit(n_clicks, dataset_id, fit_options, model_params):
-    
-    if not dataset_id:
-        return dash.no_update, dash.no_update, True, True
+def queue_fit(n_clicks, dataset_ids, fit_options, model_params, bootstrap_enabled, bootstrap_samples):
+    if not dataset_ids:
+        fpc.notify('No Datasets', 'Please select between 2 and 5 datasets first.', 'mdi:alert-circle-outline', 'yellow')
+        return dash.no_update, dash.no_update
 
     session = get_session()
-    datasets = []
-    dataset_names = []
-    for dataset_id in dataset_id:
-        dataset_entry = session.query(Dataset).filter_by(id=dataset_id).first()
-        if dataset_entry is None:
-            print(f"Dataset with id {dataset_id} not found in the database.")
-        dataset = dataarray_from_database_entry(dataset_entry)
-        dataset_names.append(dataset_entry.name)    
-        dataset = dataset.assign_coords(t=dataset.t.values)
-        datasets.append(dataset)
+    names = []
+    for ds_id in dataset_ids:
+        entry = session.query(Dataset).filter_by(id=ds_id).first()
+        names.append(entry.name if entry else str(ds_id))
     session.close()
+    label = ", ".join(names)
 
-    distance_axis = fit_options.get('distance_axis', [0, 5])
-    bg_model_option = fit_options.get('bg_model', 'bg_hom3d')
-    pathways_options = fit_options.get('pathways_options', ['1'])
-    dd_model_option = fit_options.get('dd_model', 'dd_gauss')
-    n_pops = fit_options.get('n_pops', 2)
-
-    bg_model = getattr(dl, bg_model_option, dl.bg_hom3d)
-    pathways = [int(p) for p in pathways_options]
-    r = np.linspace(distance_axis[0], distance_axis[1], 100) # Default range
-    dd_model = getattr(dl, dd_model_option, dl.dd_gauss)
-    try:
-        n_datasets = len(datasets)
-        fit = deerlab_population_fitting(datasets,
-                                model=dd_model, n_pops=n_pops,
-                                bg_model=bg_model, r=r, pathways=pathways,
-                                model_overrides=model_params)
-        fit.n_datasets = n_datasets
-        fit.n_pops = n_pops
-    except Exception as e:
-        print(f"Error during fitting: {e}")
-        return dash.no_update, f"Error during fitting: {e}", True, True
-    
-
-    fit_store = fit_to_dict(fit,n_datasets)
-    fit_store['populations'] = calc_population_fractions(fit)
-    return fit_store, fit.__str__(), False, False
+    params = {
+        'dataset_ids': dataset_ids,
+        'fit_options': fit_options,
+        'model_params': model_params,
+        'bootstrap_enabled': bootstrap_enabled,
+        'bootstrap_samples': bootstrap_samples,
+    }
+    job_id = create_job(job_type='population_fit', page=page_id, label=label, params=params)
+    fpc.notify('Fit Queued', f'Queued population fit for {label}.', 'mdi:clock-outline', 'blue')
+    return dash.no_update, job_id
 
 
+@callback(
+    Output({'type': 'pending-auto-load', 'page': page_id}, 'data', allow_duplicate=True),
+    Input({'type': 'dataset-dropdown', 'page': page_id}, 'value'),
+    Input({'type': 'fit_options', 'page': page_id}, 'data'),
+    Input({'type': 'model-params-store', 'page': page_id}, 'data'),
+    Input({"type": "bootstrap-toggle", "page": page_id}, 'checked'),
+    Input({"type": "bootstrap-samples", "page": page_id}, 'value'),
+    prevent_initial_call=True,
+)
+def invalidate_pending_auto_load(*_args):
+    """Any change to a fit parameter after queueing means the eventual result would no longer
+    match what's on screen — stop watching for it so it doesn't silently auto-load."""
+    return None
 
-def fit_to_dict(fit, n_datasets):
-    """
-    Converts fit results to a dictionary for storage in the database.
-    This version is specific for population fitting where multiple datasets are produced.
-    Per-dataset fields (t, model, P_model, PUncert, background, gof) are stored as
-    lists indexed by dataset order.
-    """
-    Prs, PUQs = determine_pop_P(fit.r, fit, fit.Pmodel, n_datasets, fit.n_pops)
-    fit.P = Prs
-    fit.PUncert = PUQs
-    output = {}
-    output['engine'] = 'DeerLab'
-    output['fit_type'] = 'Population'
-    output['bg_model'] = fit.bg_model.name if fit.bg_model else None
-    output['dist_model'] = fit.Pmodel.name if hasattr(fit, 'Pmodel') else None
-    output['n_pops'] = fit.n_pops if hasattr(fit, 'n_pops') else None
-    output['pathways'] = fit.pathways[0] if hasattr(fit, 'pathways') and fit.pathways else []
-    output['r'] = fit.r.tolist() if fit.r is not None else None
-    output['model_description'] = fit.__str__() if fit is not None else None
-    output['data'] = dl.json_dumps(fit) if fit is not None else None
 
-    # Per-dataset fields stored as lists
-    output['t'] = [fit.t[i].tolist() for i in range(n_datasets)] if fit.t is not None else None
-    output['V'] = [fit.Vexp[i].tolist() for i in range(n_datasets)] if fit.Vexp is not None else None
-    output['model'] = [fit.model[i].tolist() for i in range(n_datasets)] if fit.model is not None else None
-    output['background'] = [fit.bg[i].tolist() for i in range(n_datasets)] if fit.bg is not None else [None] * n_datasets
-    output['P_model'] = [Prs[i]['sum'].tolist() for i in range(n_datasets)]
-    output['PUncert'] = [PUQs[i]['UQs']['sum'].to_dict() for i in range(n_datasets)]
-    output['gof'] = [fit.stats[i] for i in range(n_datasets)]
-
-    return output
-
-def calc_population_fractions(fit):
-    """
-    Calculates the fractions of each population for each dataset and their corresponding uncertanties
-    """
-
-    n_datasets = len(fit.Vexp)
-    n_pops = fit.n_pops
-    output = []
-    for i in range(n_datasets):
-        populations = {}
-        for j in range(n_pops-1):
-            letter = chr(ord('A') + j)
-            frac = getattr(fit, f"frac{letter}_{i+1}")
-            frac_unc = getattr(fit, f"frac{letter}_{i+1}Uncert")
-            ci = frac_unc.ci(95)
-            unc = (ci[1] - ci[0]) / 2
-            populations[letter] = {'frac': frac, 'unc': unc}
-        output.append(populations)
-
-        # Calculate the last population fraction as 1 - sum of others
-        last_letter = chr(ord('A') + n_pops - 1)
-        last_frac = 1 - sum(populations[chr(ord('A') + j)]['frac'] for j in range(n_pops-1))
-        last_unc = np.sqrt(sum(populations[chr(ord('A') + j)]['unc']**2 for j in range(n_pops-1)))
-        output[-1][last_letter] = {'frac': last_frac, 'unc': last_unc}
-    return output
+@callback(
+    Output({'type': 'fit-results-store-multi', 'page': page_id}, 'data', allow_duplicate=True),
+    Output({"type": "fit-results-code", "page": page_id}, 'code', allow_duplicate=True),
+    Output({"type":"save-fit-btn","page":page_id}, 'disabled', allow_duplicate=True),
+    Output({"type":"download-fit-btn","page":page_id}, 'disabled', allow_duplicate=True),
+    Output({'type': 'bg_model', 'page': page_id}, 'value', allow_duplicate=True),
+    Output({'type': 'pathways-options', 'page': page_id}, 'value', allow_duplicate=True),
+    Output({'type': 'n_pops', 'page': page_id}, 'value', allow_duplicate=True),
+    Output({"type": "dd_model", "page": page_id}, 'value', allow_duplicate=True),
+    Output({"type": "distance-axis", "page": page_id}, 'value', allow_duplicate=True),
+    Output({'type': 'model-params-store', 'page': page_id}, 'data', allow_duplicate=True),
+    Output({"type": "bootstrap-toggle", "page": page_id}, 'checked', allow_duplicate=True),
+    Output({"type": "bootstrap-samples", "page": page_id}, 'value', allow_duplicate=True),
+    Input({"type": "job-load-request", "page": page_id}, "data"),
+    prevent_initial_call=True,
+)
+def load_queued_result(job_id):
+    # Dataset dropdown is deliberately not restored — see the note in nonparametric.py's
+    # load_queued_result for why (it would trigger plot_dataset and wipe the loaded result).
+    no_update_12 = (dash.no_update,) * 12
+    if not job_id:
+        return no_update_12
+    job = get_job(job_id)
+    if job is None or job.status != 'done' or not job.result_data:
+        return no_update_12
+    fit_store = job.result_data
+    p = job.params or {}
+    fo = p.get('fit_options') or {}
+    return (
+        fit_store, fit_store.get('model_description', ''), False, False,
+        fo.get('bg_model'), fo.get('pathways_options'), fo.get('n_pops'), fo.get('dd_model'),
+        fo.get('distance_axis'), p.get('model_params'), p.get('bootstrap_enabled'), p.get('bootstrap_samples'),
+    )
 
 # ----- Save and Download Callbacks -----
 

@@ -77,6 +77,22 @@ class Fit(Base):
 
 
 
+class Job(Base):
+    __tablename__ = 'jobs'
+
+    id = Column(Integer, primary_key=True)
+    job_type = Column(String, nullable=False)  # dispatch key, e.g. "non-parametric_fit"
+    page = Column(String, nullable=False)       # originating page_id
+    label = Column(String, nullable=True)        # human-readable label shown in the drawer
+    status = Column(String, nullable=False, default="queued")  # queued|running|done|error|cancelled
+    params = Column(JSON, nullable=True)          # serialized fit kwargs
+    result_data = Column(JSON, nullable=True)      # serialized fit result once done
+    message = Column(String, nullable=True)
+    error = Column(String, nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+
 class Settings(Base):
     __tablename__ = 'settings'
     
@@ -144,7 +160,7 @@ def reset_db():
     global engine
     Base.metadata.drop_all(engine)
     Base.metadata.create_all(engine)
-    
+
 def get_session():
     global Session
     if Session is None:

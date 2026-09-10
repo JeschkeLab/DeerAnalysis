@@ -1,5 +1,3 @@
-import json
-
 import dash
 from dash import html, dcc, callback, Input, Output, State
 import dash_bootstrap_components as dbc
@@ -12,10 +10,10 @@ from deeranalysis.components.dataset_search_model import create_dataset_modal
 from deeranalysis.components.setup_modal_desktop import get_DeerAnalysis_directory
 from deeranalysis.components.download_modal import create_fit_download_modal
 
-from deeranalysis.utils.deerlab_options import  plotly_goodness_of_fit, plotly_deerlab, dists_stats_to_list, fit_to_dict,name_dataset_from_dict, plotly_dipolar_spectrum
+from deeranalysis.utils.deerlab_options import  plotly_goodness_of_fit, plotly_deerlab, name_dataset_from_dict, plotly_dipolar_spectrum
 from deeranalysis.utils.database import get_session, Dataset, Fit
 from deeranalysis.utils import create_subplot_figure, dataarray_from_database_entry
-from deeranalysis.utils.deernet import deernet,deernet2
+from deeranalysis.utils.job_tracking import create_job, get_job
 import deerlab as dl
 dash.register_page(__name__)
 import deeranalysis.components.fit_page_components as fpc
@@ -71,7 +69,8 @@ layout = html.Div([
 
             html.Br(),
             fpc.fit_save_download_buttons(page_id),
-            html.Div(id='dn-fit-status')
+            html.Div(id='dn-fit-status'),
+            fpc.queued_jobs_panel(page_id),
         ], width=3),
         dbc.Col([
             html.Div([
@@ -118,55 +117,68 @@ def update_dropdown(pathname):
 
 
 @callback(
-    Output({'type':'fit-results-store','page': page_id}, 'data'),
-    Output({"type":"save-fit-btn","page":page_id}, 'disabled'),
-    Output({"type": "download-fit-btn", "page": page_id}, 'disabled'),
-    Output('dn-fit-status', 'children',allow_duplicate=True),
+    Output('dn-fit-status', 'children', allow_duplicate=True),
+    Output({'type': 'pending-auto-load', 'page': page_id}, 'data', allow_duplicate=True),
     Input({"type":"run-fit-btn","page":page_id}, 'n_clicks'),
     State({'type': 'dataset-dropdown', 'page': page_id}, 'value'),
     State('dn-model-size', 'value'),
-    running=[(Output({"type":"run-fit-btn","page":page_id}, 'loading'), True, False)],
     prevent_initial_call=True,
 )
-def run_fit(n_clicks, dataset_id,model_size):
-    ctx = dash.callback_context
-    triggered_id = ctx.triggered[0]['prop_id'].split('.')[0]
-    
-    try:
-        triggered_id = json.loads(triggered_id)
-    except (json.JSONDecodeError, TypeError):
-        pass
-
+def queue_fit(n_clicks, dataset_id, model_size):
     if not dataset_id:
-        # return dash.no_update, dash.no_update, dash.no_update, True, True
-        return dash.no_update, True, True,None
+        fpc.notify('No Dataset', 'Please select a dataset first.', 'mdi:alert-circle-outline', 'yellow')
+        return dash.no_update, dash.no_update
+
     session = get_session()
     dataset_entry = session.query(Dataset).filter_by(id=dataset_id).first()
-    dataset = dataarray_from_database_entry(dataset_entry)
-    dataset = dataset.assign_coords(t=dataset.t.values)
+    if dataset_entry is None:
+        session.close()
+        return dash.no_update, dash.no_update
+    label = dataset_entry.name
+    if dataset_entry.exp not in ['4pDEER', '3pDEER', 'single']:
+        session.close()
+        alert = dmc.Alert(f"Dataset {label} has unsupported experiment type '{dataset_entry.exp}'. Only 'single','4pDEER' and '3pDEER' are supported.!",
+                          title='Error!', color="red", duration=10000, withCloseButton=True)
+        return alert, dash.no_update
     session.close()
 
-    if dataset_entry.exp not in ['4pDEER', '3pDEER', 'single']:
-        alert = dmc.Alert(f"Dataset {dataset_entry.name} has unsupported experiment type '{dataset_entry.exp}'. Only 'single','4pDEER' and '3pDEER' are supported.!",
-                          title='Error!', color="red", duration=10000,withCloseButton=True)
-        return dash.no_update, True, True, alert
-    model_size = int(model_size)
-    deernet_folder = os.path.join(get_DeerAnalysis_directory(), "deernet", 'deernet_models')
+    params = {'dataset_id': dataset_id, 'model_size': model_size}
+    job_id = create_job(job_type='deernet_fit', page=page_id, label=label, params=params)
+    fpc.notify('Fit Queued', f'Queued DeerNet fit for {label}.', 'mdi:clock-outline', 'blue')
+    return dash.no_update, job_id
 
-    try:
-        fit = deernet2(dataset, model_size, model_dir=deernet_folder, providor=['CPUExecutionProvider'])
-    except Exception as e:
-        print(f"Error running DeerNet fit: {e}")
-        return dash.no_update, dash.no_update, dash.no_update, True, True
 
-    dist_stats = dl.diststats(fit.r, fit.P, fit.PUncert)
-    dist_stats_dict = dists_stats_to_list(*dist_stats)
+@callback(
+    Output({'type': 'pending-auto-load', 'page': page_id}, 'data', allow_duplicate=True),
+    Input({'type': 'dataset-dropdown', 'page': page_id}, 'value'),
+    Input('dn-model-size', 'value'),
+    prevent_initial_call=True,
+)
+def invalidate_pending_auto_load(*_args):
+    """Any change to a fit parameter after queueing means the eventual result would no longer
+    match what's on screen — stop watching for it so it doesn't silently auto-load."""
+    return None
 
-    fit_dict = fit_to_dict(fit)
-    fit_dict['dist_stats'] = dist_stats_dict
-    fit_dict['gof'] = fit.stats
-    # return fit_dict, gof_fig, dist_stats_output, False, False
-    return fit_dict, False, False,None
+
+@callback(
+    Output({'type':'fit-results-store','page': page_id}, 'data', allow_duplicate=True),
+    Output({"type":"save-fit-btn","page":page_id}, 'disabled', allow_duplicate=True),
+    Output({"type": "download-fit-btn", "page": page_id}, 'disabled', allow_duplicate=True),
+    Output('dn-model-size', 'value', allow_duplicate=True),
+    Input({"type": "job-load-request", "page": page_id}, "data"),
+    prevent_initial_call=True,
+)
+def load_queued_result(job_id):
+    # Dataset dropdown is deliberately not restored — see the note in nonparametric.py's
+    # load_queued_result for why (it would trigger plot_dataset and wipe the loaded result).
+    no_update_4 = (dash.no_update,) * 4
+    if not job_id:
+        return no_update_4
+    job = get_job(job_id)
+    if job is None or job.status != 'done' or not job.result_data:
+        return no_update_4
+    p = job.params or {}
+    return job.result_data, False, False, p.get('model_size')
 
 
 @callback(

@@ -30,6 +30,8 @@ dependencies = [
     "pywebview (>=6.1)",
     "sqlalchemy (>2.0)",
     "quadprog (>=0.1.13)",
+    "diskcache (>=5.6,<6.0)",
+    "multiprocess (>=0.70,<1.0)",
 ]
 
 [tool.pytest.ini_options]
