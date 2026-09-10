@@ -370,10 +370,20 @@ def sync_exp_modal_to_card(value):
 @callback(
     Output({'type': 'card-project-name', 'page': MATCH}, 'data'),
     Output({'type': 'card-sample-name', 'page': MATCH}, 'data'),
-    Input({'type': 'card-project-name', 'page': MATCH}, 'n_clicks'),
+    Input({'type': 'card-project-name', 'page': MATCH}, 'n_blur'),
+    Input({'type': 'card-sample-name', 'page': MATCH}, 'n_blur'),
     prevent_initial_call=False,
 )
-def populate_card_autocomplete_options(_n_clicks):
+def populate_card_autocomplete_options(_project_blur, _sample_blur):
+    return df.get_projects_and_samples()
+
+@callback(
+    Output('batch-global-project', 'data'),
+    Output('batch-global-sample', 'data'),
+    Input('batch-upload-data', 'contents'),
+    prevent_initial_call=False,
+)
+def populate_global_autocomplete_options(_contents):
     return df.get_projects_and_samples()
 
 
@@ -388,15 +398,27 @@ def populate_card_autocomplete_options(_n_clicks):
     State('batch-global-project', 'value'),
     State('batch-global-sample', 'value'),
     State('batch-global-exp', 'value'),
-    State({'type': 'project-name', 'page': ALL}, 'value'),
     prevent_initial_call=True,
 )
-def apply_to_all(_, global_project, global_sample, global_exp, projects):
-    n = len(projects)
-    new_projects = [global_project] * n if global_project else dash.no_update
-    new_samples = [global_sample] * n if global_sample else dash.no_update
-    new_exps = [global_exp] * n if global_exp else dash.no_update
-    return new_projects, new_samples, new_exps
+def apply_to_all(_, global_project, global_sample, global_exp):
+    # Each ALL output must be given a list exactly as long as the number of
+    # components it matched — a bare dash.no_update is rejected by Dash. The
+    # patterns also match the Single Import tab (page 'upload'), so leave any
+    # non-batch page untouched.
+    def _column(outputs, value):
+        if not value:
+            return [dash.no_update] * len(outputs)
+        return [
+            value if str(o['id']['page']).startswith('batch-') else dash.no_update
+            for o in outputs
+        ]
+
+    projects_out, samples_out, exps_out = dash.callback_context.outputs_list
+    return (
+        _column(projects_out, global_project),
+        _column(samples_out, global_sample),
+        _column(exps_out, global_exp),
+    )
 
 
 # ---------------------------------------------------------------------------

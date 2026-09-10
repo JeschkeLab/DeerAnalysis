@@ -130,10 +130,11 @@ def get_projects_and_samples():
 @callback(
     Output({'type': 'project-name', 'page': MATCH}, 'data'),
     Output({'type': 'sample-name', 'page': MATCH}, 'data'),
-    Input({'type': 'project-name', 'page': MATCH}, 'n_clicks'),
+    Input({'type': 'project-name', 'page': MATCH}, 'n_blur'),
+    Input({'type': 'sample-name', 'page': MATCH}, 'n_blur'),
     prevent_initial_call=False,
 )
-def update_projects_and_samples(_n_clicks):
+def update_projects_and_samples(_project_blur, _sample_blur):
     return get_projects_and_samples()
 
 

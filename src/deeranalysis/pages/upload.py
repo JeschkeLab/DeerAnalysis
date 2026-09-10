@@ -10,6 +10,8 @@ from deeranalysis.utils.deerlab_options import experiment_type_options
 from deeranalysis.utils.csv_loader import parse_csv_raw, build_csv_store
 from deeranalysis.utils.file_parser import load_bes3t, enrich_bes3t, load_hdf5, enrich_hdf5, dataarray_to_store
 from deeranalysis.components.batch_import import batch_import_layout
+from deeranalysis.components.logs_import_tab import logs_import_tab_layout
+from deeranalysis.utils.logs_plugin import check_logs_api_key
 import deeranalysis.components.dataset_form as df # registers shared MATCH callbacks
 
 dash.register_page(__name__)
@@ -101,70 +103,77 @@ def _single_import_layout():
     ])
 
 
-layout = html.Div([
-    metadata_long_values_model(page_id),
-    dcc.Store(id={"type": "metadata-modal-store", "page": page_id}, data=""),
-    dcc.Store(id='csv-raw-store'),
+def layout():
+    return html.Div([
+        metadata_long_values_model(page_id),
+        dcc.Store(id={"type": "metadata-modal-store", "page": page_id}, data=""),
+        dcc.Store(id='csv-raw-store'),
 
-    # ---- CSV import modal --------------------------------------------------
-    dmc.Modal(
-        id='csv-import-modal',
-        title=dmc.Title("Import CSV File", order=3),
-        size='xl',
-        opened=False,
-        children=dmc.Stack([
-            html.Div(id='csv-preview'),
-            dmc.Group([
-                dmc.NumberInput(
-                    id='csv-skiprows', label='Skip rows', value=0, min=0, step=1, w=140,
-                ),
-                dmc.Select(
-                    id='csv-separator', label='Separator', value=',', w=180,
-                    data=[
-                        {'label': 'Comma  ( , )', 'value': ','},
-                        {'label': 'Semicolon  ( ; )', 'value': ';'},
-                        {'label': 'Tab', 'value': '\t'},
-                        {'label': 'Space', 'value': ' '},
-                    ],
-                ),
-                dmc.Select(
-                    id='csv-time-unit', label='Time unit', value='us', w=140,
-                    data=[
-                        {'label': 'ns',  'value': 'ns'},
-                        {'label': 'µs',  'value': 'us'},
-                        {'label': 'ms',  'value': 'ms'},
-                        {'label': 's',   'value': 's'},
-                    ],
-                ),
-                dmc.Switch(
-                    id='csv-has-header', label='Has header row', checked=True, mt='xl',
-                ),
+        # ---- CSV import modal --------------------------------------------------
+        dmc.Modal(
+            id='csv-import-modal',
+            title=dmc.Title("Import CSV File", order=3),
+            size='xl',
+            opened=False,
+            children=dmc.Stack([
+                html.Div(id='csv-preview'),
+                dmc.Group([
+                    dmc.NumberInput(
+                        id='csv-skiprows', label='Skip rows', value=0, min=0, step=1, w=140,
+                    ),
+                    dmc.Select(
+                        id='csv-separator', label='Separator', value=',', w=180,
+                        data=[
+                            {'label': 'Comma  ( , )', 'value': ','},
+                            {'label': 'Semicolon  ( ; )', 'value': ';'},
+                            {'label': 'Tab', 'value': '\t'},
+                            {'label': 'Space', 'value': ' '},
+                        ],
+                    ),
+                    dmc.Select(
+                        id='csv-time-unit', label='Time unit', value='us', w=140,
+                        data=[
+                            {'label': 'ns',  'value': 'ns'},
+                            {'label': 'µs',  'value': 'us'},
+                            {'label': 'ms',  'value': 'ms'},
+                            {'label': 's',   'value': 's'},
+                        ],
+                    ),
+                    dmc.Switch(
+                        id='csv-has-header', label='Has header row', checked=True, mt='xl',
+                    ),
+                ]),
+                dmc.Group([
+                    dmc.Select(id='csv-t-col',   label='Time column (t)',         placeholder='Select column…', style={'flex': 1}),
+                    dmc.Select(id='csv-vre-col', label='Real signal (V_re)',      placeholder='Select column…', style={'flex': 1}),
+                    dmc.Select(id='csv-vim-col', label='Imaginary signal (V_im)', placeholder='None',           style={'flex': 1}, clearable=True),
+                ], grow=True),
+                dmc.Group([
+                    dmc.Button('Cancel', id='csv-cancel-btn', color='gray', variant='subtle'),
+                    dmc.Button('Import', id='csv-import-btn', color='blue',
+                               leftSection=DashIconify(icon='mdi:file-import-outline', width=16)),
+                ], justify='flex-end'),
+            ], gap='md'),
+        ),
+
+        dmc.Title("Import Dataset from File", order=1, mb="md"),
+        dmc.Divider(mb="lg"),
+
+        dmc.Tabs([
+            dmc.TabsList([
+                dmc.TabsTab("Single Import", value="single", leftSection=DashIconify(icon="mdi:file-upload-outline", width=16)),
+                dmc.TabsTab("Batch Import", value="batch", leftSection=DashIconify(icon="mdi:file-multiple-outline", width=16)),
+                *([dmc.TabsTab(
+                    "LOGS Import", value="logs",
+                    leftSection=DashIconify(icon="mdi:file-document-outline", width=16),
+                    rightSection=dmc.Badge("Beta", color="orange", variant="light", size="xs"),
+                )] if check_logs_api_key() else []),
             ]),
-            dmc.Group([
-                dmc.Select(id='csv-t-col',   label='Time column (t)',         placeholder='Select column…', style={'flex': 1}),
-                dmc.Select(id='csv-vre-col', label='Real signal (V_re)',      placeholder='Select column…', style={'flex': 1}),
-                dmc.Select(id='csv-vim-col', label='Imaginary signal (V_im)', placeholder='None',           style={'flex': 1}, clearable=True),
-            ], grow=True),
-            dmc.Group([
-                dmc.Button('Cancel', id='csv-cancel-btn', color='gray', variant='subtle'),
-                dmc.Button('Import', id='csv-import-btn', color='blue',
-                           leftSection=DashIconify(icon='mdi:file-import-outline', width=16)),
-            ], justify='flex-end'),
-        ], gap='md'),
-    ),
-
-    dmc.Title("Import Dataset from File", order=1, mb="md"),
-    dmc.Divider(mb="lg"),
-
-    dmc.Tabs([
-        dmc.TabsList([
-            dmc.TabsTab("Single Import", value="single", leftSection=DashIconify(icon="mdi:file-upload-outline", width=16)),
-            dmc.TabsTab("Batch Import", value="batch", leftSection=DashIconify(icon="mdi:file-multiple-outline", width=16)),
-        ]),
-        dmc.TabsPanel(value="single", pt="lg", children=_single_import_layout()),
-        dmc.TabsPanel(value="batch", pt="lg", children=batch_import_layout()),
-    ], value="single"),
-])
+            dmc.TabsPanel(value="single", pt="lg", children=_single_import_layout()),
+            dmc.TabsPanel(value="batch", pt="lg", children=batch_import_layout()),
+            *([dmc.TabsPanel(value="logs", pt="lg", children=logs_import_tab_layout())] if check_logs_api_key() else []),
+        ], value="single"),
+    ])
 
 
 def _error_message(message):
