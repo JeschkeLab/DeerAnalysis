@@ -13,7 +13,10 @@ from deeranalysis.utils import  dataarray_from_database_entry
 from deeranalysis.components.dataset_search_model import create_dataset_modal
 from deeranalysis.components.download_modal import create_fit_download_modal
 from deeranalysis.components.model_edit_modal import create_model_edit_modal
+from deeranalysis.components.warnings import list_of_warnings_modal
 from deeranalysis.utils.deerlab_options import background_models, plotly_goodness_of_fit, dists_stats_to_list, fit_to_dict,name_dataset_from_dict, build_model_data, plotly_lcurve, plotly_dipolar_spectrum
+
+from deeranalysis.utils.deerlab_fitwarnings import check_fit_results, warnings_to_dict, warnings_from_dict
 
 import deeranalysis.components.fit_page_components as fpc
 
@@ -31,6 +34,7 @@ layout = html.Div([
             create_dataset_modal(page_id=page_id),
             create_fit_download_modal(page_id=page_id),
             create_model_edit_modal(page_id=page_id),
+            list_of_warnings_modal(page_id=page_id),
             html.Div([
                 dmc.Select(id={'type': 'dataset-dropdown', 'page': page_id}, label="Select a dataset", style={'flex': '1 1 0'}),
                 dmc.ActionIcon(DashIconify(icon='material-symbols:search', width=20),
@@ -229,13 +233,16 @@ def run_fit(n_clicks, dataset_id, bg_model_option, compactness, distance_axis, p
             print(traceback.format_exc())
             print(f"Error during fitting: {e}")
             return dash.no_update, f"Error during fitting: {e}", True, True, False
-        
+
+        warnings = check_fit_results(fit, fit.Vmodel)
+        print(f"Found n warnings: {len(warnings)}")
         dist_stats = dl.diststats(r,fit.P,fit.PUncert)
         dist_stats_dict = dists_stats_to_list(*dist_stats)
 
         fit_dict = fit_to_dict(fit)
         fit_dict['dist_stats'] = dist_stats_dict
         fit_dict['gof'] = fit.stats
+        fit_dict['warnings'] = warnings_to_dict(warnings)
         # fit_dict['dataset'] = dataset.to_dict()
         return fit_dict, fit.__str__(), False, False, False
 

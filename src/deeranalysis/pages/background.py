@@ -15,6 +15,8 @@ from deeranalysis.components.download_modal import create_fit_download_modal
 from deeranalysis.components.fit_page_components import fit_results_tabs, fit_results_tab, goodness_of_fit_tab
 from deeranalysis.components.model_edit_modal import create_model_edit_modal
 from deeranalysis.utils.deerlab_options import regparam_options,background_models, plotly_goodness_of_fit, dists_stats_to_list, fit_to_dict,name_dataset_from_dict, build_model_data, plotly_lcurve
+from deeranalysis.components.warnings import list_of_warnings_modal
+from deeranalysis.utils.deerlab_fitwarnings import check_fit_results, warnings_to_dict
 
 import deeranalysis.components.fit_page_components as fpc
 
@@ -32,6 +34,7 @@ layout = html.Div([
             create_dataset_modal(page_id=page_id),
             create_fit_download_modal(page_id=page_id),
             create_model_edit_modal(page_id=page_id),
+            list_of_warnings_modal(page_id=page_id),
             html.Div([
                 dmc.Select(id={'type': 'dataset-dropdown', 'page': page_id}, label="Select a dataset", style={'flex': '1 1 0'}),
                 dmc.ActionIcon(DashIconify(icon='material-symbols:search', width=20),
@@ -164,9 +167,10 @@ def run_fit(n_clicks, dataset_id, fit_options, model_params):
         print(f"Error during fitting: {e}")
         return dash.no_update, f"Error during fitting: {e}", True, True, False
     
-
+    warnings = check_fit_results(fit, fit.Bmodel)
     fit_dict = fit_to_dict(fit,background_only=True)
     fit_dict['gof'] = fit.stats
+    fit_dict['warnings'] = warnings_to_dict(warnings)
     return fit_dict, fit.__str__(), False, False, False
 
 

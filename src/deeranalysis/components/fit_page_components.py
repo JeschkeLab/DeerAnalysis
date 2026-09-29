@@ -3,6 +3,8 @@ from dash_iconify import DashIconify
 from deeranalysis.utils.deerlab_options import regparam_options, plotly_deerlab, plotly_goodness_of_fit,plotly_lcurve,plotly_dipolar_spectrum
 from deeranalysis.utils.database import get_session, Dataset
 from deeranalysis.utils import dataarray_from_database_entry
+from deeranalysis.components.warnings import number_of_warnings_card, number_of_warnings_children
+from deeranalysis.utils.deerlab_fitwarnings import count_by_level, warnings_from_dict
 
 from dash import dcc, html, callback, Input, Output, State, ALL, MATCH, no_update
 import deerlab as dl
@@ -526,7 +528,7 @@ def _overview_card_grids(page_id):
     """Returns the two SimpleGrid rows of overview cards (shared between overview_tab and overview_tab_global)."""
     return [
         dmc.SimpleGrid(
-            cols={"base": 1, "sm": 2, "lg": 4},
+            cols={"base": 1, "sm": 3, "lg": 4},
             mt="md",
             spacing="md",
             children=[
@@ -534,17 +536,20 @@ def _overview_card_grids(page_id):
                 overview_card("lambda", page_id),
                 overview_card("chi2",   page_id),
                 overview_card("rmsd",   page_id),
-            ],
-        ),
-        dmc.SimpleGrid(
-            cols={"base": 1, "sm": 2},
-            mb="md",
-            spacing="md",
-            children=[
                 overview_card("mean_dist", page_id),
                 overview_card("std_dist",  page_id),
+                number_of_warnings_card(None, None, page_id),
             ],
         ),
+        # dmc.SimpleGrid(
+        #     cols={"base": 1, "sm": 2, "lg": 4},
+        #     mb="md",
+        #     spacing="md",
+        #     children=[
+        #         
+
+        #     ],
+        # ),
     ]
 
 
@@ -593,7 +598,14 @@ def _extract_overview_metrics(store_data,page_number=None):
     mean_val, mean_unc = _dist('mean')
     std_val, std_unc = _dist('std')
 
+    stored_warnings = store_data.get('warnings')
+    if stored_warnings is None:
+        warning_counts = {'critical': None, 'moderate': None}
+    else:
+        warning_counts = count_by_level(warnings_from_dict(stored_warnings))
+
     return {
+        'warnings':  warning_counts,
         'mnr':       {'value': _gof('MNR', 'mnr'),           'uncertainty': None},
         'chi2':      {'value': _gof('chi2red', 'chi2'),       'uncertainty': None},
         'rmsd':      {'value': _gof('RMSD', 'rmsd'),          'uncertainty': None},
@@ -608,6 +620,11 @@ def _render_cards(outputs, metrics):
     result = []
     for out in outputs:
         metric = out["id"]["metric"]
+        if metric == "warnings":
+            counts = metrics.get("warnings") or {}
+            result.append(number_of_warnings_children(
+                counts.get("critical"), counts.get("moderate"), out["id"]["page"]))
+            continue
         config = METRIC_CONFIG.get(metric, {"title": metric, "description": None, "thresholds": None})
         metric_data = metrics.get(metric, {})
         result.append(_make_card_children(

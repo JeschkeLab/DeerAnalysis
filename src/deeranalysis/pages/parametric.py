@@ -25,6 +25,8 @@ from deeranalysis.components.fit_page_components import (
     dist_stats_tab,
 )
 import deeranalysis.components.fit_page_components as fpc
+from deeranalysis.components.warnings import list_of_warnings_modal
+from deeranalysis.utils.deerlab_fitwarnings import check_fit_results, warnings_to_dict
 from deeranalysis.utils.deerlab_normal import deerlab_fitting
 
 import dash_mantine_components as dmc
@@ -43,6 +45,7 @@ layout = html.Div([
             create_dataset_modal(page_id=page_id),
             create_fit_download_modal(page_id=page_id),
             create_model_edit_modal(page_id=page_id),
+            list_of_warnings_modal(page_id=page_id),
             html.Div([
                 dmc.Select(id={'type': 'dataset-dropdown', 'page': page_id}, label="Select a dataset", style={'flex': '1 1 0'}),
                 dmc.ActionIcon(DashIconify(icon='material-symbols:search', width=20),
@@ -243,6 +246,7 @@ def run_fit(n_clicks, dataset_id, fit_options, model_params):
         return dash.no_update, f"Error during fitting: {e}", True, True, False
 
     r = fit.r
+    warnings = check_fit_results(fit, fit.Vmodel)
 
     dist_stats = dl.diststats(r, fit.P, fit.PUncert)
     dist_stats_dict = dists_stats_to_list(*dist_stats)
@@ -256,6 +260,7 @@ def run_fit(n_clicks, dataset_id, fit_options, model_params):
     fit_dict = fit_to_dict(fit)
     fit_dict['dist_stats'] = dist_stats_dict
     fit_dict['gof'] = fit.stats
+    fit_dict['warnings'] = warnings_to_dict(warnings)
     return fit_dict, fit.__str__(), False, False, False
 
 
