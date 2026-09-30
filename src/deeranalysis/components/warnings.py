@@ -30,16 +30,19 @@ def warning_card(warning):
         children=[
             dmc.Group(
                 children=[
-                    card_icon,
+                    dmc.Box(card_icon, style={"flexShrink": 0}),
                     dmc.Stack(
                         children=[
                             dmc.Text(warning_title, c="#856404",fw=700),
                             dmc.Text(warning_message, c="#856404")
-                        ]
+                        ],
+                        gap="xs",
+                        style={"flex": 1, "minWidth": 0},
                     )
                 ],
                 gap="xs",
-                align="center"
+                align="flex-start",
+                wrap="nowrap",
             )
         ],
         shadow="sm",
@@ -121,7 +124,9 @@ def list_of_warnings_card(warnings):
 
     return dmc.ScrollArea(
         dmc.Stack(scroll_area_children, gap="md"),
-        style={"height": 300, "overflowY": "auto"},
+        mah=400,
+        scrollbars="y",
+        type="auto",
     )
 
 
@@ -132,7 +137,7 @@ def list_of_warnings_modal(page_id):
     modal = dmc.Modal(
         title="Warnings",
         id={"type": "n_warnings_overview-modal", "page": page_id},
-        size="70%",
+        size="80%",
         children=[
             html.Div(children, style={"maxHeight": "400px", "overflowY": "auto"},id={"type": "n_warnings_overview-modal-content", "page": page_id}),
         ],

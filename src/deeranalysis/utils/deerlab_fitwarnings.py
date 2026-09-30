@@ -451,7 +451,7 @@ def sort_by_level(warnings):
 
 #: Parameters skipped by :func:`check_fit_results`, because they are nuisance
 #: parameters rather than a fitted quantity the user would act on.
-SKIPPED_PARAMETERS = ('P', 'P_scale', 'scale')
+SKIPPED_PARAMETERS = ('P', 'P_scale' 'scale')
 
 
 def _named(param_name, names):
