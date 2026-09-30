@@ -70,10 +70,15 @@ class Fit(Base):
     model_description = Column(JSON, nullable=True)
     parameters = Column(JSON, nullable=True)
     fit_results = Column(JSON, nullable=True) # Fitted model, residuals, stats
+    warnings = Column(JSON, nullable=True) # Any warnings generated during the fit
     created_at = Column(DateTime, default=datetime.now(timezone.utc))
     data = Column(JSON,nullable=True, default=None) # JSONified data of the FitResult object, including model, uncertainties, regparam, etc.
     
     dataset = relationship("Dataset", back_populates="fits")
+
+    @property
+    def n_warnings(self):
+        return len(self.warnings) if self.warnings else 0
 
 
 

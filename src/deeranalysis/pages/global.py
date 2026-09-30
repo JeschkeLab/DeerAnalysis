@@ -16,6 +16,8 @@ import deeranalysis.components.fit_page_components as fpc
 import deeranalysis.components.fpc_global as fpcg
 from deeranalysis.utils.deerlab_options import background_models, fit_to_dict,name_dataset_from_dict,dists_stats_to_list
 from deeranalysis.utils.deerlab_global import deerlab_global_fitting, extract_global_P, build_global_model_data
+from deeranalysis.components.warnings import list_of_warnings_modal
+from deeranalysis.utils.deerlab_fitwarnings import check_fit_results, warnings_to_dict
 
 
 import traceback
@@ -49,6 +51,7 @@ layout = html.Div([
             create_dataset_modal(page_id=page_id),
             dummy_download_modal,
             create_model_edit_modal(page_id=page_id),
+            list_of_warnings_modal(page_id=page_id),
             html.Div([
                 dmc.Group([dmc.MultiSelect(id={'type': 'dataset-dropdown', 'page': page_id}, label="Select a dataset", description="Between 2 and 5 dataset should selected.")],style={'flex': '1 1 0',"flexGrow":1}),
                 dmc.ActionIcon(DashIconify(icon='material-symbols:search', width=20),
@@ -299,8 +302,9 @@ def run_fit(n_clicks, dataset_id, fit_options, model_overrides):
         traceback.print_exc()
         return dash.no_update, f"Error during fitting: {e}", True, True
     
-    
+    warnings = check_fit_results(fit, fit.Vmodel)
     fit_store = fit_to_dict(fit,n_datasets)
+    fit_store['warnings'] = warnings_to_dict(warnings)
 
     return fit_store, fit.__str__(), False, False
     # figures_store = []

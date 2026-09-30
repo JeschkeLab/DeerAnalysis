@@ -17,6 +17,7 @@ from deeranalysis.utils import create_subplot_figure
 from deeranalysis.components.metadata_table import build_metadata_section,build_delays_table, metadata_long_values_model,build_delays_AGgrid,delays_columnDefs
 from deeranalysis.components.download_modal import create_fit_download_modal, create_dataset_download_modal
 from deeranalysis.utils.deerlab_options import experiment_type_options
+from deeranalysis.utils.deerlab_fitwarnings import warnings_from_dict, count_by_level
 
 from deeranalysis.components.data_viewer import plot_upload,data_viewer_layout
 dash.register_page(__name__, path_template="/dataset/<dataset_id>")
@@ -25,10 +26,11 @@ page_id = "dataset-detail"
 # Column definitions for the fits sub-table
 # ---------------------------------------------------------------------------
 fits_columnDefs = [
-    {"field": "Name",   "filter": "agTextColumnFilter", "flex": 2},
+    {"field": "Name",   "filter": "agTextColumnFilter", "flex": 3},
     {"field": "Type",   "filter": "agTextColumnFilter", "flex": 1},
     {"field": "Engine", "filter": "agTextColumnFilter", "flex": 1},
-    {"field": "RMSD",   "flex": 1},
+    {"field": "Warnings", "width": 90, "suppressSizeToFit": True, "cellRenderer": "WarningsCellRenderer", "sortable": False},
+    {"field": "RMSD",   "width": 75, "suppressSizeToFit": True},
     {"field": "Date",   "flex": 2},
     {
         "field": "Open",
@@ -302,11 +304,21 @@ def _build_fits_rows(dataset):
         if fit.gof and isinstance(fit.gof, dict):
             rmsd_val = fit.gof.get("rmsd", fit.gof.get("RMSD", ""))
             rmsd = f"{rmsd_val:.4f}" if isinstance(rmsd_val, float) else str(rmsd_val)
+
+        warnings = getattr(fit, "warnings", None)
+        n_warnings = count_by_level(warnings_from_dict(warnings)) if warnings is not None else None
+        timestamp = getattr(fit, "created_at", None)
+        timestamp_iso = dt.datetime.fromisoformat(str(timestamp)) if timestamp else None
+        if timestamp_iso:
+            timestamp_str = timestamp_iso.strftime("%Y-%m-%d %H:%M:%S")
+        else:
+            timestamp_str = ""
         rows.append({
             "Name":   getattr(fit, "name",       ""),
             "Type":   getattr(fit, "fit_type",   ""),
             "Engine": getattr(fit, "engine",     ""),
-            "Date":   str(getattr(fit, "created_at", "")),
+            "Warnings": n_warnings,
+            "Date":   timestamp_str,
             "id":     fit.id,
             "RMSD":   rmsd,
         })

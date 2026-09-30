@@ -240,6 +240,7 @@ def deerlab_global_fitting(datasets,linked_params,bg_model=dl.bg_hom3d, verbosit
 
     fit = dl.fit(global_model, Vs,**kwargs)
 
+    fit.Vmodel = global_model
     fit.r = r
     fit.bg_model = bg_model
     fit.Vexp = Vs
