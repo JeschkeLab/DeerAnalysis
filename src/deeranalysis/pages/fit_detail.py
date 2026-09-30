@@ -19,6 +19,9 @@ from deeranalysis.utils import create_subplot_figure,plotly_deerlab
 from deeranalysis.utils.deerlab_options import plotly_goodness_of_fit, plotly_lcurve, plotly_dipolar_spectrum
 from deeranalysis.components.metadata_table import build_metadata_section,build_delays_table, metadata_long_values_model,build_delays_AGgrid,delays_columnDefs
 from deeranalysis.components.download_modal import create_fit_download_modal
+from deeranalysis.utils.deerlab_fitwarnings import warnings_from_dict, count_by_level
+from deeranalysis.components.warnings import list_of_warnings_card
+
 
 import deerlab as dl
 from deerlab.classes import UQResult
@@ -116,9 +119,11 @@ def layout(fit_id=None):
             dbc.Col([
                 _basic_fit_info(fit),
                 _fit_description(fit),
+                _warnings(fit),
                 _fit_gof_stats(fit),
                 _fit_dist_stats(fit),
                 _global_datasets(fit),
+                
             ], width=5),
             dbc.Col([
             _fit_plot(fit,dataset),
@@ -261,6 +266,7 @@ def _basic_fit_info(fit):
                         readOnly=True,
                         variant="default",
                         styles=input_styles,
+                        valueFormat = "YYYY-MM-DD HH:mm:ss",
                     ),
                     span=6,
                 ),
@@ -435,6 +441,45 @@ def _global_datasets(fit):
 
     return output
 
+def _warnings(fit):
+    """
+    Creates a collapsable card that lists all warnings associated with the fit. 
+
+    """
+
+    warnings = warnings_from_dict(getattr(fit, "warnings", None))
+    counts = count_by_level(warnings) if warnings is not None else None
+    if counts is None:
+        counts = {"critical": "-", "moderate": "-"}
+    
+    counts_sec = dmc.Group([DashIconify(icon="mdi:alert-circle-outline", width=16, color="red"),
+            dmc.Text(f"{counts['critical']}", size="sm", fw=700, c="red"),
+            DashIconify(icon="mdi:alert-outline", width=16, color="orange"),
+            dmc.Text(f"{counts['moderate']}", size="sm", fw=700, c="orange"),], gap=4, wrap="nowrap")
+    
+    output = dmc.Paper([
+        dmc.Group([
+            dmc.Group([dmc.Title("Warnings", order=4, mb="sm"),counts_sec]),
+            dmc.Button(
+                DashIconify(icon="tabler:chevron-down"),
+                id="fd-warnings-toggle",
+                variant="subtle",
+                color="gray",
+                size="sm",
+                p=0,
+            ),
+        ], justify="space-between", mb="sm"),
+        dmc.Collapse(
+            html.Div([
+                list_of_warnings_card(warnings)                
+            ]),
+            id="fd-warnings-collapse",
+            opened=True,
+        ),
+        ], p="md", mb="md", withBorder=True, radius="md")
+    
+    return output
+
 @callback(
     Output("fd-fit-name", "readOnly"),
     Output("fd-fit-name", "variant"),
@@ -521,6 +566,15 @@ def toggle_plot_collapse(n_clicks, opened):
     prevent_initial_call=True,
 )
 def toggle_datasets_collapse(n_clicks, opened):
+    return not opened
+
+@callback(
+    Output("fd-warnings-collapse", "opened"),
+    Input("fd-warnings-toggle", "n_clicks"),
+    State("fd-warnings-collapse", "opened"),
+    prevent_initial_call=True,
+)
+def toggle_warnings_collapse(n_clicks, opened):
     return not opened
 
 def _fit_plot(fit,dataset):

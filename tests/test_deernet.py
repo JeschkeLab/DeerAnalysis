@@ -16,6 +16,19 @@ class TestDeerNetFitting:
     def test_returns_fit_object(self, fit):
             assert fit is not None
             assert isinstance(fit, dl.FitResult)
+
+    def test_fit_gof(self, fit):
+        assert hasattr(fit, 'stats')
+        assert isinstance(fit.stats, dict)
+        assert 'R2' in fit.stats
+        assert 'SNR' in fit.stats
+
+        # test MNR and lam in fit.stats and they are not None
+        assert 'MNR' in fit.stats
+        assert 'lam' in fit.stats
+        assert fit.stats['MNR'] is not None
+        assert fit.stats['lam'] is not None
+
     
     def test_fit_to_dict(self, fit):
         fit_dict = fit_to_dict(fit)

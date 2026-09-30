@@ -8,6 +8,7 @@ from deeranalysis.utils.deerlab_options import regparam_options, plotly_deerlab,
 from deeranalysis.utils.database import get_session, Dataset
 from deeranalysis.utils import dataarray_from_database_entry
 from deeranalysis.utils.deerlab_population import determine_pop_P
+from deeranalysis.components.warnings import number_of_warnings_card
 
 from dash import dcc, html, callback, Input, Output, State, MATCH
 import deerlab as dl
@@ -416,7 +417,7 @@ def overview_tab_population(page_id):
         # Dummy store so the shared overview-card callback can find all its MATCH inputs
         dcc.Store(id={"type": "fit-results-store", "page": page_id}),
         dmc.SimpleGrid(
-            cols={"base": 1, "sm": 2, "lg": 4},
+            cols={"base": 1, "sm": 3, "lg": 5},
             mt="md",
             spacing="md",
             children=[
@@ -424,13 +425,14 @@ def overview_tab_population(page_id):
                 overview_card("lambda", page_id),
                 overview_card("chi2",   page_id),
                 overview_card("rmsd",   page_id),
+                number_of_warnings_card(None, None, page_id),
             ],
         ),
         dmc.Text("Population Metrics", size="lg", fw=700, mt="xl"),
         dmc.Space(h='md'),
         dmc.SimpleGrid(
             id={"type": "population-cards-grid", "page": page_id},
-            cols={"base": 1, "sm": 2, "lg": 3},
+            cols={"base": 1, "md": 2, "lg": 3},
             mb="md",
             spacing="md",
             children=[],

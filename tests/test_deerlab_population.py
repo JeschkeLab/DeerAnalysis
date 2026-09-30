@@ -8,7 +8,7 @@ from deeranalysis.utils.deerlab_population import *
 
 
 test_data_folder = r'tests/data/population/'
-@pytest.fixture
+@pytest.fixture(scope="module")
 def datasets():
     twostate_A = eprload(test_data_folder + 'example_twostate_data_1.DSC',test_data_folder + 'example_twostate_data_1.DTA')
     twostate_B = eprload(test_data_folder + 'example_twostate_data_2.DSC',test_data_folder + 'example_twostate_data_2.DTA')

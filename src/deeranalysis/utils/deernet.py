@@ -288,7 +288,7 @@ def deernet(dataset, providor=None) -> DEERnetResult:
 
     dataset.mdpths = mdpths
     dataset.mdpths_av = np.mean(mdpths,2)
-    dataset.mdpths_std = np.mean(mdpths,2)
+    dataset.mdpths_std = np.std(mdpths,2)
 
     dist_av = np.mean(distds,2)
     dist_lb = np.mean(distds,2) - 2 * np.std(distds,2)
@@ -380,8 +380,10 @@ def deernet2(dataset, model_size, providor=None,model_dir=None) -> DEERnetResult
         exp_type = 'deer'
     elif dataset.attrs['seq_name'] == 'RIDME':
         exp_type = 'ridme'
+    elif dataset.attrs['seq_name'].lower() == 'single':
+            exp_type = 'deer'
     else:
-        raise ValueError(f'Experiment type {dataset.attrs['seq_name']} not supported for deernet2. Supported types are 4pDEER and RIDME.')
+        raise ValueError(f'Experiment type {dataset.attrs['seq_name']} not supported for deernet2. Supported types are 4pDEER, Single, RIDME.')
 
 
     if 't' in dataset.coords:
@@ -527,7 +529,7 @@ def deernet2(dataset, model_size, providor=None,model_dir=None) -> DEERnetResult
 
     dataset.mdpths = mdpths
     dataset.mdpths_av = np.mean(mdpths,2)
-    dataset.mdpths_std = np.mean(mdpths,2)
+    dataset.mdpths_std = np.std(mdpths,2)
 
     dist_av = np.mean(distds,2)
     dist_lb = np.mean(distds,2) - 2 * np.std(distds,2)
