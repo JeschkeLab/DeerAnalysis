@@ -1,17 +1,3 @@
-"""Batch File Import — upload many datasets at once, review them as cards
-with a sparkline preview, set Project/Sample/Experiment globally or per
-card, then expand any card to edit it with the same form used on the
-Single Import tab.
-
-Each card gets its own hidden per-dataset form (delays grid, tmin, data
-viewer, save button) tagged with a unique ``page`` id (``batch-<index>``).
-Because every callback in ``dataset_form.py`` and ``data_viewer.py`` is
-registered with Dash's ``MATCH`` wildcard on ``page``, those callbacks bind
-automatically to these dynamically-created components — no new callback
-logic is needed for delays syncing, phase correction, masking, autocomplete
-population, or saving to the database. Saving happens only via "Save All",
-which fires the shared per-item save callback for every dataset at once.
-"""
 import json
 
 import dash
