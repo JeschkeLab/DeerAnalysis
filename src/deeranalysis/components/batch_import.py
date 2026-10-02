@@ -78,7 +78,7 @@ def _card(index, title, dataset_store):
             ),
             dmc.Group([
                 dmc.Box(
-                    dmc.Sparkline(data=V, color="blue", h=60, w="100%", curveType="linear", strokeWidth=1.5),
+                    dmc.Sparkline(data=V, color="blue", h=60, w="100%", curveType="linear", strokeWidth=1.5, fillOpacity=0),
                     style={'width': '200px', 'flexShrink': 0},
                 ),
                 dmc.Stack([
