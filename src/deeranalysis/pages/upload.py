@@ -1,81 +1,25 @@
 import dash
 from dash import html, dcc, callback, Input, Output, State
-import base64
-import io
 import json
-from deeranalysis.utils.eprload import bes3t_eprload
-from deeranalysis.utils.pulsespel_parser import parse_PulseSpel
-import numpy as np
-import xarray as xr
 import dash_ag_grid as dag
 import dash_mantine_components as dmc
 from dash_iconify import DashIconify
-import pyepr as pyepr
 from deeranalysis.components.metadata_table import build_metadata_section_datarray, metadata_long_values_model
 from deeranalysis.components.data_viewer import data_viewer_layout, plot_upload
 from deeranalysis.utils.deerlab_options import experiment_type_options
 from deeranalysis.utils.csv_loader import parse_csv_raw, build_csv_store
+from deeranalysis.utils.file_parser import load_bes3t, enrich_bes3t, load_hdf5, enrich_hdf5, dataarray_to_store
+from deeranalysis.components.batch_import import batch_import_layout
+from deeranalysis.components.logs_import_tab import logs_import_tab_layout
+from deeranalysis.utils.logs_plugin import check_logs_api_key
 import deeranalysis.components.dataset_form as df # registers shared MATCH callbacks
 
 dash.register_page(__name__)
 page_id = 'upload'
 
-layout = html.Div([
-    metadata_long_values_model(page_id),
-    dcc.Store(id={"type": "metadata-modal-store", "page": page_id}, data=""),
-    dcc.Store(id='csv-raw-store'),
 
-    # ---- CSV import modal --------------------------------------------------
-    dmc.Modal(
-        id='csv-import-modal',
-        title=dmc.Title("Import CSV File", order=3),
-        size='xl',
-        opened=False,
-        children=dmc.Stack([
-            html.Div(id='csv-preview'),
-            dmc.Group([
-                dmc.NumberInput(
-                    id='csv-skiprows', label='Skip rows', value=0, min=0, step=1, w=140,
-                ),
-                dmc.Select(
-                    id='csv-separator', label='Separator', value=',', w=180,
-                    data=[
-                        {'label': 'Comma  ( , )', 'value': ','},
-                        {'label': 'Semicolon  ( ; )', 'value': ';'},
-                        {'label': 'Tab', 'value': '\t'},
-                        {'label': 'Space', 'value': ' '},
-                    ],
-                ),
-                dmc.Select(
-                    id='csv-time-unit', label='Time unit', value='us', w=140,
-                    data=[
-                        {'label': 'ns',  'value': 'ns'},
-                        {'label': 'µs',  'value': 'us'},
-                        {'label': 'ms',  'value': 'ms'},
-                        {'label': 's',   'value': 's'},
-                    ],
-                ),
-                dmc.Switch(
-                    id='csv-has-header', label='Has header row', checked=True, mt='xl',
-                ),
-            ]),
-            dmc.Group([
-                dmc.Select(id='csv-t-col',   label='Time column (t)',         placeholder='Select column…', style={'flex': 1}),
-                dmc.Select(id='csv-vre-col', label='Real signal (V_re)',      placeholder='Select column…', style={'flex': 1}),
-                dmc.Select(id='csv-vim-col', label='Imaginary signal (V_im)', placeholder='None',           style={'flex': 1}, clearable=True),
-            ], grow=True),
-            dmc.Group([
-                dmc.Button('Cancel', id='csv-cancel-btn', color='gray', variant='subtle'),
-                dmc.Button('Import', id='csv-import-btn', color='blue',
-                           leftSection=DashIconify(icon='mdi:file-import-outline', width=16)),
-            ], justify='flex-end'),
-        ], gap='md'),
-    ),
-
-    dmc.Title("Import Dataset from File", order=1, mb="md"),
-    dmc.Divider(mb="lg"),
-
-    dmc.Grid([
+def _single_import_layout():
+    return dmc.Grid([
         dmc.GridCol([
             dcc.Upload(
                 id='upload-data',
@@ -156,8 +100,80 @@ layout = html.Div([
             dmc.Button("Add Dataset to Library", id={'type': 'save-dataset-btn', 'page': page_id},
                        color="blue", mb="lg", size="lg"),
         ], span=8),
-    ]),
-])
+    ])
+
+
+def layout():
+    return html.Div([
+        metadata_long_values_model(page_id),
+        dcc.Store(id={"type": "metadata-modal-store", "page": page_id}, data=""),
+        dcc.Store(id='csv-raw-store'),
+
+        # ---- CSV import modal --------------------------------------------------
+        dmc.Modal(
+            id='csv-import-modal',
+            title=dmc.Title("Import CSV File", order=3),
+            size='xl',
+            opened=False,
+            children=dmc.Stack([
+                html.Div(id='csv-preview'),
+                dmc.Group([
+                    dmc.NumberInput(
+                        id='csv-skiprows', label='Skip rows', value=0, min=0, step=1, w=140,
+                    ),
+                    dmc.Select(
+                        id='csv-separator', label='Separator', value=',', w=180,
+                        data=[
+                            {'label': 'Comma  ( , )', 'value': ','},
+                            {'label': 'Semicolon  ( ; )', 'value': ';'},
+                            {'label': 'Tab', 'value': '\t'},
+                            {'label': 'Space', 'value': ' '},
+                        ],
+                    ),
+                    dmc.Select(
+                        id='csv-time-unit', label='Time unit', value='us', w=140,
+                        data=[
+                            {'label': 'ns',  'value': 'ns'},
+                            {'label': 'µs',  'value': 'us'},
+                            {'label': 'ms',  'value': 'ms'},
+                            {'label': 's',   'value': 's'},
+                        ],
+                    ),
+                    dmc.Switch(
+                        id='csv-has-header', label='Has header row', checked=True, mt='xl',
+                    ),
+                ]),
+                dmc.Group([
+                    dmc.Select(id='csv-t-col',   label='Time column (t)',         placeholder='Select column…', style={'flex': 1}),
+                    dmc.Select(id='csv-vre-col', label='Real signal (V_re)',      placeholder='Select column…', style={'flex': 1}),
+                    dmc.Select(id='csv-vim-col', label='Imaginary signal (V_im)', placeholder='None',           style={'flex': 1}, clearable=True),
+                ], grow=True),
+                dmc.Group([
+                    dmc.Button('Cancel', id='csv-cancel-btn', color='gray', variant='subtle'),
+                    dmc.Button('Import', id='csv-import-btn', color='blue',
+                               leftSection=DashIconify(icon='mdi:file-import-outline', width=16)),
+                ], justify='flex-end'),
+            ], gap='md'),
+        ),
+
+        dmc.Title("Import Dataset from File", order=1, mb="md"),
+        dmc.Divider(mb="lg"),
+
+        dmc.Tabs([
+            dmc.TabsList([
+                dmc.TabsTab("Single Import", value="single", leftSection=DashIconify(icon="mdi:file-upload-outline", width=16)),
+                dmc.TabsTab("Batch Import", value="batch", leftSection=DashIconify(icon="mdi:file-multiple-outline", width=16)),
+                *([dmc.TabsTab(
+                    "LOGS Import", value="logs",
+                    leftSection=DashIconify(icon="mdi:file-document-outline", width=16),
+                    rightSection=dmc.Badge("Beta", color="orange", variant="light", size="xs"),
+                )] if check_logs_api_key() else []),
+            ]),
+            dmc.TabsPanel(value="single", pt="lg", children=_single_import_layout()),
+            dmc.TabsPanel(value="batch", pt="lg", children=batch_import_layout()),
+            *([dmc.TabsPanel(value="logs", pt="lg", children=logs_import_tab_layout())] if check_logs_api_key() else []),
+        ], value="single"),
+    ])
 
 
 def _error_message(message):
@@ -226,25 +242,14 @@ def handle_file_upload(contents_list, filenames_list):
                 dsc_content, dta_content = contents_list[0], contents_list[1]
             else:
                 dsc_content, dta_content = contents_list[1], contents_list[0]
-            dsc_decoded = base64.b64decode(dsc_content.split(',')[1])
-            dta_decoded = base64.b64decode(dta_content.split(',')[1])
-            dataarray = bes3t_eprload(DSC=dsc_decoded, DTA=dta_decoded)
+            dataarray = load_bes3t(dsc_content, dta_content)
             metadata_children, long_values_store = build_metadata_section_datarray(dataarray)
-            dataarray.attrs.update({'file_format': 'BES3T'})
-            dataarray.attrs.update(parse_PulseSpel(dataarray.attrs.get('PlsSPELGlbTxt', '')))
-            delays = get_delays_dict(dataarray)
-            tmin = dataarray.attrs.get('deadtime', 0)
-
-            if dataarray.ndim ==2:
-                dataarray = dataarray.sum('Y')
+            dataarray, delays, tmin = enrich_bes3t(dataarray)
 
         elif file_format == 'hdf5':
-            decoded = base64.b64decode(contents_list[0].split(',')[1])
-            dataarray = pyepr.eprload(io.BytesIO(decoded), type='HDF5')
+            dataarray = load_hdf5(contents_list[0])
             metadata_children, long_values_store = build_metadata_section_datarray(dataarray)
-            delays = get_delays_dict(dataarray)
-            tmin = dataarray.t.values.min() * 1e3
-            dataarray.attrs['title'] = filenames_list[0].split('/')[-1].split('.')[0]
+            delays, tmin = enrich_hdf5(dataarray, filenames_list[0])
 
     except Exception as e:
         import traceback
@@ -252,18 +257,7 @@ def handle_file_upload(contents_list, filenames_list):
         print(traceback.format_exc())
         return *no_update_9[:6], _error_message(f"Error processing files: {str(e)}"), dash.no_update, dash.no_update
 
-    t = dataarray.t.values if 't' in dataarray.coords else dataarray.X.values
-    t = t - t[0]
-
-    store_data = {
-        'RealData': dataarray.real.values.tolist(),
-        'ImagData': dataarray.imag.values.tolist(),
-        't': t.tolist(),
-        'attrs': dataarray.attrs,
-        'delays': delays,
-        'tmin': tmin,
-        'masked_indices': [],
-    }
+    store_data = dataarray_to_store(dataarray, delays, tmin)
     delays_data = [{'parameter': k, 'value': v} for k, v in delays.items()]
     delays_data, store_data = df.check_delays('4pDEER',delays_data,store_data)
     return store_data, metadata_children, long_values_store, delays_data, dataarray.attrs.get('title', ''), tmin, alert, dash.no_update, dash.no_update
@@ -283,8 +277,8 @@ def _build_signal_figure(dataset_store, correct_phase, masking_enabled):
 
 
 @callback(
-    Output({"type": "metadata-value-modal", 'page': page_id}, "opened"),
-    Output({"type": "metadata-value-modal-text", 'page': page_id}, "value"),
+    Output({"type": "metadata-value-modal", 'page': page_id}, "opened", allow_duplicate=True),
+    Output({"type": "metadata-value-modal-text", 'page': page_id}, "value", allow_duplicate=True),
     Input({"type": "metadata-show-btn", "key": dash.ALL}, "n_clicks"),
     State({"type": "metadata-modal-store", "page": page_id}, "data"),
     prevent_initial_call=True,
@@ -297,16 +291,6 @@ def open_metadata_modal(n_clicks_list, store_data):
     key = json.loads(triggered_id)["key"]
     full_value = (store_data or {}).get(key, "Value not found.")
     return True, full_value
-
-
-def get_delays_dict(dataarray: xr.DataArray):
-    """Extracts delay parameters from the dataset attributes."""
-    delay_keys = ['tau1', 'tau2', 'tau3', 'tau4', 'tau5', 'tau6']
-    delays = {}
-    for key in delay_keys:
-        if key in dataarray.attrs:
-            delays[key] = dataarray.attrs[key]
-    return delays
 
 
 # ---------------------------------------------------------------------------

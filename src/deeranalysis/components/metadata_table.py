@@ -26,10 +26,13 @@ def metadata_long_values_model(page_id):
         )])
 
 
-def make_value_cell(key, value,long_values_store):
+def make_value_cell(key, value, long_values_store, page=None):
     val_str = str(value)
     if len(val_str) > MAX_LEN:
         long_values_store[key] = val_str
+        show_btn_id = {"type": "metadata-show-btn", "key": key}
+        if page is not None:
+            show_btn_id["page"] = page
         return html.Td([
             html.Span(
                 val_str[:MAX_LEN] + "…",
@@ -37,7 +40,7 @@ def make_value_cell(key, value,long_values_store):
             ),
             dmc.Button(
                 "Show",
-                id={"type": "metadata-show-btn", "key": key},
+                id=show_btn_id,
                 size="compact-xs",
                 variant="subtle",
                 n_clicks=0,
@@ -45,16 +48,16 @@ def make_value_cell(key, value,long_values_store):
         ])
     return html.Td(val_str, style={"fontFamily": "monospace"})
 
-def build_table_rows(items_dict,long_values_store):
+def build_table_rows(items_dict, long_values_store, page=None):
     rows = []
     for key, value in items_dict.items():
         rows.append(html.Tr([
             html.Td(html.Strong(str(key)), style={"whiteSpace": "nowrap", "paddingRight": "16px"}),
-            make_value_cell(key, value,long_values_store),
+            make_value_cell(key, value, long_values_store, page=page),
         ]))
     return rows
 
-def build_metadata_section(dataset,delays=True):
+def build_metadata_section(dataset,delays=True,page=None):
     """Build the metadata & delays section children for a dataset database element.
 
     Returns a tuple of (children, long_values_store) where:
@@ -67,7 +70,7 @@ def build_metadata_section(dataset,delays=True):
 
     if dataset.meta:
         try:
-            rows = build_table_rows(dataset.meta,long_values_store)
+            rows = build_table_rows(dataset.meta,long_values_store,page=page)
             # metadata_sections.append(dmc.Title("Metadata", order=5, mb="xs"))
             metadata_sections.append(
                 dmc.Table(
@@ -86,7 +89,7 @@ def build_metadata_section(dataset,delays=True):
 
     if dataset.delays and delays:
         try:
-            rows = build_table_rows(dataset.delays,long_values_store)
+            rows = build_table_rows(dataset.delays,long_values_store,page=page)
             metadata_sections.append(dmc.Divider(my="sm"))
             metadata_sections.append(dmc.Title("Delays", order=5, mb="xs"))
             metadata_sections.append(
@@ -105,8 +108,8 @@ def build_metadata_section(dataset,delays=True):
 
     return html.Div(metadata_sections, style={"padding": "8px"}), long_values_store
 
-def build_metadata_section_datarray(datarray):
-    """Build the metadata section children for a datarray.
+def build_metadata_section_datarray(datarray, page=None):
+    """Build the metadata section children for a datarray (or a plain attrs dict).
 
     Returns a tuple of (children, long_values_store) where:
       - children is a list of Dash components to render
@@ -117,9 +120,11 @@ def build_metadata_section_datarray(datarray):
 
     metadata_sections = []
 
-    if datarray.attrs:
+    attrs = datarray.attrs if hasattr(datarray, 'attrs') else datarray
+
+    if attrs:
         try:
-            rows = build_table_rows(datarray.attrs,long_values_store)
+            rows = build_table_rows(attrs,long_values_store,page=page)
             metadata_sections.append(
                 dmc.Table(
                     children=[html.Tbody(rows)],

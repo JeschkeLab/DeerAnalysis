@@ -554,8 +554,8 @@ def save_delays(n_clicks,dataset_id,rowData,tmin):
         return _alert(f"Error saving delays: {exc}", "red", "Save Error")#,dash.no_update
 
 @callback(
-    Output({"type": "metadata-value-modal",'page': page_id}, "opened"),
-    Output({"type": "metadata-value-modal-text",'page': page_id}, "value"),
+    Output({"type": "metadata-value-modal",'page': page_id}, "opened", allow_duplicate=True),
+    Output({"type": "metadata-value-modal-text",'page': page_id}, "value", allow_duplicate=True),
     Input({"type": "metadata-show-btn", "key": dash.ALL}, "n_clicks"),
     State({"type": "metadata-modal-store",'page': page_id}, "data"),
     prevent_initial_call=True,

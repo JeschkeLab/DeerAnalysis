@@ -11,7 +11,7 @@ from pathlib import Path
 from deeranalysis.components.setup_modal_desktop import create_setup_modal, get_DeerAnalysis_directory
 from deeranalysis.components.new_version_modal import new_version_modal, update_button
 from deeranalysis.components.dmc_theme import da_dmctheme
-from deeranalysis.utils.logs_plugin import initialize_logs_api,check_logs_api_key
+from deeranalysis.utils.logs_plugin import initialize_logs_api
 from deeranalysis.utils.database import get_appearance_settings
 from deeranalysis.utils.deerlab_options import resolve_plot_template
 
@@ -80,7 +80,6 @@ sidebar_content = dmc.Stack(
     [
         dmc.Text("Datasets", size="sm", c="dimmed", fw=500),
         create_nav_link("File Import", "/upload", "mdi:upload"),
-        *( [create_nav_link("Logs Import", "/logs_upload", "mdi:file-document-outline")] if check_logs_api_key() else [] ),
         create_nav_link("Datasets", "/", "mdi:database"),
         create_nav_link("Comparison", "/comparison", "mdi:compare"),
         

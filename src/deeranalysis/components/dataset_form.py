@@ -72,13 +72,9 @@ def update_delays(_, delays_row_data, dataset_store):
 # ---------------------------------------------------------------------------
 # Store / experiment type change → check tmin plausibility
 # ---------------------------------------------------------------------------
-@callback(
-    Output({'type': 'tmin-warning-div', 'page': MATCH}, 'children'),
-    Input({'type': 'dataset-store', 'page': MATCH}, 'data'),
-    Input({'type': 'experiment-type-dropdown', 'page': MATCH}, 'value'),
-    prevent_initial_call=True,
-)
-def check_tmin(store, exp_type):
+def check_tmin_warning(store, exp_type):
+    """Returns a warning message string if tmin looks wrong for the given
+    experiment type, or None if the delays/data are plausible."""
     if store is None:
         return None
     delays = store.get('delays', {})
@@ -98,35 +94,48 @@ def check_tmin(store, exp_type):
     threshold = 50 / 1e3
 
     if abs(peak_time - data_max_time) > threshold:
-        return dmc.Alert(
-            title="Warning: tmin may be incorrect",
-            children=(
-                f"The expected peak time based on delays is {peak_time * 1e3:.0f} ns, "
-                f"but the data maximum is at {data_max_time * 1e3:.0f} ns. "
-                "Please check that tmin is set correctly."
-            ),
-            color="yellow",
-            mb="md",
+        return (
+            f"The expected peak time based on delays is {peak_time * 1e3:.0f} ns, "
+            f"but the data maximum is at {data_max_time * 1e3:.0f} ns. "
+            "Please check that tmin is set correctly."
         )
+    return None
+
+
+@callback(
+    Output({'type': 'tmin-warning-div', 'page': MATCH}, 'children'),
+    Input({'type': 'dataset-store', 'page': MATCH}, 'data'),
+    Input({'type': 'experiment-type-dropdown', 'page': MATCH}, 'value'),
+    prevent_initial_call=True,
+)
+def check_tmin(store, exp_type):
+    message = check_tmin_warning(store, exp_type)
+    if message:
+        return dmc.Alert(title="Warning: tmin may be incorrect", children=message, color="yellow", mb="md")
     return None
 
 
 # ---------------------------------------------------------------------------
 # Populate project / sample autocomplete options from the database
 # ---------------------------------------------------------------------------
-@callback(
-    Output({'type': 'project-name', 'page': MATCH}, 'data'),
-    Output({'type': 'sample-name', 'page': MATCH}, 'data'),
-    Input({'type': 'project-name', 'page': MATCH}, 'n_clicks'),
-    prevent_initial_call=False,
-)
-def update_projects_and_samples(_n_clicks):
+def get_projects_and_samples():
     session = get_session()
     datasets = session.query(Dataset).all()
     session.close()
     projects = list(set(ds.project for ds in datasets))
     samples = list(set(ds.sample for ds in datasets))
     return projects, samples
+
+
+@callback(
+    Output({'type': 'project-name', 'page': MATCH}, 'data'),
+    Output({'type': 'sample-name', 'page': MATCH}, 'data'),
+    Input({'type': 'project-name', 'page': MATCH}, 'n_blur'),
+    Input({'type': 'sample-name', 'page': MATCH}, 'n_blur'),
+    prevent_initial_call=False,
+)
+def update_projects_and_samples(_project_blur, _sample_blur):
+    return get_projects_and_samples()
 
 
 # ---------------------------------------------------------------------------

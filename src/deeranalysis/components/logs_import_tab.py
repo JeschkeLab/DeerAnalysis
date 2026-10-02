@@ -1,6 +1,15 @@
+"""LOGS Data Import — browse a connected LOGS server and import datasets
+from it. Shown as a tab on the Import page (``pages/upload.py``) alongside
+Single Import and Batch Import; only rendered when a LOGS server/API key is
+configured (``deeranalysis.utils.logs_plugin.check_logs_api_key``).
+
+Picking a dataset opens either a read-only preview modal or the shared
+``logs_import_modal`` (the same dataset-entry form used elsewhere) to review
+and save it — that flow is unchanged from when this lived at its own
+``/logs_upload`` route.
+"""
 import dash
 from dash import html, dcc, callback, Input, Output, State
-import dash_bootstrap_components as dbc
 import dash_mantine_components as dmc
 from dash_iconify import DashIconify
 import dash_ag_grid as dag
@@ -10,8 +19,6 @@ from deeranalysis.components.data_viewer import data_viewer_layout, plot_upload
 from deeranalysis.components.logs_import_modal import create_logs_import_modal, build_store_data, page_id as logs_import_page_id
 
 peek_page_id = 'logs-peek'
-
-dash.register_page(__name__, path='/logs_upload')
 
 logsTable_column_defs = [
                 {"field": "id", "headerName": "ID", "filter": False, "sortable": False,"width": 75},
@@ -24,149 +31,148 @@ logsTable_column_defs = [
                 {"field": "actions", "headerName": "Actions", "filter": False, "sortable": False,"width":80, "cellRenderer": "DMC_DualIconButton", "cellRendererParams": {"label": "View","leftIcon":"ph:eye","rightIcon": "ph:download-simple", "variant": "outline", "size": "xs"}},
             ]
 
-# Layout
-layout = dmc.Container([
-    dcc.Store(id='logs-connected', data=False),
-    dcc.Store(id='logs-datasets-store', data=[]),
-    dmc.Group([
+
+def logs_import_tab_layout():
+    return html.Div([
+        dcc.Store(id='logs-connected', data=False),
+        dcc.Store(id='logs-datasets-store', data=[]),
         dmc.Group([
-            dmc.Title("LOGS Data Import", order=1),
-            dmc.Badge("Beta", color="orange", variant="light", size="lg"),
-        ], gap="xs"),
-        dmc.ActionIcon(
-            DashIconify(icon="mdi:refresh", width=20),
-            id="logs-refresh-btn",
-            variant="subtle",
-            size="lg",
-        ),
-    ], mb="md"),
-    dmc.Modal(id='connection-error', title="Connection Error!",withCloseButton=False,children=[
-        dmc.Text("Unable to connect to the LOGs server. Please check your connection and credentials."),
-        dmc.Code(id='connection-error-msg')
-    ]),
-
-    # Filter Section with Multi-Select Boxes
-    dmc.Paper([
-        dmc.Stack([
-            dmc.Grid([
-                # Persons Multi-Select
-                dmc.GridCol([
-                    dmc.MultiSelect(
-                        id="persons-multiselect",
-                        label="Persons",
-                        placeholder="Select persons",
-                        data=[],
-                        searchable=True,
-                        clearable=True,
-                        leftSection=DashIconify(icon="mdi:account-multiple"),
-                    )
-                ], span={"base": 12, "sm": 6, "md": 4}),
-                
-                # Project Multi-Select
-                dmc.GridCol([
-                    dmc.MultiSelect(
-                        id="project-multiselect",
-                        label="Projects",
-                        placeholder="Select projects",
-                        data=[],
-                        searchable=True,
-                        clearable=True,
-                        leftSection=DashIconify(icon="mdi:folder-multiple"),
-                    )
-                ], span={"base": 12, "sm": 6, "md": 4}),
-                
-                # Samples Multi-Select
-                dmc.GridCol([
-                    dmc.MultiSelect(
-                        id="samples-multiselect",
-                        label="Samples",
-                        placeholder="Select samples",
-                        data=[],
-                        searchable=True,
-                        clearable=True,
-                        leftSection=DashIconify(icon="mdi:test-tube"),
-                    )
-                ], span={"base": 12, "sm": 6, "md": 4}),
-                
-                # Experiment Multi-Select
-                dmc.GridCol([
-                    dmc.MultiSelect(
-                        id="experiment-multiselect",
-                        label="Experiments",
-                        placeholder="Select experiments",
-                        data=[],
-                        searchable=True,
-                        clearable=True,
-                        leftSection=DashIconify(icon="mdi:flask"),
-                    )
-                ], span={"base": 12, "sm": 6, "md": 4}),
-                
-                # Date Range
-                dmc.GridCol([
-                    dmc.DatePickerInput(
-                        id="date-range-picker",
-                        label="Date Range",
-                        type="range",
-                        placeholder="Select date range",
-                        clearable=True,
-                    )
-                ], span={"base": 12, "sm": 6, "md": 4}),
-            ], gutter="md"),
-        ], gap="sm"),
-    ], p="md", mb="lg", shadow="sm", withBorder=True),
-    
-    # AG Grid Section
-    dmc.Paper([
-        dmc.Title("Datasets", order=4, mb="md"),
-        dmc.Box(
-            [dmc.LoadingOverlay(
-                id="datasets-loading-overlay",
-                visible=False,
-                overlayProps={"radius": "sm", "blur": 2},
-                zIndex=10,
-
+            dmc.Badge("Beta", color="orange", variant="light", size="sm"),
+            dmc.ActionIcon(
+                DashIconify(icon="mdi:refresh", width=20),
+                id="logs-refresh-btn",
+                variant="subtle",
+                size="lg",
             ),
-            dag.AgGrid(
-                    id="datasets-grid",
-                    columnDefs=logsTable_column_defs,
-                    rowData=[],
-                    defaultColDef={
-                        "resizable": True,
-                        "sortable": True,
-                        "filter": True,
-                    },
-                    dashGridOptions={
-                        "pagination": True,
-                        "paginationPageSize": 20,
-                        "suppressPaginationPanel": True,
-                    },
-                    style={"height": "600px"},
-                    className="ag-theme-alpine",
+        ], justify="space-between", mb="md"),
+        dmc.Modal(id='connection-error', title="Connection Error!",withCloseButton=False,children=[
+            dmc.Text("Unable to connect to the LOGs server. Please check your connection and credentials."),
+            dmc.Code(id='connection-error-msg')
+        ]),
+
+        # Filter Section with Multi-Select Boxes
+        dmc.Paper([
+            dmc.Stack([
+                dmc.Grid([
+                    # Persons Multi-Select
+                    dmc.GridCol([
+                        dmc.MultiSelect(
+                            id="persons-multiselect",
+                            label="Persons",
+                            placeholder="Select persons",
+                            data=[],
+                            searchable=True,
+                            clearable=True,
+                            leftSection=DashIconify(icon="mdi:account-multiple"),
+                        )
+                    ], span={"base": 12, "sm": 6, "md": 4}),
+
+                    # Project Multi-Select
+                    dmc.GridCol([
+                        dmc.MultiSelect(
+                            id="project-multiselect",
+                            label="Projects",
+                            placeholder="Select projects",
+                            data=[],
+                            searchable=True,
+                            clearable=True,
+                            leftSection=DashIconify(icon="mdi:folder-multiple"),
+                        )
+                    ], span={"base": 12, "sm": 6, "md": 4}),
+
+                    # Samples Multi-Select
+                    dmc.GridCol([
+                        dmc.MultiSelect(
+                            id="samples-multiselect",
+                            label="Samples",
+                            placeholder="Select samples",
+                            data=[],
+                            searchable=True,
+                            clearable=True,
+                            leftSection=DashIconify(icon="mdi:test-tube"),
+                        )
+                    ], span={"base": 12, "sm": 6, "md": 4}),
+
+                    # Experiment Multi-Select
+                    dmc.GridCol([
+                        dmc.MultiSelect(
+                            id="experiment-multiselect",
+                            label="Experiments",
+                            placeholder="Select experiments",
+                            data=[],
+                            searchable=True,
+                            clearable=True,
+                            leftSection=DashIconify(icon="mdi:flask"),
+                        )
+                    ], span={"base": 12, "sm": 6, "md": 4}),
+
+                    # Date Range
+                    dmc.GridCol([
+                        dmc.DatePickerInput(
+                            id="date-range-picker",
+                            label="Date Range",
+                            type="range",
+                            placeholder="Select date range",
+                            clearable=True,
+                        )
+                    ], span={"base": 12, "sm": 6, "md": 4}),
+                ], gutter="md"),
+            ], gap="sm"),
+        ], p="md", mb="lg", shadow="sm", withBorder=True),
+
+        # AG Grid Section
+        dmc.Paper([
+            dmc.Title("Datasets", order=4, mb="md"),
+            dmc.Box(
+                [dmc.LoadingOverlay(
+                    id="datasets-loading-overlay",
+                    visible=False,
+                    overlayProps={"radius": "sm", "blur": 2},
+                    zIndex=10,
+
                 ),
-            ],pos="relative",
-        ),
-        dmc.Group([
-            dmc.Pagination(id="datasets-pagination", total=1, value=1, siblings=1),
-        ], justify="center", mt="sm"),
-    ], p="md", shadow="sm", withBorder=True),
-    dmc.Modal(
-        id='logs-peek-modal',
-        title="Preview Dataset",
-        size="80%",
-        opened=False,
-        children=[
-            dcc.Store(id={'type': 'dataset-store', 'page': peek_page_id}),
-            data_viewer_layout(page_id=peek_page_id, correct_phase=True),
-            dmc.Group(
-                [dmc.Button("Close", id="close-logs-peek-btn", variant="subtle", color="gray")],
-                justify="flex-end",
-                mt="md"
+                dag.AgGrid(
+                        id="datasets-grid",
+                        columnDefs=logsTable_column_defs,
+                        rowData=[],
+                        defaultColDef={
+                            "resizable": True,
+                            "sortable": True,
+                            "filter": True,
+                        },
+                        dashGridOptions={
+                            "pagination": True,
+                            "paginationPageSize": 20,
+                            "suppressPaginationPanel": True,
+                        },
+                        style={"height": "600px"},
+                        className="ag-theme-alpine",
+                    ),
+                ],pos="relative",
             ),
-        ],
-        overlayProps={"color": "black", "opacity": 0.5, "blur": 0.5},
-    ),
-    create_logs_import_modal()
-],fluid=True, size="xl")
+            dmc.Group([
+                dmc.Pagination(id="datasets-pagination", total=1, value=1, siblings=1),
+            ], justify="center", mt="sm"),
+        ], p="md", shadow="sm", withBorder=True),
+        dmc.Modal(
+            id='logs-peek-modal',
+            title="Preview Dataset",
+            size="80%",
+            opened=False,
+            children=[
+                dcc.Store(id={'type': 'dataset-store', 'page': peek_page_id}),
+                data_viewer_layout(page_id=peek_page_id, correct_phase=True),
+                dmc.Group(
+                    [dmc.Button("Close", id="close-logs-peek-btn", variant="subtle", color="gray")],
+                    justify="flex-end",
+                    mt="md"
+                ),
+            ],
+            overlayProps={"color": "black", "opacity": 0.5, "blur": 0.5},
+        ),
+        create_logs_import_modal()
+    ])
+
 
 @callback(
     Output("persons-multiselect", "data"),
@@ -215,37 +221,6 @@ def update_datasets_store(connected, persons, projects):
         return []
     return logs.get_datasets_rowdata(person_ids=persons, project_ids=projects)
 
-
-# @callback(
-#     Output("datasets-grid", "rowData"),
-#     Output("experiment-multiselect", "data"),
-#     Input("logs-datasets-store", "data"),
-#     Input("samples-multiselect", "value"),
-#     Input("date-range-picker", "value"),
-#     Input("experiment-multiselect", "value"),
-# )
-# def filter_datasets_grid(all_data, samples, date_range, experiments):
-#     if not all_data:
-#         experiment_options = []
-#         return [], experiment_options
-
-#     # Derive experiment options from current store data
-#     experiment_options = sorted(set(r["experiment"] for r in all_data if r.get("experiment")))
-#     experiment_options = [{"value": e, "label": e} for e in experiment_options]
-
-#     filtered = all_data
-
-#     if samples:
-#         filtered = [r for r in filtered if r.get("sample") in samples]
-
-#     if date_range and len(date_range) == 2 and date_range[0] and date_range[1]:
-#         start, end = date_range[0], date_range[1]
-#         filtered = [r for r in filtered if start <= (r.get("date") or "") <= end]
-
-#     if experiments:
-#         filtered = [r for r in filtered if r.get("experiment") in experiments]
-
-#     return filtered, experiment_options
 
 @callback(
         Output("datasets-grid", "rowData"),
