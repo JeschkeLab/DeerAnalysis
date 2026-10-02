@@ -15,6 +15,9 @@ from deeranalysis.components.fit_page_components import fit_results_tabs, fit_re
 from deeranalysis.components.model_edit_modal import create_model_edit_modal
 from deeranalysis.utils.deerlab_options import regparam_options,background_models, plotly_goodness_of_fit, name_dataset_from_dict, build_model_data, plotly_lcurve
 from deeranalysis.utils.job_tracking import create_job, get_job
+from deeranalysis.utils.deerlab_options import regparam_options,background_models, plotly_goodness_of_fit, dists_stats_to_list, fit_to_dict,name_dataset_from_dict, build_model_data, plotly_lcurve
+from deeranalysis.components.warnings import list_of_warnings_modal
+from deeranalysis.utils.deerlab_fitwarnings import check_fit_results, warnings_to_dict
 
 import deeranalysis.components.fit_page_components as fpc
 
@@ -32,6 +35,7 @@ layout = html.Div([
             create_dataset_modal(page_id=page_id),
             create_fit_download_modal(page_id=page_id),
             create_model_edit_modal(page_id=page_id),
+            list_of_warnings_modal(page_id=page_id),
             html.Div([
                 dmc.Select(id={'type': 'dataset-dropdown', 'page': page_id}, label="Select a dataset", style={'flex': '1 1 0'}),
                 dmc.ActionIcon(DashIconify(icon='material-symbols:search', width=20),

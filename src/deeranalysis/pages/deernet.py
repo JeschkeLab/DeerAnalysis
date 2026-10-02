@@ -17,6 +17,8 @@ from deeranalysis.utils.job_tracking import create_job, get_job
 import deerlab as dl
 dash.register_page(__name__)
 import deeranalysis.components.fit_page_components as fpc
+from deeranalysis.components.warnings import list_of_warnings_modal
+from deeranalysis.utils.deerlab_fitwarnings import check_fit_results, warnings_to_dict
 
 import os
 page_id='deernet'
@@ -29,6 +31,7 @@ layout = html.Div([
         dbc.Col([
             create_dataset_modal(page_id=page_id),
             create_fit_download_modal(page_id=page_id),
+            list_of_warnings_modal(page_id=page_id),
             html.Div([
                 dmc.Select(id={'type': 'dataset-dropdown', 'page': page_id}, label="Select a dataset", style={'flex': '1 1 0'}),
                 dmc.ActionIcon(DashIconify(icon='material-symbols:search', width=20),

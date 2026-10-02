@@ -16,6 +16,10 @@ import deeranalysis.components.fpc_global as fpcg
 from deeranalysis.utils.deerlab_options import background_models, name_dataset_from_dict
 from deeranalysis.utils.deerlab_global import build_global_model_data
 from deeranalysis.utils.job_tracking import create_job, get_job
+from deeranalysis.utils.deerlab_options import background_models, fit_to_dict,name_dataset_from_dict,dists_stats_to_list
+from deeranalysis.utils.deerlab_global import deerlab_global_fitting, extract_global_P, build_global_model_data
+from deeranalysis.components.warnings import list_of_warnings_modal
+from deeranalysis.utils.deerlab_fitwarnings import check_fit_results, warnings_to_dict
 
 dash.register_page(__name__)
 
@@ -47,6 +51,7 @@ layout = html.Div([
             create_dataset_modal(page_id=page_id),
             dummy_download_modal,
             create_model_edit_modal(page_id=page_id),
+            list_of_warnings_modal(page_id=page_id),
             html.Div([
                 dmc.Group([dmc.MultiSelect(id={'type': 'dataset-dropdown', 'page': page_id}, label="Select a dataset", description="Between 2 and 5 dataset should selected.")],style={'flex': '1 1 0',"flexGrow":1}),
                 dmc.ActionIcon(DashIconify(icon='material-symbols:search', width=20),
@@ -65,7 +70,7 @@ layout = html.Div([
             dmc.CheckboxGroup(
                 id={'type': 'pathways-options', 'page': page_id},
                 label="Pathways to include:",
-                description="These pathways will be applied to all datasets, if they are fesiable for the corresponding experiment.",
+                description="These pathways will be applied to all datasets, if they are feasible for the corresponding experiment.",
                 children=dmc.Group([
                     dmc.Checkbox(value='1', label='1'),
                     dmc.Checkbox(value='2', label='2'),

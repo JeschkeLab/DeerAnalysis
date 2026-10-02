@@ -26,6 +26,9 @@ from deeranalysis.components.fit_page_components import (
 )
 import deeranalysis.components.fit_page_components as fpc
 from deeranalysis.utils.job_tracking import create_job, get_job
+from deeranalysis.components.warnings import list_of_warnings_modal
+from deeranalysis.utils.deerlab_fitwarnings import check_fit_results, warnings_to_dict
+from deeranalysis.utils.deerlab_normal import deerlab_fitting
 
 import dash_mantine_components as dmc
 
@@ -43,6 +46,7 @@ layout = html.Div([
             create_dataset_modal(page_id=page_id),
             create_fit_download_modal(page_id=page_id),
             create_model_edit_modal(page_id=page_id),
+            list_of_warnings_modal(page_id=page_id),
             html.Div([
                 dmc.Select(id={'type': 'dataset-dropdown', 'page': page_id}, label="Select a dataset", style={'flex': '1 1 0'}),
                 dmc.ActionIcon(DashIconify(icon='material-symbols:search', width=20),
@@ -66,7 +70,7 @@ layout = html.Div([
             dmc.CheckboxGroup(
                 id={'type': 'pathways-options', 'page': page_id},
                 label="Pathways to include:",
-                description="These pathways will be applied to all datasets, if they are fesiable for the corresponding experiment.",
+                description="These pathways will be applied to all datasets, if they are feasible for the corresponding experiment.",
                 children=dmc.Group([
                     dmc.Checkbox(value='1', label='1'),
                     dmc.Checkbox(value='2', label='2'),

@@ -484,7 +484,7 @@ def deerlab_population_fitting(datasets, model=dl.dd_gauss, n_pops=2, bg_model=d
     # fit.datasets = datasets
     fit.Vexp = Vs
     fit.t = ts
-    # fit.Vmodels = Vmodels
+    fit.Vmodel = global_model
     fit.pathways = [pathways for i in range(Nsignals)]
 
     for i in range(len(fit.stats)):

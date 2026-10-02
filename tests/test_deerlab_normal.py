@@ -387,7 +387,7 @@ class TestDeerlabFittingBackgroundOnly:
         fit_dict = fit_to_dict(fit, background_only=True)
         assert isinstance(fit_dict, dict)
         assert fit_dict['bg_model'] == 'bg_hom3d'
-        assert fit_dict['fit_type'] == 'background'
+        assert fit_dict['fit_type'] == 'Background'
         assert fit_dict['engine'] == 'DeerLab'
         assert fit_dict['pathways'] is None
         assert 'background' in fit_dict and fit_dict['background'] is not None

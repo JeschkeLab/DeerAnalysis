@@ -8,9 +8,11 @@ from dash_iconify import DashIconify
 from deeranalysis.components.fit_finder import fit_select
 from deeranalysis.components.dataset_search_model import create_dataset_modal, search_fit_modal
 from deeranalysis.utils.deerlab_options import plotly_comparison, colour_scheme_dark, colour_scheme_light
+from deeranalysis.utils.deerlab_fitwarnings import warnings_from_dict, count_by_level
+from deeranalysis.components.warnings import list_of_warnings_card, list_of_warnings_modal
 
 
-from deerlab import UQResult
+from deerlab import UQResult, noiselevel
 dash.register_page(__name__)
 
 PAGE_ID = 'comparison'
@@ -22,10 +24,14 @@ _PAGE_HEIGHT = 'calc(100vh - 140px)'
 
 layout = html.Div([
     dcc.Store(id='comp-n-slots', data=N_SLOTS_DEFAULT),
+    dcc.Store(id='comp-search-target-slot'),
+    # Saved warnings of each compared fit, in table column order
+    dcc.Store(id='comp-warnings-store'),
 
     # ── Hidden: modals & drawer ────────────────────────────────────────────
-    create_dataset_modal(PAGE_ID),
+    create_dataset_modal(PAGE_ID, select_btn_id={'type': 'comp-select-dataset-btn', 'page': PAGE_ID}),
     search_fit_modal(),
+    list_of_warnings_modal(PAGE_ID),
 
     dmc.Drawer(
         id='comp-options-drawer',
@@ -243,24 +249,31 @@ def update_fit_dropdowns(dataset_ids):
 @callback(
     Output('comp-plot', 'figure'),
     Output('comp-stats-table', 'children'),
+    Output('comp-warnings-store', 'data'),
+    Input({'type': 'dataset-dropdown', 'page': PAGE_ID, 'index': ALL}, 'value'),
     Input({'type': 'fit-dropdown', 'page': PAGE_ID, 'index': ALL}, 'value'),
     Input('comp-n-slots', 'data'),
     Input('comp-voffset-slider', 'value'),
     Input('comp-ci-select', 'value'),
     Input('comp-show-ci-toggle', 'checked'),
 )
-def compare_fits(fit_ids, n_slots, offset, ci_str, show_ci):
+def compare_fits(dataset_ids, fit_ids, n_slots, offset, ci_str, show_ci):
     ci = int(ci_str) if ci_str else 95
+    dataset_ids = dataset_ids[:n_slots]
     fit_ids = fit_ids[:n_slots]
 
     session = get_session()
     loaded = []
-    for fid in fit_ids:
-        if not fid:
-            continue
-        fit = session.query(Fit).filter_by(id=fid).first()
-        if fit:
-            loaded.append((fit.dataset, fit))
+    for did, fid in zip(dataset_ids, fit_ids):
+        if fid:
+            fit = session.query(Fit).filter_by(id=fid).first()
+            if fit:
+                loaded.append((fit.dataset, fit))
+                continue
+        if did:
+            dataset = session.query(Dataset).filter_by(id=did).first()
+            if dataset:
+                loaded.append((dataset, None))
     session.close()
 
     data_dicts = [_fit_to_dict(ds, fit) for ds, fit in loaded]
@@ -272,7 +285,76 @@ def compare_fits(fit_ids, n_slots, offset, ci_str, show_ci):
     fig.update_layout(title=None)
 
     stats = _build_stats_tables(data_dicts, titles, n_slots)
-    return fig, stats
+    warnings = [dd.get('warnings') for dd in data_dicts]
+    return fig, stats, warnings
+
+
+@callback(
+    # The shared modal's outputs are also targeted by the MATCH callbacks in
+    # components/warnings.py, hence allow_duplicate.
+    Output({'type': 'n_warnings_overview-modal', 'page': PAGE_ID}, 'opened', allow_duplicate=True),
+    Output({'type': 'n_warnings_overview-modal', 'page': PAGE_ID}, 'title', allow_duplicate=True),
+    Output({'type': 'n_warnings_overview-modal-content', 'page': PAGE_ID}, 'children', allow_duplicate=True),
+    Input({'type': 'comp-warnings-expand-btn', 'index': ALL}, 'n_clicks'),
+    State('comp-warnings-store', 'data'),
+    prevent_initial_call=True,
+)
+def open_comp_warnings_modal(n_clicks_list, warnings_store):
+    # The buttons are re-created with the stats table, which fires this with
+    # n_clicks=None, so only open on a real click.
+    if not ctx.triggered_id or not any(n_clicks_list) or not warnings_store:
+        return dash.no_update, dash.no_update, dash.no_update
+    index = ctx.triggered_id['index']
+    if not ctx.triggered[0]['value'] or index >= len(warnings_store):
+        return dash.no_update, dash.no_update, dash.no_update
+
+    warnings = warnings_from_dict(warnings_store[index] or [])
+    if len(warnings) == 0:
+        children = dmc.Text("No warnings to display.", c="gray", size="md")
+    else:
+        children = list_of_warnings_card(warnings)
+    return True, f"Warnings – Dataset {index + 1}", children
+
+
+@callback(
+    Output({'type': 'dataset-search-modal', 'page': PAGE_ID}, 'opened', allow_duplicate=True),
+    Output('comp-search-target-slot', 'data'),
+    Input({'type': 'open-dataset-search-btn', 'page': PAGE_ID, 'index': ALL}, 'n_clicks'),
+    prevent_initial_call=True,
+)
+def comp_open_dataset_search(n_clicks_list):
+    if not any(n_clicks_list):
+        return dash.no_update, dash.no_update
+    return True, ctx.triggered_id['index']
+
+
+@callback(
+    Output({'type': 'dataset-search-modal', 'page': PAGE_ID}, 'opened', allow_duplicate=True),
+    Output({'type': 'dataset-dropdown', 'page': PAGE_ID, 'index': ALL}, 'value'),
+    Input({'type': 'comp-select-dataset-btn', 'page': PAGE_ID}, 'n_clicks'),
+    State('dataset_table', 'selectedRows'),
+    State('comp-search-target-slot', 'data'),
+    State({'type': 'dataset-dropdown', 'page': PAGE_ID, 'index': ALL}, 'id'),
+    State({'type': 'dataset-dropdown', 'page': PAGE_ID, 'index': ALL}, 'value'),
+    prevent_initial_call=True,
+)
+def comp_select_dataset(n_clicks, selected_rows, target_slot, ids, current_values):
+    no_change = [dash.no_update] * len(current_values)
+    if not (n_clicks and selected_rows and target_slot):
+        return dash.no_update, no_change
+
+    dataset_title = selected_rows[0].get('Title')
+    session = get_session()
+    dataset = session.query(Dataset).filter_by(name=dataset_title).first()
+    session.close()
+    if dataset is None:
+        return dash.no_update, no_change
+
+    values = list(current_values)
+    for i, slot_id in enumerate(ids):
+        if str(slot_id['index']) == str(target_slot):
+            values[i] = str(dataset.id)
+    return False, values
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
@@ -291,9 +373,27 @@ def _fit_to_dict(dataset, fit):
     out['t'] = np.array(dataset.t, dtype=float)
     out['V'] = np.array(dataset.V, dtype=float)
     out['V'] /= out['V'].max()
+
+    if fit is None:
+        out['model_t'] = out['t']
+        out['dist_stats'] = {}
+        try:
+            out['gof'] = {'SNR': float(1.0 / noiselevel(out['V']))}
+        except Exception:
+            out['gof'] = {}
+        out['model'] = None
+        out['r'] = None
+        out['P'] = None
+        out['PUncert'] = None
+        out['background'] = None
+        out['warnings'] = None
+        return out
+
     out['model_t'] = np.array(fit.t, dtype=float)
     out['dist_stats'] = fit.dist_stats or {}
     out['gof'] = fit.gof or {}
+    # None for fits saved before warnings were recorded, shown as "–"
+    out['warnings'] = fit.warnings
 
     background_only = getattr(fit, 'fit_type', None) == 'background'
 
@@ -333,7 +433,8 @@ TIME_LABELS = {
     'SNR': 'SNR',
     'MNR': 'MNR',
     'rmsd': 'RMSD',
-    'R2': 'R²',}
+    'R2': 'R²',
+    'lam': 'Mod. Depth.',}
 
 def _compute_stat(metric, dd):
     try:
@@ -368,6 +469,30 @@ def _format_dist_stat(entry):
         return val
 
 
+def _warnings_cell(warnings, index):
+    """
+    Critical and moderate warning counts, styled like ``number_of_warnings_card``,
+    with a button that opens the list of warnings for the fit at ``index``.
+    """
+    if warnings is None:
+        return dmc.Text("–", size="sm")
+    counts = count_by_level(warnings_from_dict(warnings))
+    expand_button = dmc.ActionIcon(
+        DashIconify(icon="mdi:arrow-expand", width=14, color="gray"),
+        id={'type': 'comp-warnings-expand-btn', 'index': index},
+        variant="transparent",
+        size="sm",
+        disabled=len(warnings) == 0,
+    )
+    return dmc.Group([
+        dmc.Group([DashIconify(icon="mdi:alert-circle-outline", width=16, color="red"),
+        dmc.Text(f"{counts['critical']}", size="sm", fw=700, c="red"),
+        DashIconify(icon="mdi:alert-outline", width=16, color="orange"),
+        dmc.Text(f"{counts['moderate']}", size="sm", fw=700, c="orange"),], gap=4, wrap="nowrap"),
+        expand_button,],
+        justify="space-between")
+
+
 def _header_cells(titles):
     cells = [dmc.TableTh("Metric")]
     for i, title in enumerate(titles):
@@ -381,7 +506,10 @@ def _header_cells(titles):
 
 
 def _make_time_table(data_dicts, titles):
-    body_rows = []
+    cells = [dmc.TableTd(dmc.Text("Warnings", size="sm", fw=500))]
+    for i, dd in enumerate(data_dicts):
+        cells.append(dmc.TableTd(_warnings_cell(dd.get('warnings'), i)))
+    body_rows = [dmc.TableTr(cells)]
 
     for key in TIME_LABELS:
         label = TIME_LABELS[key]
