@@ -160,7 +160,7 @@ def ensure_one_selected(value, previous_value):
 )
 def update_dropdown(pathname):
     session = get_session()
-    datasets = session.query(Dataset).all()
+    datasets = session.query(Dataset.id, Dataset.name).all()
     options = [{'label': ds.name, 'value': str(ds.id)} for ds in datasets]
     session.close()
     return options
@@ -337,7 +337,7 @@ def load_queued_result(job_id):
     no_update_13 = (dash.no_update,) * 13
     if not job_id:
         return no_update_13
-    job = get_job(job_id)
+    job = get_job(job_id, with_result=True)
     if job is None or job.status != 'done' or not job.result_data:
         return no_update_13
     fit_store = job.result_data

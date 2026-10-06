@@ -3,6 +3,8 @@ from datetime import datetime, timezone
 
 import numpy as np
 
+from sqlalchemy.orm import undefer
+
 from deeranalysis.utils.database import get_session, Job
 
 
@@ -56,9 +58,14 @@ def update_job(job_id, status=None, message=None, error=None, result_data=None, 
     session.close()
 
 
-def get_job(job_id):
+def get_job(job_id, with_result=False):
+    """Returns the detached Job row, or None. result_data is deferred (it can be tens of MB),
+    so pass with_result=True when the caller reads job.result_data."""
     session = get_session()
-    job = session.query(Job).filter_by(id=job_id).first()
+    query = session.query(Job)
+    if with_result:
+        query = query.options(undefer(Job.result_data))
+    job = query.filter_by(id=job_id).first()
     if job is not None:
         session.expunge(job)
     session.close()

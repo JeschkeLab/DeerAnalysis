@@ -4,6 +4,7 @@ import dash_bootstrap_components as dbc
 import dash_mantine_components as dmc
 from deeranalysis.utils.database import get_session, Dataset, Fit
 from sqlalchemy import func
+from sqlalchemy.orm import selectinload
 from dash_iconify import DashIconify
 
 import numpy as np
@@ -238,7 +239,12 @@ def populate_details(selected_rows):
     dataset_title = selected_rows[0].get('Title')
     dataset_id = selected_rows[0].get('id')
     session = get_session()
-    dataset = session.query(Dataset).filter_by(id=dataset_id).first()
+    dataset = (
+        session.query(Dataset)
+        .options(selectinload(Dataset.fits).load_only(Fit.id, Fit.name, Fit.engine, Fit.fit_type, Fit.pathways))
+        .filter_by(id=dataset_id)
+        .first()
+    )
 
     if not dataset:
         session.close()
@@ -301,7 +307,6 @@ def update_graph_on_selection(selected_rows):
     dataset_id = row.get('id')
 
     session = get_session()
-    dataset = session.query(Dataset).filter_by(id=dataset_id).first()
     dataset_entry = session.query(Dataset).filter_by(id=dataset_id).first()
     dataset = dataarray_from_database_entry(dataset_entry)
     

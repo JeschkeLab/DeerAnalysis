@@ -45,7 +45,7 @@ def test_update_job(temp_db):
     assert get_job(job_id).status == "running"
 
     update_job(job_id, status="done", result_data={"t": [1, 2, 3]})
-    job = get_job(job_id)
+    job = get_job(job_id, with_result=True)
     assert job.status == "done"
     assert job.result_data == {"t": [1, 2, 3]}
 
@@ -53,6 +53,15 @@ def test_update_job(temp_db):
     job = get_job(job_id)
     assert job.status == "error"
     assert job.error == "boom"
+
+
+def test_result_data_is_deferred(temp_db):
+    """Pollers must not load result_data (tens of MB per fit) unless asked for it."""
+    job_id = create_job("parametric_fit", page="parametric", label="ds", params={})
+    update_job(job_id, status="done", result_data={"t": [1, 2, 3]})
+    for job in (get_job(job_id), *list_jobs(), *list_jobs_for_page("parametric")):
+        assert "result_data" not in job.__dict__
+    assert "result_data" in get_job(job_id, with_result=True).__dict__
 
 
 def test_update_job_missing_id_is_noop(temp_db):

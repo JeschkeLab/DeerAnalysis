@@ -1,6 +1,6 @@
 from sqlalchemy import create_engine, Column, Integer, String, Float, Boolean, DateTime, ForeignKey, JSON, LargeBinary, inspect, text, Table
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker, relationship
+from sqlalchemy.orm import sessionmaker, relationship, deferred
 from datetime import datetime, timezone
 import os
 
@@ -33,10 +33,12 @@ class Dataset(Base):
     exp = Column(String, default='Unknown') # 4pDEER, 5pDEER, etc.
     delays = Column(JSON, default={})
     meta = Column(JSON, default={})
-    created_at = Column(DateTime, default=datetime.now(timezone.utc))
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     measured_at = Column(DateTime, nullable=True, default=None)
-    
-    fits = relationship("Fit", back_populates="dataset", cascade="all, delete-orphan", lazy='joined')
+
+    # Loaded on access (not joined): fits carry large blobs, so callers that need them
+    # after closing the session must request them with selectinload(Dataset.fits).
+    fits = relationship("Fit", back_populates="dataset", cascade="all, delete-orphan", lazy='select')
 
     @property
     def n_fits(self):
@@ -73,8 +75,10 @@ class Fit(Base):
     parameters = Column(JSON, nullable=True)
     fit_results = Column(JSON, nullable=True) # Fitted model, residuals, stats
     warnings = Column(JSON, nullable=True) # Any warnings generated during the fit
-    created_at = Column(DateTime, default=datetime.now(timezone.utc))
-    data = Column(JSON,nullable=True, default=None) # JSONified data of the FitResult object, including model, uncertainties, regparam, etc.
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    # JSONified FitResult (model, uncertainties, regparam, ...). Tens of MB per fit, so it is
+    # deferred: load it explicitly with .options(undefer(Fit.data)) where it is needed.
+    data = deferred(Column(JSON,nullable=True, default=None))
     
     dataset = relationship("Dataset", back_populates="fits")
 
@@ -93,7 +97,7 @@ class Job(Base):
     label = Column(String, nullable=True)        # human-readable label shown in the drawer
     status = Column(String, nullable=False, default="queued")  # queued|running|done|error|cancelled
     params = Column(JSON, nullable=True)          # serialized fit kwargs
-    result_data = Column(JSON, nullable=True)      # serialized fit result once done
+    result_data = deferred(Column(JSON, nullable=True))  # serialized fit result once done; deferred (large)
     message = Column(String, nullable=True)
     error = Column(String, nullable=True)
     # Whether the result has been persisted as Fit row(s). No column default on purpose: rows
@@ -148,7 +152,7 @@ def update_schema():
             for column in table.columns:
                 if column.name not in existing_columns:
                     col_type = column.type.compile(engine.dialect)
-                    default = f"DEFAULT {column.default.arg}" if column.default else ""
+                    default = f"DEFAULT {column.default.arg}" if column.default and not column.default.is_callable else ""
                     nullable = "NOT NULL" if not column.nullable else ""
                     
                     sql = f"ALTER TABLE {table_name} ADD COLUMN {column.name} {col_type} {nullable} {default}"

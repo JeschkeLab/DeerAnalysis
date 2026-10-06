@@ -12,7 +12,8 @@ import plotly.graph_objs as go
 import numpy as np
 import json
 import datetime as dt
-from deeranalysis.utils.database import get_session, Dataset,check_delays
+from deeranalysis.utils.database import get_session, Dataset, Fit, check_delays
+from sqlalchemy.orm import selectinload
 from deeranalysis.utils import create_subplot_figure
 from deeranalysis.components.metadata_table import build_metadata_section,build_delays_table, metadata_long_values_model,build_delays_AGgrid,delays_columnDefs
 from deeranalysis.components.download_modal import create_fit_download_modal, create_dataset_download_modal
@@ -61,7 +62,10 @@ def layout(dataset_id=None):
         session = get_session()
         if session is None:
             return _error_page("Database is not available.")
-        dataset = session.query(Dataset).filter_by(id=int(dataset_id)).first()
+        # Fits are read by _build_fits_rows after the session closes, so load its columns now.
+        fit_columns = selectinload(Dataset.fits).load_only(
+            Fit.id, Fit.name, Fit.fit_type, Fit.engine, Fit.gof, Fit.warnings, Fit.created_at)
+        dataset = session.query(Dataset).options(fit_columns).filter_by(id=int(dataset_id)).first()
         session.close()
     except Exception as exc:
         return _error_page(f"Error loading dataset: {exc}")

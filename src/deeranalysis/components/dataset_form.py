@@ -122,7 +122,7 @@ def check_tmin(store, exp_type):
 )
 def update_projects_and_samples(_n_clicks):
     session = get_session()
-    datasets = session.query(Dataset).all()
+    datasets = session.query(Dataset.project, Dataset.sample).all()
     session.close()
     projects = list(set(ds.project for ds in datasets))
     samples = list(set(ds.sample for ds in datasets))

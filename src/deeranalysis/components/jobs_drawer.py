@@ -25,6 +25,11 @@ from deeranalysis.utils.job_dispatch import JOB_HANDLERS, save_fit_from_job
 
 MAX_CONCURRENT_JOBS = 2
 
+# Poll intervals (ms). 
+DRAWER_POLL_ACTIVE_MS = 1500
+PAGE_POLL_ACTIVE_MS = 2000
+POLL_IDLE_MS = 10000
+
 PAGE_ROUTES = {
     'non-parametric': '/nonparametric',
     'parametric': '/parametric',
@@ -79,7 +84,7 @@ def jobs_drawer():
                 html.Div(id="jobs-drawer-content"),
             ],
         ),
-        dcc.Interval(id="jobs-poll-interval", interval=1500),
+        dcc.Interval(id="jobs-poll-interval", interval=DRAWER_POLL_ACTIVE_MS),
         dcc.Store(id="jobs-slot-assignments", storage_type="memory", data={}),
         *slot_stores,
     )
@@ -145,12 +150,14 @@ def cleanup_finished_jobs(n_clicks, slot_assignments):
     Output("jobs-drawer-badge", "label"),
     Output("jobs-drawer-badge", "disabled"),
     Output("jobs-slot-assignments", "data"),
+    Output("jobs-poll-interval", "interval"),
     *[Output(f"job-slot-trigger-{i}", "data", allow_duplicate=True) for i in range(MAX_CONCURRENT_JOBS)],
     Input("jobs-poll-interval", "n_intervals"),
     State("jobs-slot-assignments", "data"),
+    State("jobs-poll-interval", "interval"),
     prevent_initial_call=True,
 )
-def schedule_and_render(_n_intervals, slot_assignments):
+def schedule_and_render(_n_intervals, slot_assignments, current_interval):
     assignments = dict(slot_assignments or {})
     slot_outputs = [no_update] * MAX_CONCURRENT_JOBS
 
@@ -186,7 +193,22 @@ def schedule_and_render(_n_intervals, slot_assignments):
     rows = [_job_row(job, assignments) for job in jobs]
     if not rows:
         rows = [dmc.Text("No background jobs yet.", c="dimmed", size="sm")]
-    return rows, str(active_count), active_count == 0, assignments, *slot_outputs
+    interval = DRAWER_POLL_ACTIVE_MS if active_count else POLL_IDLE_MS
+    interval_output = interval if interval != current_interval else no_update
+    return rows, str(active_count), active_count == 0, assignments, interval_output, *slot_outputs
+
+
+@callback(
+    Output("jobs-poll-interval", "interval", allow_duplicate=True),
+    Input({"type": "pending-auto-load", "page": ALL}, "data"),
+    prevent_initial_call=True,
+)
+def wake_drawer_poll(pending_job_ids):
+    """Every page's queue_fit sets its pending-auto-load store to the new job id, so a non-empty
+    value means a job was just queued: switch the scheduler back to the active poll rate."""
+    if any(job_id is not None for job_id in (pending_job_ids or [])):
+        return DRAWER_POLL_ACTIVE_MS
+    return no_update
 
 
 def _make_cancel_callback(slot):
@@ -284,7 +306,7 @@ def queued_jobs_panel(page_id):
     a page never auto-loads a job that finished while you were elsewhere; "Load result" is still
     offered per job for that case."""
     return html.Div([
-        dcc.Interval(id={"type": "page-jobs-poll", "page": page_id}, interval=2000),
+        dcc.Interval(id={"type": "page-jobs-poll", "page": page_id}, interval=PAGE_POLL_ACTIVE_MS),
         dcc.Store(id={"type": "job-load-request", "page": page_id}),
         dcc.Store(id={"type": "pending-auto-load", "page": page_id}, storage_type="memory"),
         dcc.Store(id={"type": "delete-job-target", "page": page_id}, storage_type="memory"),
@@ -386,6 +408,12 @@ def _page_job_card(job, page_id):
                            id={"type": "save-job-btn", "page": page_id, "job": job.id}),
             label="Save fit", withArrow=True,
         ))
+    elif is_done:
+        actions.append(dmc.Tooltip(
+            dmc.ThemeIcon(DashIconify(icon="mdi:content-save-check-outline", width=16),
+                          variant="transparent", color="green", size="md"),
+            label="Fit saved", withArrow=True,
+        ))
     if is_done:
         actions.append(dmc.Button("Load result", size="xs", variant="light",
                                   leftSection=DashIconify(icon="mdi:chart-bell-curve", width=14),
@@ -403,8 +431,9 @@ def _page_job_card(job, page_id):
     return dmc.Paper(dmc.Stack(children, gap=6), withBorder=True, radius="md", p="xs", shadow="xs")
 
 
-def _render_page_jobs(page_id):
-    jobs = list_jobs_for_page(page_id, limit=RECENT_JOBS_SHOWN)
+def _render_page_jobs(page_id, jobs=None):
+    if jobs is None:
+        jobs = list_jobs_for_page(page_id, limit=RECENT_JOBS_SHOWN)
     if not jobs:
         return []
     n_active = sum(1 for job in jobs if job.status in ("queued", "running"))
@@ -421,11 +450,13 @@ def _render_page_jobs(page_id):
     Output({"type": "page-jobs-panel", "page": MATCH}, "children"),
     Output({"type": "job-load-request", "page": MATCH}, "data", allow_duplicate=True),
     Output({"type": "pending-auto-load", "page": MATCH}, "data", allow_duplicate=True),
+    Output({"type": "page-jobs-poll", "page": MATCH}, "interval"),
     Input({"type": "page-jobs-poll", "page": MATCH}, "n_intervals"),
     State({"type": "pending-auto-load", "page": MATCH}, "data"),
+    State({"type": "page-jobs-poll", "page": MATCH}, "interval"),
     prevent_initial_call=True,
 )
-def update_page_jobs_panel(_n_intervals, pending_job_id):
+def update_page_jobs_panel(_n_intervals, pending_job_id, current_interval):
     outputs_list = ctx.outputs_list
     out = outputs_list[0] if isinstance(outputs_list, list) else outputs_list
     page_id = out['id']['page']
@@ -438,7 +469,22 @@ def update_page_jobs_panel(_n_intervals, pending_job_id):
             load_request = pending_job_id
             pending_output = None  # consumed — stop watching it
 
-    return _render_page_jobs(page_id), load_request, pending_output
+    jobs = list_jobs_for_page(page_id, limit=RECENT_JOBS_SHOWN)
+    active = any(job.status in ("queued", "running") for job in jobs)
+    interval = PAGE_POLL_ACTIVE_MS if active else POLL_IDLE_MS
+    interval_output = interval if interval != current_interval else no_update
+
+    return _render_page_jobs(page_id, jobs), load_request, pending_output, interval_output
+
+
+@callback(
+    Output({"type": "page-jobs-poll", "page": MATCH}, "interval", allow_duplicate=True),
+    Input({"type": "pending-auto-load", "page": MATCH}, "data"),
+    prevent_initial_call=True,
+)
+def wake_page_poll(pending_job_id):
+    """A job was just queued from this page: poll at the active rate until it finishes."""
+    return PAGE_POLL_ACTIVE_MS if pending_job_id is not None else no_update
 
 
 @callback(
@@ -506,7 +552,7 @@ def save_page_job(n_clicks_list):
     triggered_id = ctx.triggered_id
     if not triggered_id or not ctx.triggered or not ctx.triggered[0]["value"]:
         return no_update
-    job = get_job(triggered_id["job"])
+    job = get_job(triggered_id["job"], with_result=True)
     if job is None or not is_unsaved(job) or not job.result_data:
         return no_update
     try:
