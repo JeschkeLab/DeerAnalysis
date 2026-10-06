@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, ForeignKey, JSON, LargeBinary, inspect, text, Table
+from sqlalchemy import create_engine, Column, Integer, String, Float, Boolean, DateTime, ForeignKey, JSON, LargeBinary, inspect, text, Table
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship
 from datetime import datetime, timezone
@@ -7,6 +7,8 @@ import os
 
 
 Base = declarative_base()
+
+DEFAULT_MAX_CACHED_JOBS = 20
 
 fit_global_datasets = Table('fit_global_datasets', Base.metadata,
     Column('fit_id', Integer, ForeignKey('fits.id', ondelete='CASCADE'), primary_key=True),
@@ -94,6 +96,9 @@ class Job(Base):
     result_data = Column(JSON, nullable=True)      # serialized fit result once done
     message = Column(String, nullable=True)
     error = Column(String, nullable=True)
+    # Whether the result has been persisted as Fit row(s). No column default on purpose: rows
+    # from before this column existed stay NULL and are treated as saved (they were auto-saved).
+    saved = Column(Boolean, nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
@@ -109,6 +114,8 @@ class Settings(Base):
     color_scheme = Column(String, nullable=True, default="light")
     ui_scale = Column(Float, nullable=True, default=1.0)
     plot_theme = Column(String, nullable=True, default="auto")
+    auto_save_fits = Column(Boolean, nullable=True, default=False)
+    max_cached_jobs = Column(Integer, nullable=True, default=DEFAULT_MAX_CACHED_JOBS)
     
 # Database setup
 # db_path = 'sqlite:///deeranalysis.db'
@@ -198,6 +205,32 @@ def save_appearance_settings(color_scheme, ui_scale, plot_theme="auto"):
     settings.plot_theme = plot_theme or "auto"
     session.add(settings)
     session.commit()
+
+def get_job_settings():
+    """Returns (auto_save_fits, max_cached_jobs) from Settings, with defaults."""
+    session = get_session()
+    if session is None:
+        return True, DEFAULT_MAX_CACHED_JOBS
+    settings = session.query(Settings).first()
+    session.close()
+    if not settings:
+        return True, DEFAULT_MAX_CACHED_JOBS
+    auto_save = settings.auto_save_fits if settings.auto_save_fits is not None else True
+    max_cached = settings.max_cached_jobs if settings.max_cached_jobs is not None else DEFAULT_MAX_CACHED_JOBS
+    return bool(auto_save), int(max_cached)
+
+def save_job_settings(auto_save_fits, max_cached_jobs):
+    session = get_session()
+    if session is None:
+        return
+    settings = session.query(Settings).first()
+    if not settings:
+        settings = Settings()
+    settings.auto_save_fits = bool(auto_save_fits)
+    settings.max_cached_jobs = int(max_cached_jobs)
+    session.add(settings)
+    session.commit()
+    session.close()
 
 def check_delays(dataset):
     """Checks that for a given dataset, the entries in the delay column cover 

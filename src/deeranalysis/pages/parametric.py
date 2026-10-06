@@ -26,6 +26,7 @@ from deeranalysis.components.fit_page_components import (
 )
 from deeranalysis.components.help_modal import help_button
 import deeranalysis.components.fit_page_components as fpc
+from deeranalysis.components.jobs_drawer import queued_jobs_panel
 from deeranalysis.utils.job_tracking import create_job, get_job
 from deeranalysis.components.warnings import list_of_warnings_modal
 from deeranalysis.utils.deerlab_fitwarnings import check_fit_results, warnings_to_dict
@@ -96,7 +97,7 @@ layout = html.Div([
             dmc.Space(h=10),
             fit_save_download_buttons(page_id),
             html.Div(id='p-fit-status'),
-            fpc.queued_jobs_panel(page_id),
+            queued_jobs_panel(page_id),
         ], width=3),
 
         dbc.Col([
@@ -138,7 +139,6 @@ def update_dropdown(pathname):
     Input({'type': 'pathways-options', 'page': page_id}, 'value'),
     Input({"type": "distance-axis", "page": page_id}, 'value'),
     Input({"type": "multi-start", "page": page_id}, 'value'),
-    prevent_initial_call=True
 )
 def update_fit_options(bg_model_option, dist_model_name, pathways_options, distance_axis, multi_start):
     return {
@@ -191,9 +191,10 @@ def open_model_edit_modal(n_clicks, dataset_id, bg_model_name, dist_model_name,
     State({'type': 'model-params-store', 'page': page_id}, 'data'),
     State({"type": "bootstrap-toggle", "page": page_id}, 'checked'),
     State({"type": "bootstrap-samples", "page": page_id}, 'value'),
+    State({'type': 'fit-name-input', 'page': page_id}, 'value'),
     prevent_initial_call=True
 )
-def queue_fit(n_clicks, dataset_id, fit_options, model_params, bootstrap_enabled, bootstrap_samples):
+def queue_fit(n_clicks, dataset_id, fit_options, model_params, bootstrap_enabled, bootstrap_samples, fit_name):
     if not dataset_id:
         fpc.notify('No Dataset', 'Please select a dataset first.', 'mdi:alert-circle-outline', 'yellow')
         return dash.no_update, dash.no_update
@@ -204,6 +205,7 @@ def queue_fit(n_clicks, dataset_id, fit_options, model_params, bootstrap_enabled
     session.close()
 
     params = {
+        'fit_name': fit_name,
         'dataset_id': dataset_id,
         'fit_options': fit_options,
         'model_params': model_params,

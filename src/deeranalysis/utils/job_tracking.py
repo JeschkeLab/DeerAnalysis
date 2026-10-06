@@ -27,7 +27,7 @@ def to_jsonable(obj):
 def create_job(job_type, page, label, params=None):
     """Creates a new Job row with status 'queued' and returns its id."""
     session = get_session()
-    job = Job(job_type=job_type, page=page, label=label, params=to_jsonable(params) or {}, status="queued")
+    job = Job(job_type=job_type, page=page, label=label, params=to_jsonable(params) or {}, status="queued", saved=False)
     session.add(job)
     session.commit()
     job_id = job.id
@@ -35,7 +35,7 @@ def create_job(job_type, page, label, params=None):
     return job_id
 
 
-def update_job(job_id, status=None, message=None, error=None, result_data=None):
+def update_job(job_id, status=None, message=None, error=None, result_data=None, saved=None):
     session = get_session()
     job = session.query(Job).filter_by(id=job_id).first()
     if job is None:
@@ -49,6 +49,8 @@ def update_job(job_id, status=None, message=None, error=None, result_data=None):
         job.error = error
     if result_data is not None:
         job.result_data = to_jsonable(result_data)
+    if saved is not None:
+        job.saved = saved
     job.updated_at = datetime.now(timezone.utc)
     session.commit()
     session.close()
@@ -90,6 +92,36 @@ def count_running_jobs():
     count = session.query(Job).filter_by(status="running").count()
     session.close()
     return count
+
+
+def delete_job(job_id):
+    session = get_session()
+    session.query(Job).filter_by(id=job_id).delete(synchronize_session=False)
+    session.commit()
+    session.close()
+
+
+def is_unsaved(job):
+    """A finished job whose result only exists in the job cache. saved=None means a job from
+    before the flag existed, which was always auto-saved."""
+    return job.status == "done" and job.saved is False
+
+
+def prune_unsaved_jobs(max_cached):
+    """Keeps only the `max_cached` most recent unsaved finished jobs, deleting older ones."""
+    session = get_session()
+    stale_ids = [
+        job_id for (job_id,) in session.query(Job.id)
+        .filter(Job.status == "done", Job.saved.is_(False))
+        .order_by(Job.created_at.desc())
+        .offset(max(0, int(max_cached)))
+        .all()
+    ]
+    if stale_ids:
+        session.query(Job).filter(Job.id.in_(stale_ids)).delete(synchronize_session=False)
+        session.commit()
+    session.close()
+    return len(stale_ids)
 
 
 def clear_finished_jobs():

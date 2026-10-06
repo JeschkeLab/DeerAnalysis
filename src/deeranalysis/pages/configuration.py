@@ -6,7 +6,11 @@ from dash_iconify import DashIconify
 from importlib.metadata import version as get_version
 import sys
 from deeranalysis.utils.logs_plugin import get_logs_api_db, set_logs_api_key
-from deeranalysis.utils.database import get_appearance_settings, save_appearance_settings
+from deeranalysis.utils.database import (
+    get_appearance_settings, save_appearance_settings, get_job_settings, save_job_settings,
+    DEFAULT_MAX_CACHED_JOBS,
+)
+from deeranalysis.utils.job_tracking import prune_unsaved_jobs
 from deerlab import show_config
 dash.register_page(__name__, path='/config')
 page_id= 'config'
@@ -35,7 +39,7 @@ layout = dmc.Container([
     
     dmc.Accordion(
         multiple=True,
-        value=["about","general"],
+        value=["about","general","jobs"],
         children=[
             # About / Version
             dmc.AccordionItem(
@@ -93,7 +97,7 @@ layout = dmc.Container([
                                 id="config-dark-mode",
                                 label="Dark Mode",
                                 description="Enable dark mode theme",
-                                size="md",
+                                size="sm",
                                 mb="sm",
                                 onLabel=DashIconify(icon="tabler:moon", width=16),
                                 offLabel=DashIconify(icon="tabler:sun", width=16),
@@ -117,31 +121,28 @@ layout = dmc.Container([
                                     mb="xl",
                                 ),
                             ], gap=0, mb="sm"),
-                            # dmc.Switch(
-                            #     id="config-auto-save",
-                            #     label="Auto-save Results",
-                            #     description="Automatically save fit results to database",
-                            #     checked=True,
-                            #     size="md",
-                            #     mb="sm"
-                            # ),
-                            # dmc.NumberInput(
-                            #     id="config-max-datasets",
-                            #     label="Maximum Displayed Datasets",
-                            #     description="Maximum number of datasets to display in tables",
-                            #     value=100,
-                            #     min=10,
-                            #     max=1000,
-                            #     step=10,
-                            #     mb="sm"
-                            # ),
-                            # dmc.TextInput(
-                            #     id="config-default-path",
-                            #     label="Data Directory",
-                            #     description="The directory for loading data files",
-                            #     placeholder="/path/to/data",
-                            #     mb="sm"
-                            # ),
+                                                        dmc.Switch(
+                                id="config-auto-save-fits",
+                                label="Auto-save fits",
+                                description="Save each fit to the database as soon as its job finishes. "
+                                            "When off, results stay in the job list until you save them.",
+                                checked=True,
+                                size="sm",
+                                mb="sm",
+                            ),
+                            dmc.NumberInput(
+                                id="config-max-cached-jobs",
+                                label="Maximum unsaved jobs",
+                                description="How many finished but unsaved job results to keep. "
+                                            "Older unsaved results are discarded.",
+                                value=DEFAULT_MAX_CACHED_JOBS,
+                                min=1,
+                                max=50,
+                                step=1,
+                                allowDecimal=False,
+                                w="90%",
+                                mb="sm",
+                            ),
                             dmc.Select(
                                 id="config-plot-theme",
                                 label="Plot Theme",
@@ -182,6 +183,7 @@ layout = dmc.Container([
                 ]
             ),
             
+
             # # DeerLab Settings
             # dmc.AccordionItem(
             #     value="deerlab",
@@ -424,9 +426,12 @@ clientside_callback(
     State("config-plot-theme", "value"),
     State("config-logs-api-url", "value"),
     State("config-logs-api-key", "value"),
+    State("config-auto-save-fits", "checked"),
+    State("config-max-cached-jobs", "value"),
     prevent_initial_call=True
 )
-def save_configuration(n_clicks, dark_mode, ui_scale, plot_theme, logs_url, logs_api_key):
+def save_configuration(n_clicks, dark_mode, ui_scale, plot_theme, logs_url, logs_api_key,
+                       auto_save_fits, max_cached_jobs):
     if n_clicks:
         try:
             if logs_url and logs_api_key:
@@ -435,6 +440,9 @@ def save_configuration(n_clicks, dark_mode, ui_scale, plot_theme, logs_url, logs
             scale = ui_scale if ui_scale is not None else 1.0
             theme = plot_theme or "auto"
             save_appearance_settings(color_scheme, scale, theme)
+            max_cached = int(max_cached_jobs) if max_cached_jobs else DEFAULT_MAX_CACHED_JOBS
+            save_job_settings(bool(auto_save_fits), max_cached)
+            prune_unsaved_jobs(max_cached)
             return "show", "Success", "Configuration saved successfully", "green", color_scheme, scale, theme
         except Exception as e:
             return "show", "Error", f"Failed to save configuration: {str(e)}", "red", dash.no_update, dash.no_update, dash.no_update
@@ -450,6 +458,16 @@ def save_configuration(n_clicks, dark_mode, ui_scale, plot_theme, logs_url, logs
 def load_appearance_on_page_load(_):
     color_scheme, scale, plot_theme = get_appearance_settings()
     return color_scheme == "dark", scale, plot_theme or "auto"
+
+
+@callback(
+    Output("config-auto-save-fits", "checked"),
+    Output("config-max-cached-jobs", "value"),
+    Input("config-auto-save-fits", "id"),
+)
+def load_job_settings_on_page_load(_):
+    auto_save, max_cached = get_job_settings()
+    return auto_save, max_cached
 
 
 @callback(

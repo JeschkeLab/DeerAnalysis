@@ -16,6 +16,7 @@ from deeranalysis.utils.deerlab_normal import deerlab_fitting, deerlab_backgroun
 from deeranalysis.utils.deerlab_global import deerlab_global_fitting
 from deeranalysis.utils.deerlab_population import deerlab_population_fitting, determine_pop_P
 from deeranalysis.utils.deerlab_options import fit_to_dict, dists_stats_to_list, name_dataset_from_dict
+from deeranalysis.utils.deerlab_fitwarnings import check_fit_results, warnings_to_dict
 from deeranalysis.utils.deernet import deernet2
 from deeranalysis.components.setup_modal_desktop import get_DeerAnalysis_directory
 from deeranalysis.utils.job_tracking import to_jsonable
@@ -70,6 +71,8 @@ def run_nonparametric_fit_job(params):
         fit_dict["fit_type"] = "background"
         fit_dict["dist_stats"] = {}
         fit_dict["gof"] = fit.stats
+        # A background-only fit is made with the background model itself
+        fit_dict["warnings"] = warnings_to_dict(check_fit_results(fit, bg_model))
         return fit_dict
 
     fit = deerlab_fitting(dataset, compactness=params.get("compactness", False), model=None, ROI=False,
@@ -79,6 +82,7 @@ def run_nonparametric_fit_job(params):
     fit_dict = fit_to_dict(fit)
     fit_dict["dist_stats"] = dists_stats_to_list(*dist_stats)
     fit_dict["gof"] = fit.stats
+    fit_dict["warnings"] = warnings_to_dict(check_fit_results(fit, fit.Vmodel))
     return fit_dict
 
 
@@ -100,6 +104,7 @@ def run_parametric_fit_job(params):
     fit_dict = fit_to_dict(fit)
     fit_dict["dist_stats"] = dists_stats_to_list(*dist_stats)
     fit_dict["gof"] = fit.stats
+    fit_dict["warnings"] = warnings_to_dict(check_fit_results(fit, fit.Vmodel))
     return fit_dict
 
 
@@ -112,6 +117,7 @@ def run_background_fit_job(params):
     fit = deerlab_background_only(dataset, bg_model=Bmodel, mask=mask, model_overrides=model_params, **_bootstrap_kwargs(params))
     fit_dict = fit_to_dict(fit, background_only=True)
     fit_dict["gof"] = fit.stats
+    fit_dict["warnings"] = warnings_to_dict(check_fit_results(fit, Bmodel))
     return fit_dict
 
 
@@ -180,6 +186,7 @@ def run_population_fit_job(params):
 
     fit_store = _population_fit_to_dict(fit, n_datasets)
     fit_store["populations"] = _calc_population_fractions(fit)
+    fit_store["warnings"] = warnings_to_dict(check_fit_results(fit, fit.Vmodel))
     return fit_store
 
 
@@ -219,7 +226,9 @@ def run_global_fit_job(params):
                                   regparamrange=fit_options.get("regparamrange", [1e-8, 1e2]),
                                   **_bootstrap_kwargs(params))
     fit.n_datasets = n_datasets
-    return _global_fit_to_dict(fit, n_datasets)
+    fit_store = _global_fit_to_dict(fit, n_datasets)
+    fit_store["warnings"] = warnings_to_dict(check_fit_results(fit, fit.Vmodel))
+    return fit_store
 
 
 def run_deernet_fit_job(params):
@@ -232,6 +241,8 @@ def run_deernet_fit_job(params):
     fit_dict = fit_to_dict(fit)
     fit_dict["dist_stats"] = dists_stats_to_list(*dist_stats)
     fit_dict["gof"] = fit.stats
+    # DeerNet has no DeerLab model, so only the goodness-of-fit is checked
+    fit_dict["warnings"] = warnings_to_dict(check_fit_results(fit, None))
     return fit_dict
 
 
@@ -256,7 +267,8 @@ def save_fit_from_job(job, result_data):
     result_data = to_jsonable(result_data)
 
     session = get_session()
-    fit_name = name_dataset_from_dict(result_data)
+    # Prefer the name the user had in the page's fit-name input when queueing.
+    fit_name = (job.params or {}).get("fit_name") or name_dataset_from_dict(result_data)
 
     if job.job_type in MULTI_DATASET_JOB_TYPES:
         dataset_ids = job.params.get("dataset_ids") or []
@@ -269,6 +281,8 @@ def save_fit_from_job(job, result_data):
             "pathways": result_data.get("pathways"),
             "model_description": result_data.get("model_description"),
             "data": result_data.get("data"),
+            # One fit across all datasets, so every row carries all of its warnings
+            "warnings": result_data.get("warnings"),
         }
         gof_list = result_data.get("gof") or [None] * len(dataset_ids)
         background_list = result_data.get("background") or [None] * len(dataset_ids)

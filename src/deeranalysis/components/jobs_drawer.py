@@ -9,13 +9,18 @@ registered background callback with concrete ids — and a fast scheduler callba
 jobs to whichever slot is free. MAX_CONCURRENT_JOBS is both the concurrency cap and the slot
 count.
 """
+from datetime import datetime, timezone
+
 import dash_mantine_components as dmc
-from dash import html, dcc, callback, Input, Output, State, no_update
+from dash import html, dcc, callback, Input, Output, State, ALL, MATCH, ctx, no_update
 from dash_iconify import DashIconify
 
-from deeranalysis.utils.database import init_db
+from deeranalysis.utils.database import init_db, get_job_settings
 from deeranalysis.components.setup_modal_desktop import get_DeerAnalysis_directory
-from deeranalysis.utils.job_tracking import list_jobs, update_job, get_job, clear_finished_jobs
+from deeranalysis.utils.job_tracking import (
+    list_jobs, list_jobs_for_page, update_job, get_job, delete_job, clear_finished_jobs,
+    is_unsaved, prune_unsaved_jobs,
+)
 from deeranalysis.utils.job_dispatch import JOB_HANDLERS, save_fit_from_job
 
 MAX_CONCURRENT_JOBS = 2
@@ -224,15 +229,20 @@ def _make_slot_worker(slot):
         try:
             result = JOB_HANDLERS[job.job_type](job.params or {})
             update_job(job_id, status="done", result_data=result)
-            # Auto-save the fit so results aren't lost if nobody comes back to click "Save
-            # Fit" on the originating page — a failure here shouldn't erase the "done" fit
-            # result, just note that the save itself didn't happen.
-            try:
-                save_fit_from_job(job, result)
-            except Exception as save_err:
-                import traceback
-                traceback.print_exc()
-                update_job(job_id, message=f"Fit computed but auto-save failed: {save_err}")
+            auto_save, max_cached = get_job_settings()
+            if auto_save:
+                # Auto-save the fit so results aren't lost if nobody comes back to click "Save
+                # Fit" on the originating page — a failure here shouldn't erase the "done" fit
+                # result, just note that the save itself didn't happen.
+                try:
+                    save_fit_from_job(job, result)
+                    update_job(job_id, saved=True)
+                except Exception as save_err:
+                    import traceback
+                    traceback.print_exc()
+                    update_job(job_id, message=f"Fit computed but auto-save failed: {save_err}")
+            # Unsaved results only live in the job cache; cap how many are kept.
+            prune_unsaved_jobs(max_cached)
         except Exception as e:
             import traceback
             traceback.print_exc()
@@ -244,3 +254,266 @@ def _make_slot_worker(slot):
 for _slot in range(MAX_CONCURRENT_JOBS):
     _make_cancel_callback(_slot)
     _make_slot_worker(_slot)
+
+
+# --- Per-page "Recent jobs" panel -------------------------------------------------------------
+
+RECENT_JOBS_SHOWN = 4
+
+JOB_STATUS_ICONS = {
+    "queued": "mdi:clock-outline",
+    "running": "mdi:progress-clock",
+    "done": "mdi:check-circle-outline",
+    "error": "mdi:alert-circle-outline",
+    "cancelled": "mdi:cancel",
+}
+
+
+def queued_jobs_panel(page_id):
+    """Small panel listing this page's own queued/running/finished jobs, with 'Load result' and
+    'Delete' actions for finished ones. Cancellation happens from the jobs drawer (top bar), not here.
+
+    The job the page itself just queued is loaded into the plot automatically once it finishes
+    (see pending-auto-load store below) — the "Add to Queue -> wait -> see the result"
+    experience should feel like the old synchronous "Run Fit" button, just non-blocking. This
+    is deliberately narrow: each page's queue_fit callback sets pending-auto-load to the new
+    job's id, and a page-specific "invalidate" callback (watching the same inputs queue_fit
+    reads) clears it back to None the moment any parameter changes — so a stale result never
+    silently overwrites a plot whose settings have since moved on. Because pending-auto-load is
+    an in-memory Store, it's also naturally cleared by navigating away and back, so returning to
+    a page never auto-loads a job that finished while you were elsewhere; "Load result" is still
+    offered per job for that case."""
+    return html.Div([
+        dcc.Interval(id={"type": "page-jobs-poll", "page": page_id}, interval=2000),
+        dcc.Store(id={"type": "job-load-request", "page": page_id}),
+        dcc.Store(id={"type": "pending-auto-load", "page": page_id}, storage_type="memory"),
+        dcc.Store(id={"type": "delete-job-target", "page": page_id}, storage_type="memory"),
+        html.Div(id={"type": "page-jobs-panel", "page": page_id}),
+        dmc.Modal(
+            id={"type": "delete-job-modal", "page": page_id},
+            title="Delete job?",
+            centered=True,
+            size="sm",
+            children=[
+                dmc.Text(id={"type": "delete-job-modal-text", "page": page_id}, size="sm"),
+                dmc.Group([
+                    dmc.Button("Cancel", variant="default", size="xs",
+                               id={"type": "delete-job-cancel", "page": page_id}),
+                    dmc.Button("Delete", color="red", size="xs",
+                               leftSection=DashIconify(icon="mdi:trash-can-outline", width=14),
+                               id={"type": "delete-job-confirm", "page": page_id}),
+                ], justify="flex-end", mt="md", gap="xs"),
+            ],
+        ),
+    ])
+
+
+def _as_utc(dt):
+    # SQLite drops tzinfo on read, but the columns are written in UTC.
+    if dt is None:
+        return None
+    return dt if dt.tzinfo is not None else dt.replace(tzinfo=timezone.utc)
+
+
+def _format_duration(seconds):
+    seconds = max(0, int(seconds))
+    if seconds < 60:
+        return f"{seconds}s"
+    minutes, seconds = divmod(seconds, 60)
+    if minutes < 60:
+        return f"{minutes}m {seconds:02d}s"
+    hours, minutes = divmod(minutes, 60)
+    return f"{hours}h {minutes:02d}m"
+
+
+def _job_timing_text(job):
+    now = datetime.now(timezone.utc)
+    created = _as_utc(job.created_at)
+    updated = _as_utc(job.updated_at) or created
+    if created is None:
+        return ""
+    if job.status == "queued":
+        return f"Queued {_format_duration((now - created).total_seconds())} ago"
+    if job.status == "running":
+        # updated_at is stamped when the scheduler flips the job to 'running'.
+        return f"Running for {_format_duration((now - updated).total_seconds())}"
+    return f"Took {_format_duration((updated - created).total_seconds())}"
+
+
+def _page_job_card(job, page_id):
+    """One card per job: status icon, label, status badge, timing, progress bar and actions.
+    The job model has no numeric progress, so the bar shows phase rather than percentage:
+    striped while queued, animated while running, full once finished. Finished jobs keep the
+    card neutral — only the tick icon is green."""
+    is_done = job.status == "done"
+    color = STATUS_COLORS.get(job.status, "gray")
+    card_color = "gray" if is_done else color
+    icon = JOB_STATUS_ICONS.get(job.status, "mdi:help-circle-outline")
+
+    if job.status == "queued":
+        progress = dmc.Progress(value=100, color="gray", striped=True, size="xs", radius="xl")
+    elif job.status == "running":
+        progress = dmc.Progress(value=100, color=color, striped=True, animated=True, size="xs", radius="xl")
+    else:
+        progress = dmc.Progress(value=100, color=card_color, size="xs", radius="xl")
+
+    fit_name = (job.params or {}).get("fit_name")
+    title_lines = [dmc.Text(fit_name or job.label or job.job_type, size="sm", fw=500, truncate="end")]
+    if fit_name and job.label:
+        title_lines.append(dmc.Text(job.label, size="xs", truncate="end"))
+    timing = _job_timing_text(job)
+    if is_unsaved(job):
+        timing = f"{timing} · not saved"
+    title_lines.append(dmc.Text(timing, size="xs", c="dimmed"))
+
+    title_row = dmc.Group([
+        dmc.ThemeIcon(DashIconify(icon=icon, width=16), color=color, variant="light", size="md", radius="xl"),
+        dmc.Stack(title_lines, gap=0, style={"flex": 1, "minWidth": 0}),
+        dmc.Badge(job.status, color=card_color, variant="light", size="sm"),
+    ], gap="sm", wrap="nowrap", align="center")
+
+    children = [title_row, progress]
+    if job.status == "error" and job.error:
+        children.append(dmc.Text(job.error, size="xs", c="red", lineClamp=2))
+    elif job.message:
+        children.append(dmc.Text(job.message, size="xs", c="dimmed", lineClamp=2))
+
+    actions = []
+    if is_unsaved(job):
+        actions.append(dmc.Tooltip(
+            dmc.ActionIcon(DashIconify(icon="mdi:content-save-outline", width=16),
+                           variant="subtle", color="blue", size="md",
+                           id={"type": "save-job-btn", "page": page_id, "job": job.id}),
+            label="Save fit", withArrow=True,
+        ))
+    if is_done:
+        actions.append(dmc.Button("Load result", size="xs", variant="light",
+                                  leftSection=DashIconify(icon="mdi:chart-bell-curve", width=14),
+                                  id={"type": "load-job-result-btn", "page": page_id, "job": job.id}))
+    if job.status not in ("queued", "running"):
+        actions.append(dmc.Tooltip(
+            dmc.ActionIcon(DashIconify(icon="mdi:trash-can-outline", width=16),
+                           variant="subtle", color="red", size="md",
+                           id={"type": "delete-job-btn", "page": page_id, "job": job.id}),
+            label="Delete job", withArrow=True,
+        ))
+    if actions:
+        children.append(dmc.Group(actions, justify="flex-end", gap="xs"))
+
+    return dmc.Paper(dmc.Stack(children, gap=6), withBorder=True, radius="md", p="xs", shadow="xs")
+
+
+def _render_page_jobs(page_id):
+    jobs = list_jobs_for_page(page_id, limit=RECENT_JOBS_SHOWN)
+    if not jobs:
+        return []
+    n_active = sum(1 for job in jobs if job.status in ("queued", "running"))
+    header = dmc.Group([
+        dmc.Text("Recent jobs", size="sm", fw=600),
+        dmc.Badge(f"{n_active} active", size="sm", variant="light",
+                  color="blue" if n_active else "gray"),
+    ], justify="space-between")
+    cards = [_page_job_card(job, page_id) for job in jobs]
+    return dmc.Stack([header, *cards], gap=6, mt="xs")
+
+
+@callback(
+    Output({"type": "page-jobs-panel", "page": MATCH}, "children"),
+    Output({"type": "job-load-request", "page": MATCH}, "data", allow_duplicate=True),
+    Output({"type": "pending-auto-load", "page": MATCH}, "data", allow_duplicate=True),
+    Input({"type": "page-jobs-poll", "page": MATCH}, "n_intervals"),
+    State({"type": "pending-auto-load", "page": MATCH}, "data"),
+    prevent_initial_call=True,
+)
+def update_page_jobs_panel(_n_intervals, pending_job_id):
+    outputs_list = ctx.outputs_list
+    out = outputs_list[0] if isinstance(outputs_list, list) else outputs_list
+    page_id = out['id']['page']
+
+    load_request = no_update
+    pending_output = no_update
+    if pending_job_id is not None:
+        pending_job = get_job(pending_job_id)
+        if pending_job is not None and pending_job.status == "done":
+            load_request = pending_job_id
+            pending_output = None  # consumed — stop watching it
+
+    return _render_page_jobs(page_id), load_request, pending_output
+
+
+@callback(
+    Output({"type": "job-load-request", "page": MATCH}, "data"),
+    Input({"type": "load-job-result-btn", "page": MATCH, "job": ALL}, "n_clicks"),
+    prevent_initial_call=True,
+)
+def request_job_load(n_clicks_list):
+    if not n_clicks_list or not any(n_clicks_list):
+        return no_update
+    triggered_id = ctx.triggered_id
+    if not triggered_id:
+        return no_update
+    return triggered_id["job"]
+
+
+@callback(
+    Output({"type": "delete-job-modal", "page": MATCH}, "opened"),
+    Output({"type": "delete-job-target", "page": MATCH}, "data"),
+    Output({"type": "delete-job-modal-text", "page": MATCH}, "children"),
+    Input({"type": "delete-job-btn", "page": MATCH, "job": ALL}, "n_clicks"),
+    prevent_initial_call=True,
+)
+def ask_delete_page_job(n_clicks_list):
+    # The panel re-renders every poll, which re-adds the buttons with n_clicks=None and fires
+    # this callback — only act on a real click.
+    triggered_id = ctx.triggered_id
+    if not triggered_id or not ctx.triggered or not ctx.triggered[0]["value"]:
+        return no_update, no_update, no_update
+    job = get_job(triggered_id["job"])
+    if job is None:
+        return no_update, no_update, no_update
+    name = (job.params or {}).get("fit_name") or job.label or job.job_type
+    text = [f"Remove the job “{name}” from the list? ",
+            "Fits already saved from it are kept."]
+    return True, job.id, text
+
+
+@callback(
+    Output({"type": "page-jobs-panel", "page": MATCH}, "children", allow_duplicate=True),
+    Output({"type": "delete-job-modal", "page": MATCH}, "opened", allow_duplicate=True),
+    Output({"type": "delete-job-target", "page": MATCH}, "data", allow_duplicate=True),
+    Input({"type": "delete-job-confirm", "page": MATCH}, "n_clicks"),
+    Input({"type": "delete-job-cancel", "page": MATCH}, "n_clicks"),
+    State({"type": "delete-job-target", "page": MATCH}, "data"),
+    prevent_initial_call=True,
+)
+def resolve_delete_page_job(_confirm, _cancel, job_id):
+    triggered_id = ctx.triggered_id
+    if not triggered_id:
+        return no_update, no_update, no_update
+    if triggered_id["type"] == "delete-job-cancel" or job_id is None:
+        return no_update, False, None
+    delete_job(job_id)
+    return _render_page_jobs(triggered_id["page"]), False, None
+
+
+@callback(
+    Output({"type": "page-jobs-panel", "page": MATCH}, "children", allow_duplicate=True),
+    Input({"type": "save-job-btn", "page": MATCH, "job": ALL}, "n_clicks"),
+    prevent_initial_call=True,
+)
+def save_page_job(n_clicks_list):
+    # Same re-render guard as ask_delete_page_job.
+    triggered_id = ctx.triggered_id
+    if not triggered_id or not ctx.triggered or not ctx.triggered[0]["value"]:
+        return no_update
+    job = get_job(triggered_id["job"])
+    if job is None or not is_unsaved(job) or not job.result_data:
+        return no_update
+    try:
+        save_fit_from_job(job, job.result_data)
+        update_job(job.id, saved=True)
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        update_job(job.id, message=f"Save failed: {e}")
+    return _render_page_jobs(triggered_id["page"])

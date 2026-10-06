@@ -17,6 +17,7 @@ from deeranalysis.utils.job_tracking import create_job, get_job
 import deerlab as dl
 dash.register_page(__name__)
 import deeranalysis.components.fit_page_components as fpc
+from deeranalysis.components.jobs_drawer import queued_jobs_panel
 from deeranalysis.components.warnings import list_of_warnings_modal
 from deeranalysis.utils.deerlab_fitwarnings import check_fit_results, warnings_to_dict
 
@@ -54,7 +55,7 @@ layout = html.Div([
             dmc.Space(h=10),
             fpc.fit_save_download_buttons(page_id),
             html.Div(id='dn-fit-status'),
-            fpc.queued_jobs_panel(page_id),
+            queued_jobs_panel(page_id),
         ], width=3),
         dbc.Col([
             html.Div([
@@ -106,9 +107,10 @@ def update_dropdown(pathname):
     Input({"type":"run-fit-btn","page":page_id}, 'n_clicks'),
     State({'type': 'dataset-dropdown', 'page': page_id}, 'value'),
     State('dn-model-size', 'value'),
+    State({'type': 'fit-name-input', 'page': page_id}, 'value'),
     prevent_initial_call=True,
 )
-def queue_fit(n_clicks, dataset_id, model_size):
+def queue_fit(n_clicks, dataset_id, model_size, fit_name):
     if not dataset_id:
         fpc.notify('No Dataset', 'Please select a dataset first.', 'mdi:alert-circle-outline', 'yellow')
         return dash.no_update, dash.no_update
@@ -126,7 +128,7 @@ def queue_fit(n_clicks, dataset_id, model_size):
         return alert, dash.no_update
     session.close()
 
-    params = {'dataset_id': dataset_id, 'model_size': model_size}
+    params = {'fit_name': fit_name, 'dataset_id': dataset_id, 'model_size': model_size}
     job_id = create_job(job_type='deernet_fit', page=page_id, label=label, params=params)
     fpc.notify('Fit Queued', f'Queued DeerNet fit for {label}.', 'mdi:clock-outline', 'blue')
     return dash.no_update, job_id

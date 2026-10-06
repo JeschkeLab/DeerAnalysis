@@ -20,6 +20,7 @@ from deeranalysis.components.warnings import list_of_warnings_modal
 from deeranalysis.utils.deerlab_fitwarnings import check_fit_results, warnings_to_dict
 
 import deeranalysis.components.fit_page_components as fpc
+from deeranalysis.components.jobs_drawer import queued_jobs_panel
 
 dash.register_page(__name__)
 page_id='background'
@@ -63,7 +64,7 @@ layout = html.Div([
             dmc.Space(h=10),
             fpc.fit_save_download_buttons(page_id),
             html.Div(id={'type':'fit-status', 'page': page_id}),
-            fpc.queued_jobs_panel(page_id),
+            queued_jobs_panel(page_id),
         ], width=3),
         
         dbc.Col([
@@ -140,9 +141,10 @@ def update_fit_options(bg_model_option):
     State({'type': 'model-params-store', 'page': page_id}, 'data'),
     State({"type": "bootstrap-toggle", "page": page_id}, 'checked'),
     State({"type": "bootstrap-samples", "page": page_id}, 'value'),
+    State({'type': 'fit-name-input', 'page': page_id}, 'value'),
     prevent_initial_call=True
 )
-def queue_fit(n_clicks, dataset_id, fit_options, model_params, bootstrap_enabled, bootstrap_samples):
+def queue_fit(n_clicks, dataset_id, fit_options, model_params, bootstrap_enabled, bootstrap_samples, fit_name):
     if not dataset_id:
         fpc.notify('No Dataset', 'Please select a dataset first.', 'mdi:alert-circle-outline', 'yellow')
         return dash.no_update, dash.no_update
@@ -153,6 +155,7 @@ def queue_fit(n_clicks, dataset_id, fit_options, model_params, bootstrap_enabled
     session.close()
 
     params = {
+        'fit_name': fit_name,
         'dataset_id': dataset_id,
         'fit_options': fit_options,
         'model_params': model_params,
@@ -232,9 +235,10 @@ def load_queued_result(job_id):
     Input({"type": "save-fit-btn", "page": page_id}, 'n_clicks'),
     State({'type': 'dataset-dropdown', 'page': page_id}, 'value'),
     State({'type':'fit-results-store','page': page_id}, 'data'),
+    State({'type': 'fit-name-input', 'page': page_id}, 'value'),
     prevent_initial_call=True
 )
-def save_fit(n_clicks, dataset_id, dataset_store):
+def save_fit(n_clicks, dataset_id, dataset_store,fit_name):
     if not dataset_store or not dataset_id:
         print(f"No fit results to save or no dataset selected.")
         return dash.no_update
@@ -242,7 +246,7 @@ def save_fit(n_clicks, dataset_id, dataset_store):
     session = get_session()
     new_fit = Fit(
         dataset_id=dataset_id,
-        name=name_dataset_from_dict(dataset_store),
+        name=fit_name,
         **dataset_store
     )
     session.add(new_fit)

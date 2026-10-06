@@ -12,6 +12,7 @@ from deeranalysis.components.model_edit_modal import create_model_edit_modal
 
 
 import deeranalysis.components.fit_page_components as fpc
+from deeranalysis.components.jobs_drawer import queued_jobs_panel
 import deeranalysis.components.fpc_global as fpcg
 from deeranalysis.utils.deerlab_options import background_models, name_dataset_from_dict
 from deeranalysis.utils.deerlab_global import build_global_model_data
@@ -98,7 +99,7 @@ layout = html.Div([
             fpc.fit_save_download_buttons(page_id),
 
             html.Div(id={'type':'fit-status','page': page_id}),
-            fpc.queued_jobs_panel(page_id),
+            queued_jobs_panel(page_id),
         ], width=3),
         
         dbc.Col([
@@ -206,7 +207,7 @@ def open_model_edit_modal(n_clicks, dataset_ids, fit_options,existing_overrides)
 @callback(
     Output({'type': 'fit_options', 'page': page_id}, 'data'),
     Input({'type': 'bg_model', 'page': page_id}, 'value'),
-    Input({'type': 'compactness-option', 'page': page_id}, 'checked'),
+    Input({'type': 'compactness-toggle', 'page': page_id}, 'checked'),
     Input({"type": 'distance-axis', "page": page_id}, 'value'),
     Input({'type': 'pathways-options', 'page': page_id}, 'value'),
     Input({'type': 'global-fitting','page': page_id}, 'value'),
@@ -250,9 +251,10 @@ def update_fit_options(bg_model_option,compactness,distance_axis,pathways_option
     State({'type': 'model-params-store', 'page': page_id}, 'data'),
     State({"type": "bootstrap-toggle", "page": page_id}, 'checked'),
     State({"type": "bootstrap-samples", "page": page_id}, 'value'),
+    State({'type': 'fit-name-input', 'page': page_id}, 'value'),
     prevent_initial_call=True,
 )
-def queue_fit(n_clicks, dataset_ids, fit_options, model_overrides, bootstrap_enabled, bootstrap_samples):
+def queue_fit(n_clicks, dataset_ids, fit_options, model_overrides, bootstrap_enabled, bootstrap_samples, fit_name):
     if not dataset_ids:
         fpc.notify('No Datasets', 'Please select between 2 and 5 datasets first.', 'mdi:alert-circle-outline', 'yellow')
         return dash.no_update, dash.no_update
@@ -266,6 +268,7 @@ def queue_fit(n_clicks, dataset_ids, fit_options, model_overrides, bootstrap_ena
     label = ", ".join(names)
 
     params = {
+        'fit_name': fit_name,
         'dataset_ids': dataset_ids,
         'fit_options': fit_options,
         'model_overrides': model_overrides,
@@ -317,7 +320,7 @@ def autofill_fit_name(bg_model, pathways, compactness, bootstrap, dataset_id, cu
     Output({"type":"save-fit-btn","page":page_id}, 'disabled', allow_duplicate=True),
     Output({"type":"download-fit-btn","page":page_id}, 'disabled', allow_duplicate=True),
     Output({'type': 'bg_model', 'page': page_id}, 'value', allow_duplicate=True),
-    Output({'type': 'compactness-option', 'page': page_id}, 'checked', allow_duplicate=True),
+    Output({'type': 'compactness-toggle', 'page': page_id}, 'checked', allow_duplicate=True),
     Output({"type": "distance-axis", "page": page_id}, 'value', allow_duplicate=True),
     Output({'type': 'pathways-options', 'page': page_id}, 'value', allow_duplicate=True),
     Output({'type': 'global-fitting', 'page': page_id}, 'value', allow_duplicate=True),

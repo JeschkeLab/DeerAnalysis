@@ -20,6 +20,7 @@ from deeranalysis.utils.deerlab_options import background_models, plotly_goodnes
 from deeranalysis.utils.deerlab_fitwarnings import check_fit_results, warnings_to_dict, warnings_from_dict
 
 import deeranalysis.components.fit_page_components as fpc
+from deeranalysis.components.jobs_drawer import queued_jobs_panel
 
 dash.register_page(__name__)
 page_id='non-parametric'
@@ -44,7 +45,7 @@ layout = html.Div([
             dmc.Space(h=10),     
             dmc.Select(
                 label='Background Model',
-                id='np-bg-model',
+                id={'type': 'bg_model', 'page': page_id},
                 data=background_models,
                 value='bg_hom3d',
                 clearable=False,
@@ -74,7 +75,7 @@ layout = html.Div([
             dmc.Space(h=10),
             
             html.Div(id='np-fit-status'),
-            fpc.queued_jobs_panel(page_id),
+            queued_jobs_panel(page_id),
         ], width=3),
         
         dbc.Col([
@@ -139,7 +140,7 @@ def update_adv_options(regparam_method,search_method, grid_size, fixed_alpha):
     Output({'type': 'model-store', 'page': page_id}, 'data'),
     Input({'type': 'open-model-edit-btn', 'page': page_id}, 'n_clicks'),
     State({'type': 'dataset-dropdown', 'page': page_id}, 'value'),
-    State('np-bg-model', 'value'),
+    State({'type': 'bg_model', 'page': page_id}, 'value'),
     State({'type': 'pathways-options', 'page': page_id}, 'value'),
     State({"type": "distance-axis", "page": page_id}, 'value'),
     State({'type': 'model-params-store', 'page': page_id}, 'data'),
@@ -166,20 +167,21 @@ def open_model_edit_modal(n_clicks, dataset_id, bg_model_name, pathways, distanc
 @callback(
     Output('np-fit-status', 'children', allow_duplicate=True),
     Output({'type': 'pending-auto-load', 'page': page_id}, 'data', allow_duplicate=True),
-    Input('np-run-fit-btn', 'n_clicks'),
+    Input({"type": "run-fit-btn", "page": page_id}, 'n_clicks'),
     State({'type': 'dataset-dropdown', 'page': page_id}, 'value'),
-    State('np-bg-model', 'value'),
-    State('np-compactness-option', 'checked'),
+    State({'type': 'bg_model', 'page': page_id}, 'value'),
+    State({"type": "compactness-toggle", "page": page_id}, 'checked'),
     State({"type": "distance-axis", "page": page_id}, 'value'),
     State({'type': 'pathways-options', 'page': page_id}, 'value'),
     State({'type': 'adv_options', 'page': page_id}, 'data'),
     State({'type': 'model-params-store', 'page': page_id}, 'data'),
     State({"type": "bootstrap-toggle", "page": page_id}, 'checked'),
     State({"type": "bootstrap-samples", "page": page_id}, 'value'),
+    State({'type': 'fit-name-input', 'page': page_id}, 'value'),
     prevent_initial_call=True,
 )
 def queue_fit(n_clicks, dataset_id, bg_model_option, compactness, distance_axis, pathways_options,
-              adv_options, model_params, bootstrap_enabled, bootstrap_samples):
+              adv_options, model_params, bootstrap_enabled, bootstrap_samples, fit_name):
     if not dataset_id:
         fpc.notify('No Dataset', 'Please select a dataset first.', 'mdi:alert-circle-outline', 'yellow')
         return dash.no_update, dash.no_update
@@ -190,6 +192,7 @@ def queue_fit(n_clicks, dataset_id, bg_model_option, compactness, distance_axis,
     session.close()
 
     params = {
+        'fit_name': fit_name,
         'dataset_id': dataset_id,
         'bg_model_option': bg_model_option,
         'compactness': compactness,
@@ -208,8 +211,8 @@ def queue_fit(n_clicks, dataset_id, bg_model_option, compactness, distance_axis,
 @callback(
     Output({'type': 'pending-auto-load', 'page': page_id}, 'data', allow_duplicate=True),
     Input({'type': 'dataset-dropdown', 'page': page_id}, 'value'),
-    Input('np-bg-model', 'value'),
-    Input('np-compactness-option', 'checked'),
+    Input({'type': 'bg_model', 'page': page_id}, 'value'),
+    Input({"type": "compactness-toggle", "page": page_id}, 'checked'),
     Input({"type": "distance-axis", "page": page_id}, 'value'),
     Input({'type': 'pathways-options', 'page': page_id}, 'value'),
     Input({'type': 'adv_options', 'page': page_id}, 'data'),
@@ -248,11 +251,11 @@ def autofill_fit_name(bg_model, pathways, compactness, bootstrap, dataset_id, cu
 @callback(
     Output({'type':'fit-results-store','page': page_id}, 'data', allow_duplicate=True),
     Output({"type": "fit-results-code", "page": page_id}, 'code', allow_duplicate=True),
-    Output('np-save-fit-btn', 'disabled', allow_duplicate=True),
+    Output({"type": "save-fit-btn", "page": page_id}, 'disabled', allow_duplicate=True),
     Output({'type':"download-fit-btn",'page':page_id}, 'disabled', allow_duplicate=True),
     Output({'type': 'fit-plot-showpathways', 'page': page_id}, 'checked', allow_duplicate=True),
-    Output('np-bg-model', 'value', allow_duplicate=True),
-    Output('np-compactness-option', 'checked', allow_duplicate=True),
+    Output({'type': 'bg_model', 'page': page_id}, 'value', allow_duplicate=True),
+    Output({"type": "compactness-toggle", "page": page_id}, 'checked', allow_duplicate=True),
     Output({"type": "distance-axis", "page": page_id}, 'value', allow_duplicate=True),
     Output({'type': 'pathways-options', 'page': page_id}, 'value', allow_duplicate=True),
     Output({'type': 'adv_options', 'page': page_id}, 'data', allow_duplicate=True),
@@ -285,12 +288,13 @@ def load_queued_result(job_id):
 
 @callback(
     Output('np-fit-status', 'children'),
-    Input('np-save-fit-btn', 'n_clicks'),
-    State( {'type': 'dataset-dropdown', 'page': page_id},'value'),
+    Input({"type": "save-fit-btn", "page": page_id}, 'n_clicks'),
+    State({'type': 'dataset-dropdown', 'page': page_id},'value'),
     State({'type':'fit-results-store','page': page_id}, 'data'),
+    State({'type': 'fit-name-input', 'page': page_id}, 'value'),
     prevent_initial_call=True
 )
-def save_fit(n_clicks, dataset_id,dataset_store):
+def save_fit(n_clicks, dataset_id,dataset_store,fit_name):
     if not dataset_store or not dataset_id:
         print(f"No fit results to save or no dataset selected.")
         return dash.no_update
@@ -299,7 +303,7 @@ def save_fit(n_clicks, dataset_id,dataset_store):
     
     new_fit = Fit(
         dataset_id=dataset_id,
-        name=name_dataset_from_dict(dataset_store),
+        name=fit_name,
         **dataset_store
     )
     

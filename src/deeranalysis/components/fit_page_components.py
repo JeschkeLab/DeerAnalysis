@@ -1,15 +1,15 @@
 import dash_mantine_components as dmc
 from dash_iconify import DashIconify
-from deeranalysis.utils.deerlab_options import regparam_options, plotly_deerlab, plotly_goodness_of_fit,plotly_lcurve,plotly_dipolar_spectrum
-from deeranalysis.utils.database import get_session, Dataset
+from deeranalysis.utils.deerlab_options import regparam_options, plotly_deerlab, plotly_goodness_of_fit,plotly_lcurve,plotly_dipolar_spectrum,background_models
+from deeranalysis.utils.database import get_session, Dataset, Fit
 from deeranalysis.utils import dataarray_from_database_entry
-from deeranalysis.utils.job_tracking import list_jobs_for_page, get_job
 from deeranalysis.components.warnings import number_of_warnings_card, number_of_warnings_children
 from deeranalysis.utils.deerlab_fitwarnings import count_by_level, warnings_from_dict
 from deeranalysis.components.help_modal import help_button
 from dash import dcc, html, callback, Input, Output, State, ALL, MATCH, ctx, no_update
 import deerlab as dl
 import numpy as np
+import re
 
 DEFAULT_FIT_RESULTS_CODE = """Fit Resuls will be displayed here after running the fit. \nThis can include parameters like mean distance, width, and any other relevant metrics."""
 
@@ -120,74 +120,56 @@ def validate_fit_name(name, dataset_id, suggest_new=False):
     str (optional)
         Suggested new name if the given name already exists and suggest_new is True.
 
-def queued_jobs_panel(page_id):
-    """Small panel listing this page's own queued/running/finished jobs, with a 'Load result'
-    action for finished ones. Cancellation happens from the jobs drawer (top bar), not here.
-
-    The job the page itself just queued is loaded into the plot automatically once it finishes
-    (see pending-auto-load store below) — the "Add to Queue -> wait -> see the result"
-    experience should feel like the old synchronous "Run Fit" button, just non-blocking. This
-    is deliberately narrow: each page's queue_fit callback sets pending-auto-load to the new
-    job's id, and a page-specific "invalidate" callback (watching the same inputs queue_fit
-    reads) clears it back to None the moment any parameter changes — so a stale result never
-    silently overwrites a plot whose settings have since moved on. Because pending-auto-load is
-    an in-memory Store, it's also naturally cleared by navigating away and back, so returning to
-    a page never auto-loads a job that finished while you were elsewhere; "Load result" is still
-    offered per job for that case."""
-    return html.Div([
-        dcc.Interval(id={"type": "page-jobs-poll", "page": page_id}, interval=2000),
-        dcc.Store(id={"type": "job-load-request", "page": page_id}),
-        dcc.Store(id={"type": "pending-auto-load", "page": page_id}, storage_type="memory"),
-        html.Div(id={"type": "page-jobs-panel", "page": page_id}),
-    ])
-
-
-@callback(
-    Output({"type": "page-jobs-panel", "page": MATCH}, "children"),
-    Output({"type": "job-load-request", "page": MATCH}, "data", allow_duplicate=True),
-    Output({"type": "pending-auto-load", "page": MATCH}, "data", allow_duplicate=True),
-    Input({"type": "page-jobs-poll", "page": MATCH}, "n_intervals"),
-    State({"type": "pending-auto-load", "page": MATCH}, "data"),
-    prevent_initial_call=True,
-)
-def update_page_jobs_panel(_n_intervals, pending_job_id):
-    outputs_list = ctx.outputs_list
-    out = outputs_list[0] if isinstance(outputs_list, list) else outputs_list
-    page_id = out['id']['page']
-    jobs = list_jobs_for_page(page_id, limit=10)
-
-    load_request = no_update
-    pending_output = no_update
-    if pending_job_id is not None:
-        pending_job = get_job(pending_job_id)
-        if pending_job is not None and pending_job.status == "done":
-            load_request = pending_job_id
-            pending_output = None  # consumed — stop watching it
-
-    if not jobs:
-        return [], load_request, pending_output
-    rows = []
-    for job in jobs:
-        row = [dmc.Text(f"{job.label or job.job_type} — {job.status}", size="xs")]
-        if job.status == "done":
-            row.append(dmc.Button("Load result", size="xs", variant="subtle",
-                                   id={"type": "load-job-result-btn", "page": page_id, "job": job.id}))
-        rows.append(dmc.Group(row, justify="space-between", gap="xs"))
-    return dmc.Stack(rows, gap=4, mt="xs"), load_request, pending_output
+    """
+    name = (name or "").strip()
+    if not name or not dataset_id:
+        return (True, name or None) if suggest_new else None
+    dataset_ids = dataset_id if isinstance(dataset_id, list) else [dataset_id]
+    session = get_session()
+    exists = session.query(Fit.id).filter(Fit.dataset_id.in_(dataset_ids), Fit.name == name).first() is not None
+    session.close()
+    if suggest_new:
+        if not exists:
+            return True, name
+        else:
+            # Strip any trailing _<number> so "fit_2" suggests "fit_3", not "fit_2_1"
+            base_name = re.sub(r"_\d+$", "", name)
+            session = get_session()
+            existing_names = session.query(Fit.name).filter(Fit.dataset_id.in_(dataset_ids), Fit.name.startswith(base_name, autoescape=True)).all()
+            session.close()
+            # Find the largest suffix number among "base_name" and "base_name_<n>"
+            pattern = re.compile(rf"^{re.escape(base_name)}(?:_(\d+))?$")
+            suffixes = [int(m.group(1) or 0) for (n,) in existing_names if (m := pattern.match(n))]
+            next_suffix = max(suffixes, default=0) + 1
+            return False, f"{base_name}_{next_suffix}"
+    else:
+        if not exists:
+            return True
+        else:
+            return False
 
 
 @callback(
-    Output({"type": "job-load-request", "page": MATCH}, "data"),
-    Input({"type": "load-job-result-btn", "page": MATCH, "job": ALL}, "n_clicks"),
-    prevent_initial_call=True,
+    Output({'type': 'fit-name-input', 'page': MATCH}, 'error'),
+    Input({'type': 'fit-name-input', 'page': MATCH}, 'value'),
+    Input({'type': 'dataset-dropdown', 'page': MATCH}, 'value'),
 )
-def request_job_load(n_clicks_list):
-    if not n_clicks_list or not any(n_clicks_list):
-        return no_update
-    triggered_id = ctx.triggered_id
-    if not triggered_id:
-        return no_update
-    return triggered_id["job"]
+def validate_fit_name_callback(name, dataset_id):
+    """Flag the fit name as an error if a fit with the same name already exists on the selected
+    dataset(s). Handles both single-select and multi-select (global/population) dropdowns."""
+    if not name or not dataset_id:
+        return None
+    
+    if not validate_fit_name(name, dataset_id):
+        return "A fit with this name already exists for the selected dataset(s). Please choose a different name."
+
+
+@callback(
+    Output({"type": "bootstrap-samples", "page": MATCH}, "disabled"),
+    Input({"type": "bootstrap-toggle", "page": MATCH}, "checked"),
+)
+def toggle_bootstrap_samples(checked):
+    return not checked
 
 
 def adv_fit_options_regularisation(page_id):

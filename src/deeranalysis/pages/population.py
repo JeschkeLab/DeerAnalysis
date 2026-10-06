@@ -16,6 +16,7 @@ from deeranalysis.components.model_edit_modal import create_model_edit_modal
 from deeranalysis.utils.deerlab_options import regparam_options,background_models, plotly_goodness_of_fit, plotly_deerlab,dists_stats_to_list, fit_to_dict,name_dataset_from_dict
 from deeranalysis.components.fit_page_components import fit_save_download_buttons,distance_slider,adv_fit_options_parametric
 import deeranalysis.components.fit_page_components as fpc
+from deeranalysis.components.jobs_drawer import queued_jobs_panel
 import deeranalysis.components.fpc_global as fpcg
 
 from deeranalysis.utils.deerlab_population import build_population_model_data
@@ -111,7 +112,7 @@ layout = html.Div([
             dmc.Space(h=10),
             fit_save_download_buttons(page_id),
             html.Div(id={'type':'fit-status','page': page_id}),
-            fpc.queued_jobs_panel(page_id),
+            queued_jobs_panel(page_id),
         ], width=3),
         
         dbc.Col([
@@ -236,9 +237,10 @@ def open_model_edit_modal(n_clicks, dataset_ids, bg_model_name, dd_model_name,
     State({'type': 'model-params-store', 'page': page_id}, 'data'),
     State({"type": "bootstrap-toggle", "page": page_id}, 'checked'),
     State({"type": "bootstrap-samples", "page": page_id}, 'value'),
+    State({'type': 'fit-name-input', 'page': page_id}, 'value'),
     prevent_initial_call=True
 )
-def queue_fit(n_clicks, dataset_ids, fit_options, model_params, bootstrap_enabled, bootstrap_samples):
+def queue_fit(n_clicks, dataset_ids, fit_options, model_params, bootstrap_enabled, bootstrap_samples, fit_name):
     if not dataset_ids:
         fpc.notify('No Datasets', 'Please select between 2 and 5 datasets first.', 'mdi:alert-circle-outline', 'yellow')
         return dash.no_update, dash.no_update
@@ -252,6 +254,7 @@ def queue_fit(n_clicks, dataset_ids, fit_options, model_params, bootstrap_enable
     label = ", ".join(names)
 
     params = {
+        'fit_name': fit_name,
         'dataset_ids': dataset_ids,
         'fit_options': fit_options,
         'model_params': model_params,
