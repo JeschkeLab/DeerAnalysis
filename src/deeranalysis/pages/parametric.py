@@ -24,6 +24,7 @@ from deeranalysis.components.fit_page_components import (
     fit_plot,
     dist_stats_tab,
 )
+from deeranalysis.components.help_modal import help_button
 import deeranalysis.components.fit_page_components as fpc
 from deeranalysis.utils.job_tracking import create_job, get_job
 from deeranalysis.components.warnings import list_of_warnings_modal
@@ -67,28 +68,19 @@ layout = html.Div([
                 value='bg_hom3d'
             ),
             dmc.Space(h=10),
-            dmc.CheckboxGroup(
-                id={'type': 'pathways-options', 'page': page_id},
-                label="Pathways to include:",
-                description="These pathways will be applied to all datasets, if they are feasible for the corresponding experiment.",
-                children=dmc.Group([
-                    dmc.Checkbox(value='1', label='1'),
-                    dmc.Checkbox(value='2', label='2'),
-                    dmc.Checkbox(value='3', label='3'),
-                    dmc.Checkbox(value='4', label='4'),
-                    dmc.Checkbox(value='5', label='5'),
-                ]),
-                value=['1'],
-            ),
+            fpc.pathway_input(page_id),
             dmc.Space(h=10),
-            dmc.NumberInput(
-                id={"type": "multi-start", "page": page_id},
-                label="Number of Multi-Starts",
-                value=1,
-                min=1,
-                step=1,
-                description="Number of multi-starts to perform during fitting. This can help avoid local minima, but will increase fitting time.",
-            ),
+            dmc.Group([
+                dmc.NumberInput(
+                    id={"type": "multi-start", "page": page_id},
+                    label="Number of Multi-Starts",
+                    value=1,
+                    min=1,
+                    step=1,
+                    w="90%",
+                    description="Number of multi-starts to perform during fitting. This can help avoid local minima, but will increase fitting time.",),
+                help_button("multi-start"),
+            ],gap=4),
             fpc.distance_slider(page_id),
             dmc.Space(h=10),
             dmc.Button(
@@ -99,6 +91,8 @@ layout = html.Div([
             ),
             dmc.Space(h=10),
             fpc.bootstrap_controls(page_id),
+            dmc.Space(h=10),
+            fpc.fit_name_input(page_id),
             dmc.Space(h=10),
             fit_save_download_buttons(page_id),
             html.Div(id='p-fit-status'),

@@ -80,19 +80,7 @@ layout = html.Div([
                 allowDeselect=False,
             ),
             dmc.Space(h=10),     
-            dmc.CheckboxGroup(
-                id={'type': 'pathways-options', 'page': page_id},
-                label="Pathways to include:",
-                description="These pathways will be applied to all datasets, if they are feasible for the corresponding experiment.",
-                children=dmc.Group([
-                    dmc.Checkbox(value='1', label='1'),
-                    dmc.Checkbox(value='2', label='2'),
-                    dmc.Checkbox(value='3', label='3'),
-                    dmc.Checkbox(value='4', label='4'),
-                    dmc.Checkbox(value='5', label='5'),
-                ]),
-                value=['1'], # Default selected pathways
-            ),
+            fpc.pathway_input(page_id),
             # Small vertical space
             dmc.Space(h=10),
             dmc.NumberInput(
@@ -119,7 +107,8 @@ layout = html.Div([
             dmc.Space(h=10),
             fpc.bootstrap_controls(page_id),
             dmc.Space(h=10),
-
+            fpc.fit_name_input(page_id),
+            dmc.Space(h=10),
             fit_save_download_buttons(page_id),
             html.Div(id={'type':'fit-status','page': page_id}),
             fpc.queued_jobs_panel(page_id),

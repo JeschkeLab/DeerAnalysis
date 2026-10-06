@@ -66,24 +66,8 @@ layout = html.Div([
                 clearable=False,
                 allowDeselect=False,
             ),
-            dmc.Space(h=10),     
-            dmc.CheckboxGroup(
-                id={'type': 'pathways-options', 'page': page_id},
-                label="Pathways to include:",
-                description="These pathways will be applied to all datasets, if they are feasible for the corresponding experiment.",
-                children=dmc.Group([
-                    dmc.Checkbox(value='1', label='1'),
-                    dmc.Checkbox(value='2', label='2'),
-                    dmc.Checkbox(value='3', label='3'),
-                    dmc.Checkbox(value='4', label='4'),
-                    dmc.Checkbox(value='5', label='5'),
-                ]),
-                value=['1'], # Default selected pathways
-            ),
-            # Small vertical space
-            dmc.Space(h=10),
-            dmc.Text("Adv. Options:", size="sm", fw=500, mb=4),        
-            dmc.Chip('Compactness', id={'type': 'compactness-option', 'page': page_id}, value=False, checked=False),
+            dmc.Space(h=10), 
+            fpc.pathway_input(page_id),    
             dmc.Space(h=10),
             # dmc.Text("Distance Axis:", size="sm", fw=500, mb=4),
             fpc.distance_slider(page_id),
@@ -99,11 +83,17 @@ layout = html.Div([
             value=['pr'],
             )),
             dmc.Space(h=10),
+            dmc.Group([
+                fpc.compactness_controls(page_id),    
+                fpc.bootstrap_controls(page_id),
+            ],gap="md", align="center"),
+
+            dmc.Space(h=10),
+            fpc.fit_name_input(page_id),
+            dmc.Space(h=10),
             fpc.adv_fit_options_regularisation(page_id),            
             dmc.Space(h=10),
             dmc.Button("Edit Dipolar Model", id={'type': 'open-model-edit-btn', 'page': page_id}, color="blue", variant='outline', className="mb-2 ms-1", leftSection=DashIconify(icon='material-symbols:edit', width=20)),
-            dmc.Space(h=10),
-            fpc.bootstrap_controls(page_id),
             dmc.Space(h=10),
             fpc.fit_save_download_buttons(page_id),
 

@@ -59,7 +59,8 @@ layout = html.Div([
             dmc.Space(h=10),
             fpc.bootstrap_controls(page_id),
             dmc.Space(h=10),
-
+            fpc.fit_name_input(page_id),
+            dmc.Space(h=10),
             fpc.fit_save_download_buttons(page_id),
             html.Div(id={'type':'fit-status', 'page': page_id}),
             fpc.queued_jobs_panel(page_id),

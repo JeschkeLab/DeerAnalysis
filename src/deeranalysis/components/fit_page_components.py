@@ -32,12 +32,38 @@ def fit_save_download_buttons(page_id):
 def bootstrap_controls(page_id):
     """Bootstrap uncertainty toggle + sample-count input, placed next to the queue button.
     Enabled/disabled together via the shared toggle_bootstrap_samples callback below."""
-    return dmc.Group([
-        dmc.Switch(id={"type": "bootstrap-toggle", "page": page_id}, label="Bootstrap uncertainty", checked=False),
-        dmc.NumberInput(id={"type": "bootstrap-samples", "page": page_id}, value=250, min=10, max=2000, step=10,
-                         disabled=True, w=110),
-    ], gap="xs", align="end")
+    return dmc.InputWrapper(label="Bootstrap Uncertainty:", children=[
+        dmc.Group([
+            dmc.Switch(id={"type": "bootstrap-toggle", "page": page_id}, label=None, checked=False,size="lg", onLabel="ON", offLabel="OFF"),
+            dmc.NumberInput(id={"type": "bootstrap-samples", "page": page_id}, value=250, min=10, max=2000, step=10,
+                            disabled=True, w=110),
+            help_button("bootstrap", marginTop="0px"),
+    ], gap="xs", align="end")])
 
+def compactness_controls(page_id):
+    """
+    A dmc component for a control that allows the user to toggle compactness on or off. The control consists of a switch and a help button. The switch is used to enable or disable compactness, and the help button provides additional information about compactness when clicked.
+    """
+    return dmc.InputWrapper(label="Compactness:", children=[
+        dmc.Group([
+            dmc.Switch(id={"type": "compactness-toggle", "page": page_id}, label=None, checked=False,size="lg", onLabel="ON", offLabel="OFF"),
+            help_button("compactness", marginTop="0px"),
+    ], gap="xs", align="end")])
+
+def fit_name_input(page_id):
+    """Text input for the fit name, used by the save-fit callback to name the saved fit.
+    The store remembers the last auto-generated name so autofill_fit_name can tell whether the
+    user has typed their own name."""
+    return html.Div([
+        dmc.TextInput(
+                label="Fit Name",
+                id={'type': 'fit-name-input', 'page': page_id},
+                placeholder="Enter a name for the fit",
+                value="",
+                style={'width': '100%'},
+            ),
+        dcc.Store(id={'type': 'fit-name-auto', 'page': page_id}, data=""),
+    ])
 
 def create_fit_name(fit_type,bg_model, pathways, compactness, bootstrap):
     if fit_type == 'non-parametric':
@@ -260,7 +286,7 @@ def adv_fit_options_parametric(page_id):
 
 
 def distance_slider(page_id):
-    return dmc.Stack([dmc.Text("Distance Axis (nm): ", size="sm", fw=500, mb=4),
+    return dmc.InputWrapper(label="Distance Axis (nm):", children=[
         dcc.RangeSlider(
                 id= {"type": "distance-axis", "page": page_id},
                 min=1.25,
@@ -271,7 +297,7 @@ def distance_slider(page_id):
                 allowCross=False,
                 allow_direct_input=True,
                 className="dmc"
-            )],gap=2,)
+            )])
 
 
 def fit_results_tab(page_id):

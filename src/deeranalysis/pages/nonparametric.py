@@ -53,22 +53,26 @@ layout = html.Div([
             dmc.Space(h=10),     
             fpc.pathway_input(page_id),
             # Small vertical space
-            dmc.Space(h=10),        
-            dmc.Chip('Compactness', id='np-compactness-option', value=False, checked=False),
+            dmc.Space(h=10),    
+            
             dmc.Space(h=10),
             fpc.distance_slider(page_id),
             dmc.Space(h=10),
             dmc.Button("Edit Dipolar Model", id={'type': 'open-model-edit-btn', 'page': page_id}, color="blue", variant='outline', className="mb-2 ms-1", leftSection=DashIconify(icon='material-symbols:edit', width=20)),
+            
+            dmc.Space(h=10),
+            dmc.Group([
+                fpc.compactness_controls(page_id),    
+                fpc.bootstrap_controls(page_id),
+            ],gap="md", align="center"),
+            dmc.Space(h=10),
+            fpc.fit_name_input(page_id),
             dmc.Space(h=10),
             fpc.adv_fit_options_regularisation(page_id),
-
             dmc.Space(h=10),
-            fpc.bootstrap_controls(page_id),
+            fpc.fit_save_download_buttons(page_id),
             dmc.Space(h=10),
-
-            dmc.Button("Add to Queue", id="np-run-fit-btn", color="blue",variant='outline', className="mb-2 ms-1",leftSection=DashIconify(icon='material-symbols:play-arrow', width=20)),
-            dmc.Button("Save Fit", id="np-save-fit-btn", color="green",variant='outline', className="mb-2 ms-1", disabled=True, leftSection=DashIconify(icon='material-symbols:save', width=20)),
-            dmc.Button("Download", id={'type':"download-fit-btn",'page':page_id}, color="green",variant='outline', className="mb-2 ms-1", disabled=True, leftSection=DashIconify(icon='material-symbols:download', width=20)),
+            
             html.Div(id='np-fit-status'),
             fpc.queued_jobs_panel(page_id),
         ], width=3),

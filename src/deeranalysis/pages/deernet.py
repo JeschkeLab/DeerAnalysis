@@ -48,29 +48,10 @@ layout = html.Div([
                 value='512',
                 className="mb-3"
             ),
-            # dbc.Row([
-            #     dbc.Col([dmc.Select(label='Uncertainty Type',
-            #         id='dn-uncertainty-type',
-            #         data=[
-            #             {'value': 'net', 'label': 'Network ensemble'},
-            #             # {'value': 'boot', 'label': 'Bootstrap'},
-            #         ],
-            #         value='net',
-            #         className="mb-3"
-            #     )]),
-            #     dbc.Col([dmc.NumberInput(
-            #         label="Number of Bootstrap Samples",
-            #         id="dn-bootstrap-samples",
-            #         min=10,
-            #         max=1000,
-            #         step=10,
-            #         value=100,
-            #         className="mb-3",
-            #         disabled=True
-            #     )]),
-            # ]),
 
-            html.Br(),
+            dmc.Space(h=10),
+            fpc.fit_name_input(page_id),
+            dmc.Space(h=10),
             fpc.fit_save_download_buttons(page_id),
             html.Div(id='dn-fit-status'),
             fpc.queued_jobs_panel(page_id),
