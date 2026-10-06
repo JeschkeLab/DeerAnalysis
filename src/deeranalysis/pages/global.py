@@ -301,6 +301,25 @@ def invalidate_pending_auto_load(*_args):
     match what's on screen — stop watching for it so it doesn't silently auto-load."""
     return None
 
+@callback(
+    Output({'type': 'fit-name-input', 'page': page_id}, 'value'),
+    Output({'type': 'fit-name-auto', 'page': page_id}, 'data'),
+    Input({'type': 'bg_model', 'page': page_id}, 'value'),
+    Input({'type': 'pathways-options', 'page': page_id}, 'value'),
+    Input({"type": "compactness-toggle", "page": page_id}, 'checked'),
+    Input({"type": "bootstrap-toggle", "page": page_id}, 'checked'),
+    Input({'type': 'dataset-dropdown', 'page': page_id}, 'value'),
+    State({'type': 'fit-name-input', 'page': page_id}, 'value'),
+    State({'type': 'fit-name-auto', 'page': page_id}, 'data'),
+)
+def autofill_fit_name(bg_model, pathways, compactness, bootstrap, dataset_id, current_name, last_auto_name):
+
+    fit_name = fpc.create_fit_name('global', bg_model, pathways, compactness, bootstrap)
+    if fit_name is not None and dataset_id is not None:
+        _, fit_name = fpc.validate_fit_name(fit_name,dataset_id, suggest_new=True)
+    
+    return fpc.autofill_fit_name(fit_name, current_name, last_auto_name)
+
 
 @callback(
     Output({'type': 'fit-results-store-multi', 'page': page_id}, 'data', allow_duplicate=True),
@@ -346,9 +365,10 @@ def load_queued_result(job_id):
     Input({'type':'save-fit-btn','page': page_id}, 'n_clicks'),
     State({'type': 'dataset-dropdown', 'page': page_id},'value'),
     State({'type':'fit-results-store-multi','page': page_id}, 'data'),
+    State({'type': 'fit-name-input', 'page': page_id}, 'value'),
     prevent_initial_call=True
 )
-def save_fit(n_clicks, dataset_ids,dataset_store):
+def save_fit(n_clicks, dataset_ids,dataset_store,fit_name):
     """Saves the current fit results to the database, once for each dataset. The global datasest and sibling fit relantionships are also filled in.
     
     # Get sibling fit IDs
@@ -367,8 +387,6 @@ def save_fit(n_clicks, dataset_ids,dataset_store):
 
     new_fits = []
     session = get_session()
-
-    fit_name = name_dataset_from_dict(dataset_store)
     # Fields shared across all per-dataset Fit rows
     shared = {
         'engine':            dataset_store.get('engine'),

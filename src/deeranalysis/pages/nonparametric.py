@@ -220,6 +220,27 @@ def invalidate_pending_auto_load(*_args):
     return None
 
 
+
+@callback(
+    Output({'type': 'fit-name-input', 'page': page_id}, 'value'),
+    Output({'type': 'fit-name-auto', 'page': page_id}, 'data'),
+    Input({'type': 'bg_model', 'page': page_id}, 'value'),
+    Input({'type': 'pathways-options', 'page': page_id}, 'value'),
+    Input({"type": "compactness-toggle", "page": page_id}, 'checked'),
+    Input({"type": "bootstrap-toggle", "page": page_id}, 'checked'),
+    Input({'type': 'dataset-dropdown', 'page': page_id}, 'value'),
+    State({'type': 'fit-name-input', 'page': page_id}, 'value'),
+    State({'type': 'fit-name-auto', 'page': page_id}, 'data'),
+)
+def autofill_fit_name(bg_model, pathways, compactness, bootstrap, dataset_id, current_name, last_auto_name):
+
+    fit_name = fpc.create_fit_name('non-parametric', bg_model, pathways, compactness, bootstrap)
+    if fit_name is not None and dataset_id is not None:
+        _, fit_name = fpc.validate_fit_name(fit_name,dataset_id, suggest_new=True)
+    
+    return fpc.autofill_fit_name(fit_name, current_name, last_auto_name)
+
+
 @callback(
     Output({'type':'fit-results-store','page': page_id}, 'data', allow_duplicate=True),
     Output({"type": "fit-results-code", "page": page_id}, 'code', allow_duplicate=True),

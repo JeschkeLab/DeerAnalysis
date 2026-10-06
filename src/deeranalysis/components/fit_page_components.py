@@ -39,13 +39,60 @@ def bootstrap_controls(page_id):
     ], gap="xs", align="end")
 
 
-@callback(
-    Output({"type": "bootstrap-samples", "page": MATCH}, "disabled"),
-    Input({"type": "bootstrap-toggle", "page": MATCH}, "checked"),
-)
-def toggle_bootstrap_samples(checked):
-    return not checked
+def create_fit_name(fit_type,bg_model, pathways, compactness, bootstrap):
+    if fit_type == 'non-parametric':
+        fit_label = 'NP'
+    elif fit_type == 'background':
+        fit_label = 'BG'
+    elif fit_type == 'parametric':
+        fit_label = 'P'
+    elif fit_type == 'global':
+        fit_label = 'G'
+    elif fit_type == 'population':
+        fit_label = 'POP'
+    elif fit_type.lower() == 'deernet':
+        fit_label = 'DN'
+    else:
+        fit_label = 'N/A'
+    parts = [fit_label]
+    if bg_model:
+        parts.append(next((m['label'] for m in background_models if m['value'] == bg_model), bg_model))
+    if pathways:
+        parts.append("[" + ",".join(sorted(pathways, key=int))+"]")
+    if compactness:
+        parts.append("comp.")
+    if bootstrap:
+        parts.append("BS")
+    return " - ".join(parts)
 
+
+def autofill_fit_name(new_name, current_name, last_auto_name):
+    """Returns (input value, auto-name store) for a page's fit-name autofill callback.
+    The input is only overwritten while it is empty or still holds the previous auto-generated
+    name, so a name the user typed themselves is kept."""
+    if current_name and current_name != last_auto_name:
+        return no_update, new_name
+    return new_name, new_name
+
+def validate_fit_name(name, dataset_id, suggest_new=False):
+    """
+    Checks a fit name against the database for a given dataset_id (or list of dataset_ids). If a fit with the same name already exists, returns an error message. 
+    If suggest_new is True, returns a new suggested name by appending a number to the base name. If the name is valid, returns None.
+
+    Parameters:
+    -----------
+    name: str
+        The fit name to validate.
+    dataset_id: int or list of int
+        The dataset ID(s) to check against.
+    suggest_new: bool, optional
+        If True, suggests a new name if the given name already exists. Default is False.
+    Returns:
+    -----------
+    bool
+        True if the name is valid, False if it already exists
+    str (optional)
+        Suggested new name if the given name already exists and suggest_new is True.
 
 def queued_jobs_panel(page_id):
     """Small panel listing this page's own queued/running/finished jobs, with a 'Load result'

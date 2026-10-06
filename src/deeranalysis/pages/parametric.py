@@ -236,6 +236,26 @@ def invalidate_pending_auto_load(*_args):
     return None
 
 
+
+@callback(
+    Output({'type': 'fit-name-input', 'page': page_id}, 'value'),
+    Output({'type': 'fit-name-auto', 'page': page_id}, 'data'),
+    Input({'type': 'bg_model', 'page': page_id}, 'value'),
+    Input({'type': 'pathways-options', 'page': page_id}, 'value'),
+    Input({"type": "bootstrap-toggle", "page": page_id}, 'checked'),
+    Input({'type': 'dataset-dropdown', 'page': page_id}, 'value'),
+    State({'type': 'fit-name-input', 'page': page_id}, 'value'),
+    State({'type': 'fit-name-auto', 'page': page_id}, 'data'),
+)
+def autofill_fit_name(bg_model, pathways, bootstrap, dataset_id, current_name, last_auto_name):
+
+    fit_name = fpc.create_fit_name('parametric', bg_model, pathways, False, bootstrap)
+    if fit_name is not None and dataset_id is not None:
+        _, fit_name = fpc.validate_fit_name(fit_name,dataset_id, suggest_new=True)
+    
+    return fpc.autofill_fit_name(fit_name, current_name, last_auto_name)
+
+
 @callback(
     Output({'type':'fit-results-store','page': page_id}, 'data', allow_duplicate=True),
     Output({"type": "fit-results-code", "page": page_id}, 'code', allow_duplicate=True),
@@ -279,9 +299,11 @@ def load_queued_result(job_id):
     Input({"type": "save-fit-btn", "page": page_id}, 'n_clicks'),
     State({'type': 'dataset-dropdown', 'page': page_id}, 'value'),
     State({'type':'fit-results-store','page': page_id}, 'data'),
+    State({'type': 'fit-name-input', 'page': page_id}, 'value'),
+
     prevent_initial_call=True
 )
-def save_fit(n_clicks, dataset_id, dataset_store):
+def save_fit(n_clicks, dataset_id, dataset_store,fit_name):
     if not dataset_store or not dataset_id:
         print(f"No fit results to save or no dataset selected.")
         return dash.no_update
@@ -289,7 +311,7 @@ def save_fit(n_clicks, dataset_id, dataset_store):
     session = get_session()
     new_fit = Fit(
         dataset_id=dataset_id,
-        name=name_dataset_from_dict(dataset_store),
+        name=fit_name,
         **dataset_store
     )
     session.add(new_fit)
