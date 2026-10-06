@@ -6,7 +6,7 @@ from deeranalysis.utils import dataarray_from_database_entry
 from deeranalysis.utils.job_tracking import list_jobs_for_page, get_job
 from deeranalysis.components.warnings import number_of_warnings_card, number_of_warnings_children
 from deeranalysis.utils.deerlab_fitwarnings import count_by_level, warnings_from_dict
-
+from deeranalysis.components.help_modal import help_button
 from dash import dcc, html, callback, Input, Output, State, ALL, MATCH, ctx, no_update
 import deerlab as dl
 import numpy as np

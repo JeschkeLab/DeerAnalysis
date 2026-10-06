@@ -21,7 +21,7 @@ from deeranalysis.components.dmc_theme import da_dmctheme
 from deeranalysis.utils.logs_plugin import initialize_logs_api,check_logs_api_key
 from deeranalysis.utils.database import get_appearance_settings
 from deeranalysis.utils.deerlab_options import resolve_plot_template
-
+from deeranalysis.components.help_modal import help_modal
 import plotly.io as pio
 
 pio.templates["compact"] = dict(
@@ -210,6 +210,7 @@ app.layout = dmc.MantineProvider(
         ),
         create_setup_modal(),
         new_version_modal(),
+        help_modal(),
         *jobs_drawer(),
     ],
     theme=da_dmctheme,

@@ -96,3 +96,12 @@ html[data-mantine-color-scheme="dark"] .ag-theme-alpine {
     letter-spacing: -0.02em;
     padding: 0;
 }
+/* Help modal: larger body text, headers unchanged */
+.help-markdown p,
+.help-markdown li,
+.help-markdown td,
+.help-markdown th,
+.help-markdown blockquote {
+    font-size: 1.2rem;
+    line-height: 1.6;
+}
