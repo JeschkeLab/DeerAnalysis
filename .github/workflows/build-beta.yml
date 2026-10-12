@@ -16,10 +16,10 @@ jobs:
         include:
           - os: macos-latest
             spec: DeerAnalysis_MacOS.spec
-            python-version: '3.12'
+            python-version: '3.14'
           - os: windows-latest
             spec: DeerAnalysis_Win.spec
-            python-version: '3.12'
+            python-version: '3.14'
 
     steps:
       - name: Checkout code
