@@ -101,7 +101,7 @@ jobs:
           flatpak remote-add --user --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
 
       - name: Install Flatpak SDK
-        run: flatpak install --user -y --noninteractive flathub org.gnome.Platform//50 org.gnome.Sdk//50
+        run: flatpak install --user -y --noninteractive flathub org.gnome.Platform//51 org.gnome.Sdk//51
 
       - name: Get version
         id: get_version
