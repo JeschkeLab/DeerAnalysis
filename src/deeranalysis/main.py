@@ -130,6 +130,12 @@ def wait_for_dash(window):
             time.sleep(0.2)
 
 if __name__ == "__main__":
+    # Background jobs (see components/jobs_drawer.py) run via DiskcacheManager with the
+    # "spawn" start method. On Windows, a PyInstaller-frozen spawned child re-executes this
+    # entry point, so freeze_support() must run first to stop it relaunching the whole app.
+    import multiprocess
+    multiprocess.freeze_support()
+
     # Start Dash in a separate thread
     dash_thread = threading.Thread(target=run_dash)
     dash_thread.daemon = True

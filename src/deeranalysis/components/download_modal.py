@@ -9,6 +9,7 @@ import traceback
 import zipfile
 from deeranalysis.utils.io import datasetSQL_to_file, fitSQL_to_file, save_bruker_bes3t,FitResult_to_file
 from deeranalysis.utils.database import get_session, Dataset, Fit
+from sqlalchemy.orm import undefer
 from deerlab import save, json_loads
 
 def _is_pywebview():
@@ -487,7 +488,7 @@ def _download_fit(n_clicks, fit_id, fmt, filename):
     else:
 
         session = get_session()
-        fit_entry = session.query(Fit).filter_by(id=fit_id).first()
+        fit_entry = session.query(Fit).options(undefer(Fit.data)).filter_by(id=fit_id).first()
         dataset_entry = session.query(Dataset).filter_by(id=fit_entry.dataset_id).first()
         session.close()
 

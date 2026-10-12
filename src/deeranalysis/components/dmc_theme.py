@@ -20,6 +20,8 @@ da_dmctheme={
             "NumberInput": {"defaultProps": {"size": "xs"}},
             "Switch": {"defaultProps": {"size": "xs"}},
             "Checkbox": {"defaultProps": {"size": "xs"}},
+            "CheckboxGroup": {"defaultProps": {"size": "xs"}},
+            "InputWrapper": {"defaultProps": {"size": "xs"}},
             "Tabs": {"defaultProps": {"size": "sm"}},
             "NavLink": {"defaultProps": {"size": "sm"}},
             "Text": {"defaultProps": {"size": "sm"}},

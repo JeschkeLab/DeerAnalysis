@@ -1,23 +1,175 @@
 import dash_mantine_components as dmc
 from dash_iconify import DashIconify
-from deeranalysis.utils.deerlab_options import regparam_options, plotly_deerlab, plotly_goodness_of_fit,plotly_lcurve,plotly_dipolar_spectrum
-from deeranalysis.utils.database import get_session, Dataset
+from deeranalysis.utils.deerlab_options import regparam_options, plotly_deerlab, plotly_goodness_of_fit,plotly_lcurve,plotly_dipolar_spectrum,background_models
+from deeranalysis.utils.database import get_session, Dataset, Fit
 from deeranalysis.utils import dataarray_from_database_entry
 from deeranalysis.components.warnings import number_of_warnings_card, number_of_warnings_children
 from deeranalysis.utils.deerlab_fitwarnings import count_by_level, warnings_from_dict
-
-from dash import dcc, html, callback, Input, Output, State, ALL, MATCH, no_update
+from deeranalysis.components.help_modal import help_button
+from dash import dcc, html, callback, Input, Output, State, ALL, MATCH, ctx, no_update
 import deerlab as dl
 import numpy as np
+import re
 
 DEFAULT_FIT_RESULTS_CODE = """Fit Resuls will be displayed here after running the fit. \nThis can include parameters like mean distance, width, and any other relevant metrics."""
 
+def notify(title, message, icon, color, position='top-center'):
+    import dash
+    dash.set_props('notification-container', {'sendNotifications': [dict(
+        title=title, message=message,
+        icon=DashIconify(icon=icon), color=color, duration=4000, position=position,
+    )]})
+
+
 def fit_save_download_buttons(page_id):
     return dmc.Group([
-            dmc.Button("Run Fit", id={"type":"run-fit-btn","page":page_id}, color="blue",variant='outline', className="mb-2 ms-1",leftSection=DashIconify(icon='material-symbols:play-arrow', width=20)),
+            dmc.Button("Add to Queue", id={"type":"run-fit-btn","page":page_id}, color="blue",variant='outline', className="mb-2 ms-1",leftSection=DashIconify(icon='material-symbols:play-arrow', width=20)),
             dmc.Button("Save Fit", id={"type":"save-fit-btn","page":page_id}, color="green",variant='outline', className="mb-2 ms-1", disabled=True, leftSection=DashIconify(icon='material-symbols:save', width=20)),
             dmc.Button("Download", id={"type":"download-fit-btn","page":page_id}, color="green",variant='outline', className="mb-2 ms-1", disabled=True, leftSection=DashIconify(icon='material-symbols:download', width=20)),
         ],gap="xs",)
+
+
+def bootstrap_controls(page_id):
+    """Bootstrap uncertainty toggle + sample-count input, placed next to the queue button.
+    Enabled/disabled together via the shared toggle_bootstrap_samples callback below."""
+    return dmc.InputWrapper(label="Bootstrap Uncertainty:", children=[
+        dmc.Group([
+            dmc.Switch(id={"type": "bootstrap-toggle", "page": page_id}, label=None, checked=False,size="lg", onLabel="ON", offLabel="OFF"),
+            dmc.NumberInput(id={"type": "bootstrap-samples", "page": page_id}, value=250, min=10, max=2000, step=10,
+                            disabled=True, w=110),
+            help_button("bootstrap", marginTop="0px"),
+    ], gap="xs", align="end")])
+
+def compactness_controls(page_id):
+    """
+    A dmc component for a control that allows the user to toggle compactness on or off. The control consists of a switch and a help button. The switch is used to enable or disable compactness, and the help button provides additional information about compactness when clicked.
+    """
+    return dmc.InputWrapper(label="Compactness:", children=[
+        dmc.Group([
+            dmc.Switch(id={"type": "compactness-toggle", "page": page_id}, label=None, checked=False,size="lg", onLabel="ON", offLabel="OFF"),
+            help_button("compactness", marginTop="0px"),
+    ], gap="xs", align="end")])
+
+def fit_name_input(page_id):
+    """Text input for the fit name, used by the save-fit callback to name the saved fit.
+    The store remembers the last auto-generated name so autofill_fit_name can tell whether the
+    user has typed their own name."""
+    return html.Div([
+        dmc.TextInput(
+                label="Fit Name",
+                id={'type': 'fit-name-input', 'page': page_id},
+                placeholder="Enter a name for the fit",
+                value="",
+                style={'width': '100%'},
+            ),
+        dcc.Store(id={'type': 'fit-name-auto', 'page': page_id}, data=""),
+    ])
+
+def create_fit_name(fit_type,bg_model, pathways, compactness, bootstrap):
+    if fit_type == 'non-parametric':
+        fit_label = 'NP'
+    elif fit_type == 'background':
+        fit_label = 'BG'
+    elif fit_type == 'parametric':
+        fit_label = 'P'
+    elif fit_type == 'global':
+        fit_label = 'G'
+    elif fit_type == 'population':
+        fit_label = 'POP'
+    elif fit_type.lower() == 'deernet':
+        fit_label = 'DN'
+    else:
+        fit_label = 'N/A'
+    parts = [fit_label]
+    if bg_model:
+        parts.append(next((m['label'] for m in background_models if m['value'] == bg_model), bg_model))
+    if pathways:
+        parts.append("[" + ",".join(sorted(pathways, key=int))+"]")
+    if compactness:
+        parts.append("comp.")
+    if bootstrap:
+        parts.append("BS")
+    return " - ".join(parts)
+
+
+def autofill_fit_name(new_name, current_name, last_auto_name):
+    """Returns (input value, auto-name store) for a page's fit-name autofill callback.
+    The input is only overwritten while it is empty or still holds the previous auto-generated
+    name, so a name the user typed themselves is kept."""
+    if current_name and current_name != last_auto_name:
+        return no_update, new_name
+    return new_name, new_name
+
+def validate_fit_name(name, dataset_id, suggest_new=False):
+    """
+    Checks a fit name against the database for a given dataset_id (or list of dataset_ids). If a fit with the same name already exists, returns an error message. 
+    If suggest_new is True, returns a new suggested name by appending a number to the base name. If the name is valid, returns None.
+
+    Parameters:
+    -----------
+    name: str
+        The fit name to validate.
+    dataset_id: int or list of int
+        The dataset ID(s) to check against.
+    suggest_new: bool, optional
+        If True, suggests a new name if the given name already exists. Default is False.
+    Returns:
+    -----------
+    bool
+        True if the name is valid, False if it already exists
+    str (optional)
+        Suggested new name if the given name already exists and suggest_new is True.
+
+    """
+    name = (name or "").strip()
+    if not name or not dataset_id:
+        return (True, name or None) if suggest_new else None
+    dataset_ids = dataset_id if isinstance(dataset_id, list) else [dataset_id]
+    session = get_session()
+    exists = session.query(Fit.id).filter(Fit.dataset_id.in_(dataset_ids), Fit.name == name).first() is not None
+    session.close()
+    if suggest_new:
+        if not exists:
+            return True, name
+        else:
+            # Strip any trailing _<number> so "fit_2" suggests "fit_3", not "fit_2_1"
+            base_name = re.sub(r"_\d+$", "", name)
+            session = get_session()
+            existing_names = session.query(Fit.name).filter(Fit.dataset_id.in_(dataset_ids), Fit.name.startswith(base_name, autoescape=True)).all()
+            session.close()
+            # Find the largest suffix number among "base_name" and "base_name_<n>"
+            pattern = re.compile(rf"^{re.escape(base_name)}(?:_(\d+))?$")
+            suffixes = [int(m.group(1) or 0) for (n,) in existing_names if (m := pattern.match(n))]
+            next_suffix = max(suffixes, default=0) + 1
+            return False, f"{base_name}_{next_suffix}"
+    else:
+        if not exists:
+            return True
+        else:
+            return False
+
+
+@callback(
+    Output({'type': 'fit-name-input', 'page': MATCH}, 'error'),
+    Input({'type': 'fit-name-input', 'page': MATCH}, 'value'),
+    Input({'type': 'dataset-dropdown', 'page': MATCH}, 'value'),
+)
+def validate_fit_name_callback(name, dataset_id):
+    """Flag the fit name as an error if a fit with the same name already exists on the selected
+    dataset(s). Handles both single-select and multi-select (global/population) dropdowns."""
+    if not name or not dataset_id:
+        return None
+    
+    if not validate_fit_name(name, dataset_id):
+        return "A fit with this name already exists for the selected dataset(s). Please choose a different name."
+
+
+@callback(
+    Output({"type": "bootstrap-samples", "page": MATCH}, "disabled"),
+    Input({"type": "bootstrap-toggle", "page": MATCH}, "checked"),
+)
+def toggle_bootstrap_samples(checked):
+    return not checked
 
 
 def adv_fit_options_regularisation(page_id):
@@ -116,7 +268,7 @@ def adv_fit_options_parametric(page_id):
 
 
 def distance_slider(page_id):
-    return dmc.Stack([dmc.Text("Distance Axis (nm): ", size="sm", fw=500, mb=4),
+    return dmc.InputWrapper(label="Distance Axis (nm):", children=[
         dcc.RangeSlider(
                 id= {"type": "distance-axis", "page": page_id},
                 min=1.25,
@@ -127,7 +279,7 @@ def distance_slider(page_id):
                 allowCross=False,
                 allow_direct_input=True,
                 className="dmc"
-            )],gap=2,)
+            )])
 
 
 def fit_results_tab(page_id):

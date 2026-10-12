@@ -1,20 +1,27 @@
 import dash
 import dash_bootstrap_components as dbc
-from dash import html, dcc, Input, Output, State, ALL, callback, clientside_callback
+from dash import html, dcc, Input, Output, State, ALL, callback, clientside_callback, DiskcacheManager
 from deeranalysis.utils.database import init_db
 from dash_iconify import DashIconify
 import dash_mantine_components as dmc
 import sys
 import os
+import diskcache
+import multiprocess
 from pathlib import Path
+
+
+if multiprocess.get_start_method(allow_none=True) != "spawn":
+    multiprocess.set_start_method("spawn", force=True)
 
 from deeranalysis.components.setup_modal_desktop import create_setup_modal, get_DeerAnalysis_directory
 from deeranalysis.components.new_version_modal import new_version_modal, update_button
+from deeranalysis.components.jobs_drawer import jobs_drawer, jobs_drawer_button
 from deeranalysis.components.dmc_theme import da_dmctheme
 from deeranalysis.utils.logs_plugin import initialize_logs_api
 from deeranalysis.utils.database import get_appearance_settings
 from deeranalysis.utils.deerlab_options import resolve_plot_template
-
+from deeranalysis.components.help_modal import help_modal
 import plotly.io as pio
 
 pio.templates["compact"] = dict(
@@ -55,12 +62,16 @@ if not first_time_setup():
 
 
 
+_job_cache = diskcache.Cache(os.path.join(get_DeerAnalysis_directory(), '.job_cache'))
+background_callback_manager = DiskcacheManager(_job_cache)
+
 app = dash.Dash(__name__,
-                 use_pages=True, 
+                 use_pages=True,
                 #  pages_folder=str(basedir / 'pages'),
                 #  assets_folder=str(basedir / 'assets'),
                  external_stylesheets=[dbc.themes.BOOTSTRAP, dmc.styles.ALL],
-                 suppress_callback_exceptions=True)
+                 suppress_callback_exceptions=True,
+                 background_callback_manager=background_callback_manager)
 server = app.server
 
 def get_icon(icon):
@@ -154,6 +165,7 @@ app.layout = dmc.MantineProvider(
                             ],),
                         dmc.Group([
                             update_button(),
+                            jobs_drawer_button(),
                             html.A(
                                 dmc.ActionIcon(
                                     DashIconify(icon="mdi:cog", width=20),
@@ -197,6 +209,8 @@ app.layout = dmc.MantineProvider(
         ),
         create_setup_modal(),
         new_version_modal(),
+        help_modal(),
+        *jobs_drawer(),
     ],
     theme=da_dmctheme,
     id="mantine-provider",

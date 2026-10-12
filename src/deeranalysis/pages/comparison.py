@@ -224,7 +224,7 @@ def update_slots_visibility(n):
 )
 def update_dataset_dropdowns(pathname):
     session = get_session()
-    datasets = session.query(Dataset).all()
+    datasets = session.query(Dataset.id, Dataset.name).all()
     options = [{'label': ds.name, 'value': str(ds.id)} for ds in datasets]
     session.close()
     return [options] * N_SLOTS_MAX
@@ -239,7 +239,7 @@ def update_fit_dropdowns(dataset_ids):
         if not dataset_id:
             return []
         session = get_session()
-        fits = session.query(Fit).filter_by(dataset_id=dataset_id).all()
+        fits = session.query(Fit.id, Fit.name).filter_by(dataset_id=dataset_id).all()
         options = [{'label': fit.name, 'value': str(fit.id)} for fit in fits]
         session.close()
         return options

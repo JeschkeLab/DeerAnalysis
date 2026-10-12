@@ -24,7 +24,10 @@ from deeranalysis.components.fit_page_components import (
     fit_plot,
     dist_stats_tab,
 )
+from deeranalysis.components.help_modal import help_button
 import deeranalysis.components.fit_page_components as fpc
+from deeranalysis.components.jobs_drawer import queued_jobs_panel
+from deeranalysis.utils.job_tracking import create_job, get_job
 from deeranalysis.components.warnings import list_of_warnings_modal
 from deeranalysis.utils.deerlab_fitwarnings import check_fit_results, warnings_to_dict
 from deeranalysis.utils.deerlab_normal import deerlab_fitting
@@ -66,28 +69,19 @@ layout = html.Div([
                 value='bg_hom3d'
             ),
             dmc.Space(h=10),
-            dmc.CheckboxGroup(
-                id={'type': 'pathways-options', 'page': page_id},
-                label="Pathways to include:",
-                description="These pathways will be applied to all datasets, if they are feasible for the corresponding experiment.",
-                children=dmc.Group([
-                    dmc.Checkbox(value='1', label='1'),
-                    dmc.Checkbox(value='2', label='2'),
-                    dmc.Checkbox(value='3', label='3'),
-                    dmc.Checkbox(value='4', label='4'),
-                    dmc.Checkbox(value='5', label='5'),
-                ]),
-                value=['1'],
-            ),
+            fpc.pathway_input(page_id),
             dmc.Space(h=10),
-            dmc.NumberInput(
-                id={"type": "multi-start", "page": page_id},
-                label="Number of Multi-Starts",
-                value=1,
-                min=1,
-                step=1,
-                description="Number of multi-starts to perform during fitting. This can help avoid local minima, but will increase fitting time.",
-            ),
+            dmc.Group([
+                dmc.NumberInput(
+                    id={"type": "multi-start", "page": page_id},
+                    label="Number of Multi-Starts",
+                    value=1,
+                    min=1,
+                    step=1,
+                    w="90%",
+                    description="Number of multi-starts to perform during fitting. This can help avoid local minima, but will increase fitting time.",),
+                help_button("multi-start"),
+            ],gap=4),
             fpc.distance_slider(page_id),
             dmc.Space(h=10),
             dmc.Button(
@@ -97,8 +91,13 @@ layout = html.Div([
                 leftSection=DashIconify(icon='material-symbols:edit', width=20),
             ),
             dmc.Space(h=10),
+            fpc.bootstrap_controls(page_id),
+            dmc.Space(h=10),
+            fpc.fit_name_input(page_id),
+            dmc.Space(h=10),
             fit_save_download_buttons(page_id),
-            html.Div(id='p-fit-status')
+            html.Div(id='p-fit-status'),
+            queued_jobs_panel(page_id),
         ], width=3),
 
         dbc.Col([
@@ -127,7 +126,7 @@ layout = html.Div([
 )
 def update_dropdown(pathname):
     session = get_session()
-    datasets = session.query(Dataset).all()
+    datasets = session.query(Dataset.id, Dataset.name).all()
     options = [{'label': ds.name, 'value': str(ds.id)} for ds in datasets]
     session.close()
     return options
@@ -140,7 +139,6 @@ def update_dropdown(pathname):
     Input({'type': 'pathways-options', 'page': page_id}, 'value'),
     Input({"type": "distance-axis", "page": page_id}, 'value'),
     Input({"type": "multi-start", "page": page_id}, 'value'),
-    prevent_initial_call=True
 )
 def update_fit_options(bg_model_option, dist_model_name, pathways_options, distance_axis, multi_start):
     return {
@@ -185,83 +183,110 @@ def open_model_edit_modal(n_clicks, dataset_id, bg_model_name, dist_model_name,
 
 
 @callback(
-    Output({'type':'fit-results-store','page': page_id}, 'data'),
-    Output({"type": "fit-results-code", "page": page_id}, 'code', allow_duplicate=True),
-    Output({"type": "save-fit-btn", "page": page_id}, 'disabled'),
-    Output({"type": "download-fit-btn", "page": page_id}, 'disabled'),
-    Output({'type': 'fit-plot-showpathways', 'page': page_id}, 'checked', allow_duplicate=True),
-
+    Output('p-fit-status', 'children', allow_duplicate=True),
+    Output({'type': 'pending-auto-load', 'page': page_id}, 'data', allow_duplicate=True),
     Input({"type": "run-fit-btn", "page": page_id}, 'n_clicks'),
     State({'type': 'dataset-dropdown', 'page': page_id}, 'value'),
     State({'type': 'fit-options', 'page': page_id}, 'data'),
     State({'type': 'model-params-store', 'page': page_id}, 'data'),
-    running=[(Output({"type": "run-fit-btn", "page": page_id}, 'loading'), True, False)],
+    State({"type": "bootstrap-toggle", "page": page_id}, 'checked'),
+    State({"type": "bootstrap-samples", "page": page_id}, 'value'),
+    State({'type': 'fit-name-input', 'page': page_id}, 'value'),
     prevent_initial_call=True
 )
-def run_fit(n_clicks, dataset_id, fit_options, model_params):
-    ctx = dash.callback_context
-    triggered_id = ctx.triggered[0]['prop_id'].split('.')[0]
-
-    try:
-        triggered_id = json.loads(triggered_id)
-    except (json.JSONDecodeError, TypeError):
-        pass
-
+def queue_fit(n_clicks, dataset_id, fit_options, model_params, bootstrap_enabled, bootstrap_samples, fit_name):
     if not dataset_id:
-        return dash.no_update, dash.no_update, dash.no_update, True, True
+        fpc.notify('No Dataset', 'Please select a dataset first.', 'mdi:alert-circle-outline', 'yellow')
+        return dash.no_update, dash.no_update
 
     session = get_session()
     dataset_entry = session.query(Dataset).filter_by(id=dataset_id).first()
-    dataset = dataarray_from_database_entry(dataset_entry)
-    dataset = dataset.assign_coords(t=dataset.t.values)
-    mask = np.array(dataset_entry.mask) if dataset_entry.mask else None
+    label = dataset_entry.name if dataset_entry else f"dataset {dataset_id}"
     session.close()
 
-    distance_axis = fit_options.get('distance_axis', [2, 6]) if fit_options else [2, 6]
-    r = np.linspace(distance_axis[0], distance_axis[1], 100)
-
-    bg_model_option = fit_options.get('bg_model', 'bg_hom3d') if fit_options else 'bg_hom3d'
-    dist_model_name = fit_options.get('dist_model', 'dd_gauss') if fit_options else 'dd_gauss'
-
-    Bmodel = getattr(dl, bg_model_option, dl.bg_hom3d)
-    Pmodel = getattr(dl, dist_model_name, dl.dd_gauss)
-    pathways_options = fit_options.get('pathways_options', ['1']) if fit_options else ['1']
-    pathways = [int(p) for p in pathways_options]
-
-    try:
-        fit = deerlab_fitting(
-            dataset,
-            compactness=False,
-            model=Pmodel,
-            ROI=False,
-            bg_model=Bmodel,
-            r=r,
-            pathways=pathways,
-            multistart=fit_options.get('multistart', 1) if fit_options else 1,
-            model_overrides=model_params,
-            mask=mask,
-        )
-    except Exception as e:
-        print(f"Error during fitting: {e}")
-        return dash.no_update, f"Error during fitting: {e}", True, True, False
-
-    r = fit.r
-    warnings = check_fit_results(fit, fit.Vmodel)
-
-    dist_stats = dl.diststats(r, fit.P, fit.PUncert)
-    dist_stats_dict = dists_stats_to_list(*dist_stats)
-    dist_stats_output = {
-        "head": ["Statistic", "Value", "Confidence Interval (95%)"],
-        "body": [
-            [k, f"{v['value']:.3f}", f"[{v['ci'][0]:.3f}, {v['ci'][1]:.3f}]" if v['ci'] else "N/A"]
-            for k, v in dist_stats_dict.items()
-        ]
+    params = {
+        'fit_name': fit_name,
+        'dataset_id': dataset_id,
+        'fit_options': fit_options,
+        'model_params': model_params,
+        'bootstrap_enabled': bootstrap_enabled,
+        'bootstrap_samples': bootstrap_samples,
     }
-    fit_dict = fit_to_dict(fit)
-    fit_dict['dist_stats'] = dist_stats_dict
-    fit_dict['gof'] = fit.stats
-    fit_dict['warnings'] = warnings_to_dict(warnings)
-    return fit_dict, fit.__str__(), False, False, False
+    job_id = create_job(job_type='parametric_fit', page=page_id, label=label, params=params)
+    fpc.notify('Fit Queued', f'Queued parametric fit for {label}.', 'mdi:clock-outline', 'blue')
+    return dash.no_update, job_id
+
+
+@callback(
+    Output({'type': 'pending-auto-load', 'page': page_id}, 'data', allow_duplicate=True),
+    Input({'type': 'dataset-dropdown', 'page': page_id}, 'value'),
+    Input({'type': 'fit-options', 'page': page_id}, 'data'),
+    Input({'type': 'model-params-store', 'page': page_id}, 'data'),
+    Input({"type": "bootstrap-toggle", "page": page_id}, 'checked'),
+    Input({"type": "bootstrap-samples", "page": page_id}, 'value'),
+    prevent_initial_call=True,
+)
+def invalidate_pending_auto_load(*_args):
+    """Any change to a fit parameter after queueing means the eventual result would no longer
+    match what's on screen — stop watching for it so it doesn't silently auto-load."""
+    return None
+
+
+
+@callback(
+    Output({'type': 'fit-name-input', 'page': page_id}, 'value'),
+    Output({'type': 'fit-name-auto', 'page': page_id}, 'data'),
+    Input({'type': 'bg_model', 'page': page_id}, 'value'),
+    Input({'type': 'pathways-options', 'page': page_id}, 'value'),
+    Input({"type": "bootstrap-toggle", "page": page_id}, 'checked'),
+    Input({'type': 'dataset-dropdown', 'page': page_id}, 'value'),
+    State({'type': 'fit-name-input', 'page': page_id}, 'value'),
+    State({'type': 'fit-name-auto', 'page': page_id}, 'data'),
+)
+def autofill_fit_name(bg_model, pathways, bootstrap, dataset_id, current_name, last_auto_name):
+
+    fit_name = fpc.create_fit_name('parametric', bg_model, pathways, False, bootstrap)
+    if fit_name is not None and dataset_id is not None:
+        _, fit_name = fpc.validate_fit_name(fit_name,dataset_id, suggest_new=True)
+    
+    return fpc.autofill_fit_name(fit_name, current_name, last_auto_name)
+
+
+@callback(
+    Output({'type':'fit-results-store','page': page_id}, 'data', allow_duplicate=True),
+    Output({"type": "fit-results-code", "page": page_id}, 'code', allow_duplicate=True),
+    Output({"type": "save-fit-btn", "page": page_id}, 'disabled', allow_duplicate=True),
+    Output({"type": "download-fit-btn", "page": page_id}, 'disabled', allow_duplicate=True),
+    Output({'type': 'fit-plot-showpathways', 'page': page_id}, 'checked', allow_duplicate=True),
+    Output({'type': 'bg_model', 'page': page_id}, 'value', allow_duplicate=True),
+    Output({'type': 'dist_model', 'page': page_id}, 'value', allow_duplicate=True),
+    Output({'type': 'pathways-options', 'page': page_id}, 'value', allow_duplicate=True),
+    Output({"type": "distance-axis", "page": page_id}, 'value', allow_duplicate=True),
+    Output({"type": "multi-start", "page": page_id}, 'value', allow_duplicate=True),
+    Output({'type': 'model-params-store', 'page': page_id}, 'data', allow_duplicate=True),
+    Output({"type": "bootstrap-toggle", "page": page_id}, 'checked', allow_duplicate=True),
+    Output({"type": "bootstrap-samples", "page": page_id}, 'value', allow_duplicate=True),
+    Input({"type": "job-load-request", "page": page_id}, "data"),
+    prevent_initial_call=True,
+)
+def load_queued_result(job_id):
+    # Dataset dropdown is deliberately not restored — see the note in nonparametric.py's
+    # load_queued_result for why (it would trigger plot_dataset and wipe the loaded result).
+    no_update_12 = (dash.no_update,) * 12
+    if not job_id:
+        return no_update_12
+    job = get_job(job_id, with_result=True)
+    if job is None or job.status != 'done' or not job.result_data:
+        return no_update_12
+    fit_dict = job.result_data
+    p = job.params or {}
+    fo = p.get('fit_options') or {}
+    return (
+        fit_dict, fit_dict.get('model_description', ''), False, False, False,
+        fo.get('bg_model'), fo.get('dist_model'), fo.get('pathways_options'),
+        fo.get('distance_axis'), fo.get('multistart'),
+        p.get('model_params'), p.get('bootstrap_enabled'), p.get('bootstrap_samples'),
+    )
 
 
 
@@ -270,9 +295,11 @@ def run_fit(n_clicks, dataset_id, fit_options, model_params):
     Input({"type": "save-fit-btn", "page": page_id}, 'n_clicks'),
     State({'type': 'dataset-dropdown', 'page': page_id}, 'value'),
     State({'type':'fit-results-store','page': page_id}, 'data'),
+    State({'type': 'fit-name-input', 'page': page_id}, 'value'),
+
     prevent_initial_call=True
 )
-def save_fit(n_clicks, dataset_id, dataset_store):
+def save_fit(n_clicks, dataset_id, dataset_store,fit_name):
     if not dataset_store or not dataset_id:
         print(f"No fit results to save or no dataset selected.")
         return dash.no_update
@@ -280,7 +307,7 @@ def save_fit(n_clicks, dataset_id, dataset_store):
     session = get_session()
     new_fit = Fit(
         dataset_id=dataset_id,
-        name=name_dataset_from_dict(dataset_store),
+        name=fit_name,
         **dataset_store
     )
     session.add(new_fit)

@@ -66,7 +66,7 @@ def update_dataset_table(search_value=''):
     if session is None:
         print("Error: Could not connect to the database.")
         dash.no_update
-    datasets = session.query(Dataset).all()
+    datasets = session.query(Dataset.name, Dataset.project, Dataset.sample, Dataset.exp).all()
     
     # if search_value:
     #     datasets = datasets.filter(Dataset.name.ilike(f"%{search_value}%"))
@@ -107,7 +107,7 @@ def select_dataset_from_modal(n_clicks, selected_rows):
     if n_clicks and selected_rows:
         dataset_title = selected_rows[0].get('Title')
         session = get_session()
-        dataset = session.query(Dataset).filter_by(name=dataset_title).first()
+        dataset = session.query(Dataset.id).filter_by(name=dataset_title).first()
         session.close()
         return False, str(dataset.id)
     return dash.no_update, dash.no_update
@@ -149,7 +149,7 @@ def update_fit_search_table(search_value='',dataset_id=None):
     if session is None:
         print("Error: Could not connect to the database.")
         dash.no_update
-    fits = session.query(Fit).filter_by(dataset_id=dataset_id).all()
+    fits = session.query(Fit.name).filter_by(dataset_id=dataset_id).all()
     
     # if search_value:
     #     datasets = datasets.filter(Dataset.name.ilike(f"%{search_value}%"))

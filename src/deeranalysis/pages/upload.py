@@ -17,6 +17,15 @@ import deeranalysis.components.dataset_form as df # registers shared MATCH callb
 dash.register_page(__name__)
 page_id = 'upload'
 
+_BRUKER_EXTS = ('.DSC', '.DTA')
+_BRUKER_UPLOAD_IDS = {'.DSC': 'upload-bruker-dsc', '.DTA': 'upload-bruker-dta'}
+
+
+def _bruker_ext(filename):
+    """Returns '.DSC' or '.DTA' if the filename is a Bruker BES3T file, otherwise None."""
+    ext = '.' + filename.rsplit('.', 1)[-1].upper() if '.' in filename else ''
+    return ext if ext in _BRUKER_EXTS else None
+
 
 def _single_import_layout():
     return dmc.Grid([
@@ -27,7 +36,7 @@ def _single_import_layout():
                     DashIconify(icon="material-symbols:upload-file-outline", width=36, color="var(--mantine-color-blue-6)"),
                     dmc.Stack([
                         dmc.Text("Drag and drop files or click to select", size="sm", fw=500),
-                        dmc.Text(".DSC/.DTA, .h5, .csv, .txt, .dat  —  select both .DSC and .DTA together", size="xs", c="dimmed"),
+                        dmc.Text(".DSC/.DTA, .h5, .csv, .txt, .dat", size="xs", c="dimmed"),
                     ], gap=2),
                 ], px="md", py="sm"),
                 style={
@@ -40,6 +49,17 @@ def _single_import_layout():
                     'cursor': 'pointer',
                 },
                 multiple=True, className="mb-2"
+            ),
+            dcc.Store(id='bruker-files-store'),
+            dmc.Stack(
+                id='bruker-files-display',
+                gap='sm',
+                mb='sm',
+                style={'display': 'none'},
+                children=[
+                    dcc.Upload(id=_BRUKER_UPLOAD_IDS[ext], accept=ext, multiple=False)
+                    for ext in _BRUKER_EXTS
+                ],
             ),
             dcc.Store(id={'type': 'dataset-store', 'page': page_id}),
             dmc.Autocomplete(id={'type': 'project-name', 'page': page_id}, label="Project Name", mb="sm"),
@@ -197,70 +217,171 @@ def _error_message(message):
     Output('notification-container', 'sendNotifications'),
     Output('csv-raw-store', 'data'),
     Output('csv-import-modal', 'opened'),
+    Output('bruker-files-store', 'data'),
     Input('upload-data', 'contents'),
     State('upload-data', 'filename'),
+    State('bruker-files-store', 'data'),
     prevent_initial_call=True,
 )
-def handle_file_upload(contents_list, filenames_list):
+def handle_file_upload(contents_list, filenames_list, bruker_store):
     """Uploads a dataset and extracts metadata.
 
-    Supported file types: .DSC (Bruker BES3T), .h5 (HDF5), .csv
+    Supported file types: .DSC/.DTA (Bruker BES3T), .h5 (HDF5), .csv
+    Bruker files are collected in the bruker-files-store and loaded once both are present.
     """
-    no_update_9 = (dash.no_update,) * 9
+    no_update_10 = (dash.no_update,) * 10
     if contents_list is None:
-        return no_update_9
-    alert = dash.no_update
+        return no_update_10
     if not isinstance(contents_list, list):
         contents_list = [contents_list]
         filenames_list = [filenames_list]
 
-    if len(contents_list) > 2:
-        alert = _error_message("Please upload only one dataset at a time. For Bruker BES3T files, upload both the .DSC and .DTA files together.")
-        return *no_update_9[:6], alert, dash.no_update, dash.no_update
-    elif len(contents_list) == 2:
-        if not (filenames_list[0].endswith('.DSC') and filenames_list[1].endswith('.DTA')) and \
-           not (filenames_list[1].endswith('.DSC') and filenames_list[0].endswith('.DTA')):
-            alert = _error_message("When uploading two files, please ensure they are the .DSC and .DTA files from Bruker BES3T.")
-            return *no_update_9[:6], alert, dash.no_update, dash.no_update
-        file_format = 'BES3T'
-    else:
-        if filenames_list[0].endswith('.DSC'):
-            alert = _error_message("Please upload both the .DSC and .DTA files from Bruker BES3T together.")
-            return *no_update_9[:6], alert, dash.no_update, dash.no_update
-        elif filenames_list[0].endswith('.h5'):
-            file_format = 'hdf5'
-        elif filenames_list[0].endswith('.csv') or filenames_list[0].endswith('.txt') or filenames_list[0].endswith('.dat'):
-            csv_store = {'content': contents_list[0], 'filename': filenames_list[0]}
-            return *no_update_9[:7], csv_store, True
-        else:
-            alert = _error_message("Unsupported file type. Please upload .DSC/.DTA (Bruker BES3T), .h5 (HDF5), or .csv files.")
-            return *no_update_9[:6], alert, dash.no_update, dash.no_update
+    def _error(message):
+        return *no_update_10[:6], _error_message(message), *no_update_10[7:]
+
+    bruker_exts = [_bruker_ext(f) for f in filenames_list]
+    if any(bruker_exts):
+        if not all(bruker_exts) or len(contents_list) > 2 or len(set(bruker_exts)) != len(bruker_exts):
+            return _error("For Bruker BES3T files, upload one .DSC and/or one .DTA file only.")
+        # Start a new pair unless the existing store is only half filled
+        bruker_store = dict(bruker_store or {})
+        if len(bruker_store) == 2 or len(contents_list) == 2:
+            bruker_store = {}
+        for ext, content, filename in zip(bruker_exts, contents_list, filenames_list):
+            bruker_store[ext] = {'content': content, 'filename': filename}
+        return *no_update_10[:9], bruker_store
+
+    if len(contents_list) > 1:
+        return _error("Please upload only one dataset at a time.")
+
+    filename = filenames_list[0]
+    if filename.endswith('.csv') or filename.endswith('.txt') or filename.endswith('.dat'):
+        csv_store = {'content': contents_list[0], 'filename': filename}
+        return *no_update_10[:7], csv_store, True, None
+    elif not filename.endswith('.h5'):
+        return _error("Unsupported file type. Please upload .DSC/.DTA (Bruker BES3T), .h5 (HDF5), or .csv files.")
 
     try:
-        if file_format == 'BES3T':
-            if filenames_list[0].endswith('.DSC'):
-                dsc_content, dta_content = contents_list[0], contents_list[1]
-            else:
-                dsc_content, dta_content = contents_list[1], contents_list[0]
-            dataarray = load_bes3t(dsc_content, dta_content)
-            metadata_children, long_values_store = build_metadata_section_datarray(dataarray)
-            dataarray, delays, tmin = enrich_bes3t(dataarray)
-
-        elif file_format == 'hdf5':
-            dataarray = load_hdf5(contents_list[0])
-            metadata_children, long_values_store = build_metadata_section_datarray(dataarray)
-            delays, tmin = enrich_hdf5(dataarray, filenames_list[0])
-
+        dataarray = load_hdf5(contents_list[0])
+        metadata_children, long_values_store = build_metadata_section_datarray(dataarray)
+        delays, tmin = enrich_hdf5(dataarray, filename)
     except Exception as e:
         import traceback
         print(f"Error processing uploaded files: {e}")
         print(traceback.format_exc())
-        return *no_update_9[:6], _error_message(f"Error processing files: {str(e)}"), dash.no_update, dash.no_update
+        return _error(f"Error processing files: {str(e)}")
 
+    outputs = _build_dataset_outputs(dataarray, metadata_children, long_values_store, delays, tmin)
+    return *outputs, dash.no_update, dash.no_update, None
+
+
+@callback(
+    Output('bruker-files-store', 'data', allow_duplicate=True),
+    Output('notification-container', 'sendNotifications', allow_duplicate=True),
+    Input(_BRUKER_UPLOAD_IDS['.DSC'], 'contents'),
+    Input(_BRUKER_UPLOAD_IDS['.DTA'], 'contents'),
+    State(_BRUKER_UPLOAD_IDS['.DSC'], 'filename'),
+    State(_BRUKER_UPLOAD_IDS['.DTA'], 'filename'),
+    State('bruker-files-store', 'data'),
+    prevent_initial_call=True,
+)
+def handle_bruker_slot_upload(dsc_content, dta_content, dsc_filename, dta_filename, bruker_store):
+    """Fills (or replaces) a single .DSC or .DTA slot."""
+    if dash.ctx.triggered_id == _BRUKER_UPLOAD_IDS['.DSC']:
+        expected, content, filename = '.DSC', dsc_content, dsc_filename
+    else:
+        expected, content, filename = '.DTA', dta_content, dta_filename
+    if content is None:
+        return dash.no_update, dash.no_update
+    if _bruker_ext(filename) != expected:
+        return dash.no_update, _error_message(f"Please select a {expected} file.")
+    bruker_store = dict(bruker_store or {})
+    bruker_store[expected] = {'content': content, 'filename': filename}
+    return bruker_store, dash.no_update
+
+
+def _bruker_slot(ext, entry):
+    """Contents and style of one dashed .DSC/.DTA box."""
+    color = 'green' if entry else 'orange'
+    style = {
+        'borderWidth': '2px',
+        'borderStyle': 'dashed',
+        'borderRadius': 'var(--mantine-radius-sm)',
+        'borderColor': f'var(--mantine-color-{color}-4)',
+        'backgroundColor': f'var(--mantine-color-{color}-light)',
+        'cursor': 'pointer',
+    }
+    if entry:
+        icon, subtitle = 'material-symbols:check-circle-outline', 'Click or drop to replace'
+        # Truncate only the stem so the file ending stays visible
+        stem, file_ext = entry['filename'].split('/')[-1].rsplit('.', 1)
+        title = dmc.Group([
+            dmc.Text(stem, size='sm', fw=500, truncate='end', style={'minWidth': 0}),
+            dmc.Text(f".{file_ext}", size='sm', fw=500, style={'flexShrink': 0}),
+        ], gap=0, wrap='nowrap')
+    else:
+        icon, subtitle = 'material-symbols:warning-outline', f"Click or drop to upload the {ext} file"
+        title = dmc.Text(f"Missing {ext} file", size='sm', fw=500)
+    children = dmc.Group([
+        DashIconify(icon=icon, width=24, color=f'var(--mantine-color-{color}-6)'),
+        dmc.Stack([
+            title,
+            dmc.Text(subtitle, size='xs', c='dimmed'),
+        ], gap=2, style={'minWidth': 0, 'flex': 1}),
+    ], px='sm', py='xs', wrap='nowrap')
+    return children, style
+
+
+@callback(
+    Output('bruker-files-display', 'style'),
+    Output(_BRUKER_UPLOAD_IDS['.DSC'], 'children'),
+    Output(_BRUKER_UPLOAD_IDS['.DSC'], 'style'),
+    Output(_BRUKER_UPLOAD_IDS['.DTA'], 'children'),
+    Output(_BRUKER_UPLOAD_IDS['.DTA'], 'style'),
+    Input('bruker-files-store', 'data'),
+)
+def render_bruker_slots(bruker_store):
+    if not bruker_store:
+        return {'display': 'none'}, *(dash.no_update,) * 4
+    dsc_children, dsc_style = _bruker_slot('.DSC', bruker_store.get('.DSC'))
+    dta_children, dta_style = _bruker_slot('.DTA', bruker_store.get('.DTA'))
+    return {}, dsc_children, dsc_style, dta_children, dta_style
+
+
+@callback(
+    Output({'type': 'dataset-store', 'page': page_id}, 'data', allow_duplicate=True),
+    Output({'type': 'metadata-content', 'page': page_id}, 'children', allow_duplicate=True),
+    Output({"type": "metadata-modal-store", "page": page_id}, 'data', allow_duplicate=True),
+    Output({'type': 'delays-grid', 'page': page_id}, 'rowData', allow_duplicate=True),
+    Output({'type': 'dataset-name', 'page': page_id}, 'value', allow_duplicate=True),
+    Output({'type': 'tmin', 'page': page_id}, 'value', allow_duplicate=True),
+    Output('notification-container', 'sendNotifications', allow_duplicate=True),
+    Input('bruker-files-store', 'data'),
+    prevent_initial_call=True,
+)
+def load_bruker_dataset(bruker_store):
+    """Loads the BES3T dataset once both the .DSC and .DTA files are present."""
+    if not bruker_store or not all(ext in bruker_store for ext in _BRUKER_EXTS):
+        return (dash.no_update,) * 7
+    try:
+        dataarray = load_bes3t(bruker_store['.DSC']['content'], bruker_store['.DTA']['content'])
+        metadata_children, long_values_store = build_metadata_section_datarray(dataarray)
+        dataarray, delays, tmin = enrich_bes3t(dataarray)
+    except Exception as e:
+        import traceback
+        print(f"Error processing uploaded files: {e}")
+        print(traceback.format_exc())
+        return *(dash.no_update,) * 6, _error_message(f"Error processing files: {str(e)}")
+
+    return _build_dataset_outputs(dataarray, metadata_children, long_values_store, delays, tmin)
+
+
+def _build_dataset_outputs(dataarray, metadata_children, long_values_store, delays, tmin):
+    """Builds the dataset-store and form outputs shared by all loaders."""
     store_data = dataarray_to_store(dataarray, delays, tmin)
     delays_data = [{'parameter': k, 'value': v} for k, v in delays.items()]
     delays_data, store_data = df.check_delays('4pDEER',delays_data,store_data)
-    return store_data, metadata_children, long_values_store, delays_data, dataarray.attrs.get('title', ''), tmin, alert, dash.no_update, dash.no_update
+    return store_data, metadata_children, long_values_store, delays_data, dataarray.attrs.get('title', ''), tmin, dash.no_update
 
 
 @callback(

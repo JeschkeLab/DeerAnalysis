@@ -15,6 +15,7 @@ import numpy as np
 import json
 
 from deeranalysis.utils.database import get_session, Dataset,check_delays, Fit,fit_global_datasets
+from sqlalchemy.orm import undefer
 from deeranalysis.utils import create_subplot_figure,plotly_deerlab
 from deeranalysis.utils.deerlab_options import plotly_goodness_of_fit, plotly_lcurve, plotly_dipolar_spectrum
 from deeranalysis.components.metadata_table import build_metadata_section,build_delays_table, metadata_long_values_model,build_delays_AGgrid,delays_columnDefs
@@ -43,7 +44,8 @@ def layout(fit_id=None):
         session = get_session()
         if session is None:
             return _error_page("Database is not available.")
-        fit = session.query(Fit).filter_by(id=fit_id).first()
+        # The page rebuilds the FitResult (_load_fitresult), so it needs the deferred blob.
+        fit = session.query(Fit).options(undefer(Fit.data)).filter_by(id=fit_id).first()
         ds_id = fit.dataset_id if fit else None
         dataset = session.query(Dataset).filter_by(id=ds_id).first() if ds_id else None
         session.close()

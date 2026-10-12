@@ -1,12 +1,14 @@
-from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, ForeignKey, JSON, LargeBinary, inspect, text, Table
+from sqlalchemy import create_engine, Column, Integer, String, Float, Boolean, DateTime, ForeignKey, JSON, LargeBinary, inspect, text, Table
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker, relationship
+from sqlalchemy.orm import sessionmaker, relationship, deferred
 from datetime import datetime, timezone
 import os
 
 
 
 Base = declarative_base()
+
+DEFAULT_MAX_CACHED_JOBS = 20
 
 fit_global_datasets = Table('fit_global_datasets', Base.metadata,
     Column('fit_id', Integer, ForeignKey('fits.id', ondelete='CASCADE'), primary_key=True),
@@ -31,10 +33,12 @@ class Dataset(Base):
     exp = Column(String, default='Unknown') # 4pDEER, 5pDEER, etc.
     delays = Column(JSON, default={})
     meta = Column(JSON, default={})
-    created_at = Column(DateTime, default=datetime.now(timezone.utc))
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     measured_at = Column(DateTime, nullable=True, default=None)
-    
-    fits = relationship("Fit", back_populates="dataset", cascade="all, delete-orphan", lazy='joined')
+
+    # Loaded on access (not joined): fits carry large blobs, so callers that need them
+    # after closing the session must request them with selectinload(Dataset.fits).
+    fits = relationship("Fit", back_populates="dataset", cascade="all, delete-orphan", lazy='select')
 
     @property
     def n_fits(self):
@@ -71,8 +75,10 @@ class Fit(Base):
     parameters = Column(JSON, nullable=True)
     fit_results = Column(JSON, nullable=True) # Fitted model, residuals, stats
     warnings = Column(JSON, nullable=True) # Any warnings generated during the fit
-    created_at = Column(DateTime, default=datetime.now(timezone.utc))
-    data = Column(JSON,nullable=True, default=None) # JSONified data of the FitResult object, including model, uncertainties, regparam, etc.
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    # JSONified FitResult (model, uncertainties, regparam, ...). Tens of MB per fit, so it is
+    # deferred: load it explicitly with .options(undefer(Fit.data)) where it is needed.
+    data = deferred(Column(JSON,nullable=True, default=None))
     
     dataset = relationship("Dataset", back_populates="fits")
 
@@ -80,6 +86,25 @@ class Fit(Base):
     def n_warnings(self):
         return len(self.warnings) if self.warnings else 0
 
+
+
+class Job(Base):
+    __tablename__ = 'jobs'
+
+    id = Column(Integer, primary_key=True)
+    job_type = Column(String, nullable=False)  # dispatch key, e.g. "non-parametric_fit"
+    page = Column(String, nullable=False)       # originating page_id
+    label = Column(String, nullable=True)        # human-readable label shown in the drawer
+    status = Column(String, nullable=False, default="queued")  # queued|running|done|error|cancelled
+    params = Column(JSON, nullable=True)          # serialized fit kwargs
+    result_data = deferred(Column(JSON, nullable=True))  # serialized fit result once done; deferred (large)
+    message = Column(String, nullable=True)
+    error = Column(String, nullable=True)
+    # Whether the result has been persisted as Fit row(s). No column default on purpose: rows
+    # from before this column existed stay NULL and are treated as saved (they were auto-saved).
+    saved = Column(Boolean, nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
 
 class Settings(Base):
@@ -93,6 +118,8 @@ class Settings(Base):
     color_scheme = Column(String, nullable=True, default="light")
     ui_scale = Column(Float, nullable=True, default=1.0)
     plot_theme = Column(String, nullable=True, default="auto")
+    auto_save_fits = Column(Boolean, nullable=True, default=False)
+    max_cached_jobs = Column(Integer, nullable=True, default=DEFAULT_MAX_CACHED_JOBS)
     
 # Database setup
 # db_path = 'sqlite:///deeranalysis.db'
@@ -125,7 +152,7 @@ def update_schema():
             for column in table.columns:
                 if column.name not in existing_columns:
                     col_type = column.type.compile(engine.dialect)
-                    default = f"DEFAULT {column.default.arg}" if column.default else ""
+                    default = f"DEFAULT {column.default.arg}" if column.default and not column.default.is_callable else ""
                     nullable = "NOT NULL" if not column.nullable else ""
                     
                     sql = f"ALTER TABLE {table_name} ADD COLUMN {column.name} {col_type} {nullable} {default}"
@@ -149,7 +176,7 @@ def reset_db():
     global engine
     Base.metadata.drop_all(engine)
     Base.metadata.create_all(engine)
-    
+
 def get_session():
     global Session
     if Session is None:
@@ -182,6 +209,32 @@ def save_appearance_settings(color_scheme, ui_scale, plot_theme="auto"):
     settings.plot_theme = plot_theme or "auto"
     session.add(settings)
     session.commit()
+
+def get_job_settings():
+    """Returns (auto_save_fits, max_cached_jobs) from Settings, with defaults."""
+    session = get_session()
+    if session is None:
+        return True, DEFAULT_MAX_CACHED_JOBS
+    settings = session.query(Settings).first()
+    session.close()
+    if not settings:
+        return True, DEFAULT_MAX_CACHED_JOBS
+    auto_save = settings.auto_save_fits if settings.auto_save_fits is not None else True
+    max_cached = settings.max_cached_jobs if settings.max_cached_jobs is not None else DEFAULT_MAX_CACHED_JOBS
+    return bool(auto_save), int(max_cached)
+
+def save_job_settings(auto_save_fits, max_cached_jobs):
+    session = get_session()
+    if session is None:
+        return
+    settings = session.query(Settings).first()
+    if not settings:
+        settings = Settings()
+    settings.auto_save_fits = bool(auto_save_fits)
+    settings.max_cached_jobs = int(max_cached_jobs)
+    session.add(settings)
+    session.commit()
+    session.close()
 
 def check_delays(dataset):
     """Checks that for a given dataset, the entries in the delay column cover 
