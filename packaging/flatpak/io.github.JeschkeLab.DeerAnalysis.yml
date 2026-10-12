@@ -2,8 +2,8 @@
 #
 # DeerAnalysis is a Dash (Flask) web app rendered in a native window via
 # pywebview. On Linux pywebview uses the GTK + WebKitGTK backend, both of
-# which are provided by the GNOME runtime. We target the current GNOME 50
-# runtime, which ships Python >= 3.12 (the app's minimum).
+# which are provided by the GNOME runtime. We target the current GNOME 51
+# runtime, which ships Python >= 3.14 (the app's minimum).
 #
 # This is a deliberately simple, local-build manifest: it lets pip pull
 # dependencies from PyPI at build time (--share=network). That keeps the
@@ -11,7 +11,7 @@
 # pinned/offline sources. See docsrc/dev/flatpak_package.md.
 id: io.github.JeschkeLab.DeerAnalysis
 runtime: org.gnome.Platform
-runtime-version: '50'
+runtime-version: '51'
 sdk: org.gnome.Sdk
 command: deeranalysis
 
