@@ -8,6 +8,18 @@ from pathlib import Path
 from urllib.parse import unquote
 from flask import request as _flask_request, jsonify as _jsonify
 
+if __name__ == "__main__" and getattr(sys, 'frozen', False):
+    # In a PyInstaller-frozen app, sys.executable is DeerAnalysis itself, so every helper
+    # process that `multiprocess` (used by Dash's DiskcacheManager) starts re-launches this
+    # entry point. 
+    if len(sys.argv) >= 2 and sys.argv[-2] == '-c' and sys.argv[-1].startswith((
+            'from multiprocess.resource_tracker import main',
+            'from multiprocess.forkserver import main')):
+        exec(sys.argv[-1])
+        sys.exit()
+    from multiprocess import spawn as _mp_spawn
+    _mp_spawn.freeze_support()  # runs the job and exits if this is a spawned worker
+
 #os.environ['PYWEBVIEW_GUI'] = 'cocoa'  # force macOS backend
 os.environ['DEERANALYSIS_PYWEBVIEW'] = '1'
 
@@ -130,11 +142,7 @@ def wait_for_dash(window):
             time.sleep(0.2)
 
 if __name__ == "__main__":
-    # Background jobs (see components/jobs_drawer.py) run via DiskcacheManager with the
-    # "spawn" start method. On Windows, a PyInstaller-frozen spawned child re-executes this
-    # entry point, so freeze_support() must run first to stop it relaunching the whole app.
-    import multiprocess
-    multiprocess.freeze_support()
+    # Frozen child processes (job workers, resource tracker) are handled at the top of this file.
 
     # Start Dash in a separate thread
     dash_thread = threading.Thread(target=run_dash)
